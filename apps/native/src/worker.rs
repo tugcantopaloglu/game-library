@@ -1,10 +1,10 @@
 use crate::{GameTile, LibraryWindow};
-use library_core::models::{Game, LibraryStatus};
-use library_core::{steam, storage::Store};
+use library_core::models::{Game, LibraryStatus, Source};
+use library_core::{launcher, sources, storage::Store};
 use platform_windows::shell::open_target;
 use slint::{ModelRc, SharedPixelBuffer, VecModel};
 use std::io::{Cursor, Read};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{mpsc, Arc};
@@ -21,11 +21,12 @@ pub struct Query {
     pub filter: String,
     pub offset: u32,
     pub revision: u64,
+    pub source: Option<Source>,
 }
 
 pub enum Command {
     Query(Query),
-    Scan { pick_folder: bool },
+    Scan { add_source: Option<Source> },
     Favorite(String, bool),
     Launch(String),
     Reports,
@@ -61,6 +62,9 @@ fn thumbnail(path: &str) -> Option<(u32, u32, Vec<u8>)> {
 }
 
 fn size_text(bytes: f64) -> String {
+    if bytes <= 0.0 {
+        return "Boyut bilinmiyor".into();
+    }
     if bytes >= 1_073_741_824.0 {
         format!("{:.1} GB", bytes / 1_073_741_824.0)
     } else {
@@ -79,7 +83,7 @@ fn publish(
     ui: &slint::Weak<LibraryWindow>,
 ) -> Result<(), String> {
     let mut page = store
-        .list(&query.text, &query.filter, query.offset, 100)
+        .list_for_source(&query.text, &query.filter, query.offset, 100, query.source)
         .map_err(|error| error.to_string())?;
     let offset = if page.total > 0 && query.offset >= page.total {
         ((page.total - 1) / 100) * 100
@@ -88,7 +92,7 @@ fn publish(
     };
     if offset != query.offset {
         page = store
-            .list(&query.text, &query.filter, offset, 100)
+            .list_for_source(&query.text, &query.filter, offset, 100, query.source)
             .map_err(|error| error.to_string())?;
     }
     let status = store.status().map_err(|error| error.to_string())?;
@@ -131,6 +135,7 @@ fn publish(
                     favorite: tile.game.favorite,
                     artwork,
                     has_artwork,
+                    source: tile.game.source.label().into(),
                 }
             })
             .collect();
@@ -147,19 +152,48 @@ fn publish(
         ui.set_favorite_count(status.favorites as i32);
         ui.set_matched(matched as i32);
         ui.set_offset(offset as i32);
-        ui.set_source_summary(source_summary(status, unavailable_artwork).into());
+        for source in &status.sources {
+            match source.source {
+                Source::Steam => ui.set_steam_count(source.total as i32),
+                Source::Epic => ui.set_epic_count(source.total as i32),
+                Source::Riot => ui.set_riot_count(source.total as i32),
+            };
+        }
+        let summaries: Vec<slint::SharedString> = Source::ALL
+            .iter()
+            .map(|source| source_summary(&status, *source, unavailable_artwork).into())
+            .collect();
+        ui.set_source_summaries(Rc::new(VecModel::from(summaries)).into());
         ui.set_loading(false);
     })
     .map_err(|error| error.to_string())
 }
 
-fn source_summary(status: LibraryStatus, artwork_failures: u32) -> String {
-    let roots = if status.roots.is_empty() {
-        "Steam kütüphanesi bulunamadı. Steam veya SteamLibrary klasörünü ekleyebilirsin.".to_owned()
-    } else {
-        status.roots.join("\n\n")
-    };
-    let mut lines = vec![roots];
+fn source_summary(status: &LibraryStatus, selected: Source, artwork_failures: u32) -> String {
+    let source = status
+        .sources
+        .iter()
+        .find(|source| source.source == selected);
+    let mut lines = vec![format!(
+        "{} · {} oyun · {} kurulu",
+        selected.label(),
+        source.map(|source| source.total).unwrap_or(0),
+        source.map(|source| source.installed).unwrap_or(0)
+    )];
+    if let Some(source) = source {
+        for root in &source.roots {
+            lines.push(if root == "registry://RiotGames" {
+                "Windows kayıt defteri".into()
+            } else {
+                root.trim_start_matches("\\\\?\\").to_owned()
+            });
+        }
+        if source.roots.is_empty() {
+            lines.push(
+                "Standart veri klasörü bulunamadı. Veri klasörünü elle ekleyebilirsin.".into(),
+            );
+        }
+    }
     if let Some(duration) = status.last_scan_duration_ms {
         lines.push(format!("Son tarama: {duration:.0} ms"));
     }
@@ -168,7 +202,10 @@ fn source_summary(status: LibraryStatus, artwork_failures: u32) -> String {
             "Bu sayfada {artwork_failures} yerel kapak okunamadı veya boyut sınırını aştı."
         ));
     }
-    lines.extend(status.warnings);
+    if !status.warnings.is_empty() {
+        lines.push("Son tarama uyarıları (tüm kaynaklar):".into());
+        lines.extend(status.warnings.clone());
+    }
     lines.join("\n\n")
 }
 
@@ -197,14 +234,30 @@ pub fn start(
                     .and_then(|_| publish(&store, &query, &state, &ui)),
                 Command::Launch(id) => (|| {
                     let game = store.game(&id).map_err(|error| error.to_string())?;
-                    if !game.installed || !Path::new(&game.install_path).is_dir() {
-                        return Err("Oyun kurulumu erişilemiyor. Kütüphaneyi tekrar tara.".into());
+                    let plan = launcher::prepare(&game).map_err(|error| error.to_string())?;
+                    match plan {
+                        launcher::LaunchPlan::Uri { uri } => {
+                            platform_windows::shell::open_game_uri(&uri)?
+                        }
+                        launcher::LaunchPlan::Process {
+                            executable,
+                            args,
+                            working_dir,
+                        } => {
+                            platform_windows::shell::start_process(
+                                &executable,
+                                &args,
+                                &working_dir,
+                            )?;
+                        }
                     }
-                    let uri = steam::launch_uri(game.app_id).map_err(|error| error.to_string())?;
-                    open_target(&uri)?;
                     set_notice(
                         &ui,
-                        format!("{} için başlatma isteği Steam'e iletildi.", game.name),
+                        format!(
+                            "{} için başlatma isteği {}'e iletildi.",
+                            game.name,
+                            game.source.label()
+                        ),
                     );
                     Ok(())
                 })(),
@@ -213,25 +266,25 @@ pub fn start(
                     std::fs::create_dir_all(&path).map_err(|error| error.to_string())?;
                     open_target(&path.to_string_lossy())
                 })(),
-                Command::Scan { pick_folder } => {
+                Command::Scan { add_source } => {
                     let result = (|| {
-                        if pick_folder {
+                        if let Some(source) = add_source {
                             let folder = rfd::FileDialog::new()
-                                .set_title("Steam veya SteamLibrary klasörünü seç")
+                                .set_title(format!("{} veri klasörünü seç", source.label()))
                                 .pick_folder();
                             let Some(folder) = folder else {
                                 return Ok(());
                             };
-                            let root = steam::normalize_root(&folder)
+                            let root = sources::normalize_root(source, &folder)
                                 .map_err(|error| error.to_string())?;
                             store
-                                .add_root(&root.to_string_lossy())
+                                .add_source_root(source, &root.to_string_lossy())
                                 .map_err(|error| error.to_string())?;
                         }
-                        let roots = store.roots().map_err(|error| error.to_string())?;
-                        let scanned = steam::scan(&roots, &state.cancel_scan);
+                        let roots = store.source_roots().map_err(|error| error.to_string())?;
+                        let scanned = sources::scan(&roots, &state.cancel_scan);
                         store
-                            .apply_scan(&scanned)
+                            .apply_source_scan(&scanned)
                             .map_err(|error| error.to_string())?;
                         let message = if scanned.report.cancelled {
                             "Tarama iptal edildi. Tamamlanmamış kaynaklardaki kayıtlar korundu."

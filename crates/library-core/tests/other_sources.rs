@@ -208,3 +208,26 @@ fn launch_target_source_mismatch_and_argument_injection_are_rejected() {
     };
     assert!(launcher::prepare(&game).is_err());
 }
+
+#[test]
+fn a_disconnected_riot_install_keeps_its_identity_and_favorite() {
+    let dir = tempfile::tempdir().unwrap();
+    let (root, _) = riot_setup(dir.path());
+    let mut warnings = Vec::new();
+    let initial = riot::scan_at(&root, &AtomicBool::new(false), &mut warnings);
+    let id = initial.games[0].id.clone();
+    let mut store = Store::open(&dir.path().join("library.db")).unwrap();
+    store.apply_scan(&result(vec![initial])).unwrap();
+    store.set_favorite(&id, true).unwrap();
+    std::fs::rename(
+        dir.path().join("VALORANT/live"),
+        dir.path().join("Moved Install"),
+    )
+    .unwrap();
+    let missing = riot::scan_at(&root, &AtomicBool::new(false), &mut warnings);
+    assert_eq!(missing.games[0].id, id);
+    assert!(!missing.games[0].installed);
+    store.apply_scan(&result(vec![missing])).unwrap();
+    assert_eq!(store.status().unwrap().total, 1);
+    assert!(store.game(&id).unwrap().favorite);
+}

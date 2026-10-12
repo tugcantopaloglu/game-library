@@ -72,3 +72,26 @@ fn source_roots_are_isolated_and_future_schemas_are_rejected() {
         99
     );
 }
+
+#[test]
+fn cancelled_full_discovery_does_not_suppress_the_upgrade_scan() {
+    use library_core::models::{ScanReport, ScanResult};
+    let directory = tempfile::tempdir().unwrap();
+    let mut store = Store::open(&directory.path().join("library.db")).unwrap();
+    assert!(store.needs_source_scan().unwrap());
+    let mut result = ScanResult {
+        report: ScanReport {
+            roots: vec![],
+            found: 0,
+            warnings: vec![],
+            duration_ms: 0.0,
+            cancelled: true,
+        },
+        libraries: vec![],
+    };
+    store.apply_source_scan(&result).unwrap();
+    assert!(store.needs_source_scan().unwrap());
+    result.report.cancelled = false;
+    store.apply_source_scan(&result).unwrap();
+    assert!(!store.needs_source_scan().unwrap());
+}

@@ -1,4 +1,4 @@
-import { LineEdit, ListView, ScrollView, AboutSlint } from "std-widgets.slint";
+import { LineEdit, ListView, ScrollView, ComboBox, AboutSlint } from "std-widgets.slint";
 
 export struct GameTile {
     id: string,
@@ -8,6 +8,7 @@ export struct GameTile {
     favorite: bool,
     artwork: image,
     has-artwork: bool,
+    source: string,
 }
 
 component Action inherits Rectangle {
@@ -68,13 +69,17 @@ component GameCard inherits Rectangle {
                 padding: 17px;
                 Rectangle { vertical-stretch: 1; background: transparent; }
                 Text { text: game.name; color: #d0dfd6; font-size: 19px; font-weight: 600; wrap: word-wrap; }
-                Text { text: "STEAM"; color: #9aafa4; font-size: 9px; }
+                Text { text: game.source; color: #9aafa4; font-size: 9px; }
                 Rectangle { vertical-stretch: 1; background: transparent; }
             }
             Rectangle {
                 x: 10px; y: 10px; width: 74px; height: 22px; border-radius: 4px;
                 background: #18211de0;
                 Text { text: game.installed ? "Kurulu" : "Erişilemiyor"; font-size: 9px; color: game.installed ? #c5dfb0 : #bfadb0; horizontal-alignment: center; vertical-alignment: center; }
+            }
+            if game.has-artwork: Rectangle {
+                x: 10px; y: parent.height - 31px; width: 88px; height: 21px; border-radius: 4px; background: #18211de0;
+                Text { text: game.source; color: #c2cec8; font-size: 9px; horizontal-alignment: center; vertical-alignment: center; }
             }
         }
         Text { text: game.name; color: #eef1f4; font-size: 12px; overflow: elide; }
@@ -127,6 +132,9 @@ export component LibraryWindow inherits Window {
     in property <int> total;
     in property <int> installed-count;
     in property <int> favorite-count;
+    in property <int> steam-count;
+    in property <int> epic-count;
+    in property <int> riot-count;
     in property <int> matched;
     in property <int> offset;
     in property <int> page-size: 100;
@@ -134,7 +142,7 @@ export component LibraryWindow inherits Window {
     in property <bool> loading;
     in property <bool> measuring;
     in property <string> notice;
-    in property <string> source-summary;
+    in property <[string]> source-summaries;
     in property <string> ram: "—";
     in property <string> cpu: "—";
     in property <string> commit-size: "—";
@@ -144,10 +152,11 @@ export component LibraryWindow inherits Window {
     in-out property <bool> installed-only;
     in-out property <string> query;
     in-out property <length> scroll-position;
-    callback refresh(string, bool, bool, int);
+    in-out property <int> source-index;
+    callback refresh(string, bool, bool, int, int);
     callback scan;
     callback cancel-scan;
-    callback add-folder;
+    callback add-folder(int);
     callback launch(string);
     callback favorite(string, bool);
     callback sample;
@@ -180,11 +189,13 @@ export component LibraryWindow inherits Window {
                 spacing: 11px;
                 Text { text: "Game Library"; color: #f2f5f6; font-size: 18px; font-weight: 600; height: 49px; }
                 Text { text: "KİŞİSEL ALAN"; color: #7b8a97; font-size: 9px; height: 25px; }
-                Navigation { text: "Kütüphane"; active: section == 0; clicked => { section = 0; root.refresh(query, false, installed-only, 0); } }
-                Navigation { text: "Favoriler · " + favorite-count; active: section == 1; clicked => { section = 1; root.refresh(query, true, installed-only, 0); } }
+                Navigation { text: "Kütüphane"; active: section == 0; clicked => { section = 0; root.refresh(query, false, installed-only, 0, source-index); } }
+                Navigation { text: "Favoriler · " + favorite-count; active: section == 1; clicked => { section = 1; root.refresh(query, true, installed-only, 0, source-index); } }
                 Navigation { text: "Performans"; active: section == 2; clicked => { section = 2; root.sample(); } }
                 Text { text: "KAYNAKLAR"; color: #7b8a97; font-size: 9px; height: 34px; }
-                Navigation { text: "Steam"; active: section == 3; clicked => { section = 3; } }
+                Navigation { text: "Steam · " + steam-count; active: section == 3; clicked => { section = 3; } }
+                Navigation { text: "Epic Games · " + epic-count; active: section == 4; clicked => { section = 4; } }
+                Navigation { text: "Riot Games · " + riot-count; active: section == 5; clicked => { section = 5; } }
                 Rectangle { vertical-stretch: 1; background: transparent; }
                 Text { text: "WINDOWS · 0.1.0"; color: #788693; font-size: 9px; }
                 Action { text: "Tepsiye al"; clicked => { root.hide-window(); } }
@@ -197,32 +208,33 @@ export component LibraryWindow inherits Window {
                 background: #12171b;
                 HorizontalLayout {
                     padding-left: 30px; padding-right: 30px;
-                    Text { text: "Kişisel alan  /  " + (section == 0 ? "Kütüphane" : section == 1 ? "Favoriler" : section == 2 ? "Performans" : "Steam"); color: #9aa8b5; font-size: 11px; vertical-alignment: center; }
+                    Text { text: "Kişisel alan  /  " + (section == 0 ? "Kütüphane" : section == 1 ? "Favoriler" : section == 2 ? "Performans" : section == 3 ? "Steam" : section == 4 ? "Epic Games" : "Riot Games"); color: #9aa8b5; font-size: 11px; vertical-alignment: center; }
                     Text { text: installed-count + " kurulu oyun"; color: #8ea180; font-size: 11px; horizontal-alignment: right; vertical-alignment: center; }
                 }
             }
             VerticalLayout {
                 padding: 30px;
                 spacing: 17px;
-                Text { text: section == 0 ? "Kütüphanen" : section == 1 ? "Favorilerin" : section == 2 ? "Kaynak kullanımı" : "Steam kütüphaneleri"; color: #eff3f5; font-size: 29px; font-weight: 600; }
-                Text { text: section < 2 ? total + " oyun · " + matched + " sonuç" : section == 2 ? "Ölçüm yalnızca Game Library süreçlerini kapsar." : "Kurulumlar kayıt defteri ve Steam manifestlerinden bulunur."; color: #8c9ba8; font-size: 12px; }
+                Text { text: section == 0 ? "Kütüphanen" : section == 1 ? "Favorilerin" : section == 2 ? "Kaynak kullanımı" : section == 3 ? "Steam kütüphaneleri" : section == 4 ? "Epic Games kurulumları" : "Riot Games kurulumları"; color: #eff3f5; font-size: 29px; font-weight: 600; }
+                Text { text: section < 2 ? total + " oyun · " + matched + " sonuç" : section == 2 ? "Ölçüm yalnızca Game Library süreçlerini kapsar." : section == 3 ? "Steam manifestleri ve Windows kurulum kayıtları." : section == 4 ? "Epic Games Launcher'ın yerel .item manifestleri." : "Riot ürün metadata'sı, istemci JSON'u ve Windows kurulum kayıtları."; color: #8c9ba8; font-size: 12px; }
                 if notice != "": Rectangle {
-                    min-height: 40px; background: #202930; border-radius: 7px;
+                    height: 40px; background: #202930; border-radius: 7px;
                     Text { text: notice; color: #c5d3df; font-size: 11px; wrap: word-wrap; x: 12px; width: parent.width - 24px; vertical-alignment: center; }
                 }
                 if section < 2: VerticalLayout {
                     spacing: 17px;
                     HorizontalLayout {
                         spacing: 9px;
-                        LineEdit { placeholder-text: "Oyun ara"; text <=> query; edited => { root.refresh(query, section == 1, installed-only, 0); } }
-                        Action { text: installed-only ? "Kurulu ✓" : "Tüm oyunlar"; clicked => { installed-only = !installed-only; root.refresh(query, section == 1, installed-only, 0); } }
+                        LineEdit { placeholder-text: "Oyun ara"; text <=> query; edited => { root.refresh(query, section == 1, installed-only, 0, source-index); } }
+                        ComboBox { width: 150px; model: ["Tüm kaynaklar", "Steam", "Epic Games", "Riot Games"]; current-index <=> root.source-index; selected(value) => { root.refresh(query, section == 1, installed-only, 0, source-index); } }
+                        Action { text: installed-only ? "Kurulu ✓" : "Tüm oyunlar"; clicked => { installed-only = !installed-only; root.refresh(query, section == 1, installed-only, 0, source-index); } }
                         Action { text: scanning ? "Taramayı iptal et" : "Yeniden tara"; clicked => { if scanning { root.cancel-scan(); } else { root.scan(); } } }
                     }
                     if matched == 0: VerticalLayout {
                         spacing: 18px;
                         Rectangle { vertical-stretch: 1; background: transparent; }
                         Text { text: loading ? "Kütüphane yükleniyor…" : query != "" ? "Aramana uygun oyun bulunamadı." : section == 1 ? "Henüz favori oyun eklemedin." : "Kütüphanen henüz boş."; color: #ced7df; horizontal-alignment: center; font-size: 17px; }
-                        Action { text: "Steam klasörü ekle"; enabled: !scanning; clicked => { root.add-folder(); } }
+                        Action { text: "Kaynak klasörü ekle"; enabled: !scanning; clicked => { root.add-folder(source-index > 0 ? source-index - 1 : 0); } }
                         Rectangle { vertical-stretch: 1; background: transparent; }
                     }
                     if matched > 0: ListView {
@@ -239,8 +251,8 @@ export component LibraryWindow inherits Window {
                     HorizontalLayout {
                         spacing: 8px;
                         Text { text: matched == 0 ? "0 sonuç" : (offset + 1) + "–" + min(offset + page-size, matched) + " / " + matched; color: #8796a3; font-size: 11px; vertical-alignment: center; }
-                        Action { text: "Önceki"; enabled: offset > 0 && !loading; clicked => { root.refresh(query, section == 1, installed-only, max(0, offset - page-size)); } }
-                        Action { text: "Sonraki"; enabled: offset + page-size < matched && !loading; clicked => { root.refresh(query, section == 1, installed-only, offset + page-size); } }
+                        Action { text: "Önceki"; enabled: offset > 0 && !loading; clicked => { root.refresh(query, section == 1, installed-only, max(0, offset - page-size), source-index); } }
+                        Action { text: "Sonraki"; enabled: offset + page-size < matched && !loading; clicked => { root.refresh(query, section == 1, installed-only, offset + page-size, source-index); } }
                     }
                 }
                 if section == 2: VerticalLayout {
@@ -267,14 +279,16 @@ export component LibraryWindow inherits Window {
                     Text { text: measuring ? "Ölçüm sürüyor · " + measurement-progress + " / 60 sn" : measurement-summary; color: #bed2af; font-size: 12px; wrap: word-wrap; }
                     Rectangle { vertical-stretch: 1; background: transparent; }
                 }
-                if section == 3: VerticalLayout {
+                if section >= 3: VerticalLayout {
                     spacing: 17px;
                     HorizontalLayout {
                         spacing: 9px;
-                        Action { text: "Steam klasörü ekle"; enabled: !scanning; clicked => { root.add-folder(); } }
+                        Action { text: "Veri klasörü ekle"; enabled: !scanning; clicked => { root.add-folder(section - 3); } }
+                        Action { text: "Oyunları göster"; clicked => { source-index = section - 2; section = 0; root.refresh(query, false, installed-only, 0, source-index); } }
                         Action { text: scanning ? "İptal et" : "Yeniden tara"; clicked => { if scanning { root.cancel-scan(); } else { root.scan(); } } }
                     }
-                    ScrollView { Text { text: source-summary; color: #aebcc8; font-size: 12px; wrap: word-wrap; } }
+                    Text { text: section == 3 ? "Steam veya SteamLibrary klasörünü seç." : section == 4 ? "%PROGRAMDATA%\\Epic\\EpicGamesLauncher\\Data\\Manifests" : "%PROGRAMDATA%\\Riot Games (Metadata / RiotClientInstalls.json)"; color: #97a7b3; font-size: 12px; wrap: word-wrap; }
+                    ScrollView { Text { text: source-summaries[section - 3]; color: #aebcc8; font-size: 12px; wrap: word-wrap; vertical-alignment: top; } }
                 }
             }
         }

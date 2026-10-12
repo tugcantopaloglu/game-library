@@ -186,10 +186,7 @@ fn game(
         format!("{name} ({patchline})")
     };
     Ok(Game {
-        id: format!(
-            "riot:{source_id}:{}",
-            install.to_string_lossy().to_lowercase()
-        ),
+        id: format!("riot:{source_id}:{}", discovery::path_key(install)),
         source: Source::Riot,
         source_id,
         app_id: 0,

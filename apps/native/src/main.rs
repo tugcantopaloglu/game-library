@@ -3,7 +3,8 @@
 mod measurement;
 mod worker;
 
-use library_core::{steam, storage::Store};
+use library_core::models::Source;
+use library_core::{launcher, sources, storage::Store};
 use platform_windows::shell::InstanceGuard;
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use slint::{ComponentHandle, Timer, TimerMode};
@@ -13,6 +14,28 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use worker::{Command, Query};
+
+fn queue_scan(
+    sender: &std::sync::mpsc::SyncSender<Command>,
+    state: &Arc<worker::State>,
+    weak: &slint::Weak<LibraryWindow>,
+    add_source: Option<Source>,
+) {
+    if state.scanning.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    state.cancel_scan.store(false, Ordering::Relaxed);
+    if let Some(ui) = weak.upgrade() {
+        ui.set_scanning(true);
+    }
+    if let Err(error) = sender.try_send(Command::Scan { add_source }) {
+        state.scanning.store(false, Ordering::SeqCst);
+        if let Some(ui) = weak.upgrade() {
+            ui.set_scanning(false);
+            ui.set_notice(error.to_string().into());
+        }
+    }
+}
 
 slint::include_modules!();
 
@@ -51,18 +74,48 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     std::fs::create_dir_all(&data_dir)?;
     let data_dir = std::fs::canonicalize(data_dir)?;
     let instance = InstanceGuard::acquire(&data_dir)?;
-    if !instance.primary && !args.iter().any(|arg| arg == "--scan-json") {
+    if !instance.primary
+        && !args
+            .iter()
+            .any(|arg| arg == "--scan-json" || arg == "--launch-plan" || arg == "--list-json")
+    {
         return Ok(());
     }
     let mut store = Store::open(&data_dir.join("library.db"))?;
-    if let Some(root) = argument_value(&args, "--steam-root") {
-        let root = steam::normalize_root(Path::new(&root))?;
-        store.add_root(&root.to_string_lossy())?;
+    let source_filter = argument_value(&args, "--source")
+        .map(|value| Source::parse(&value))
+        .transpose()?;
+    for (source, flag) in [
+        (Source::Steam, "--steam-root"),
+        (Source::Epic, "--epic-root"),
+        (Source::Riot, "--riot-root"),
+    ] {
+        if let Some(root) = argument_value(&args, flag) {
+            let root = sources::normalize_root(source, Path::new(&root))?;
+            store.add_source_root(source, &root.to_string_lossy())?;
+        }
     }
-    if args.iter().any(|arg| arg == "--scan-json") {
-        let result = steam::scan(&store.roots()?, &AtomicBool::new(false));
-        store.apply_scan(&result)?;
-        let value = serde_json::json!({"scan": result.report, "status": store.status()?, "page": store.list("", "all", 0, 100)?});
+    if let Some(id) = argument_value(&args, "--launch-plan") {
+        let plan = launcher::prepare(&store.game(&id)?)?;
+        if let Some(path) = argument_value(&args, "--output") {
+            std::fs::write(path, serde_json::to_vec_pretty(&plan)?)?;
+        } else {
+            println!("{}", serde_json::to_string_pretty(&plan)?);
+        }
+        return Ok(());
+    }
+    if args
+        .iter()
+        .any(|arg| arg == "--scan-json" || arg == "--list-json")
+    {
+        let report = if args.iter().any(|arg| arg == "--scan-json") {
+            let result = sources::scan(&store.source_roots()?, &AtomicBool::new(false));
+            store.apply_source_scan(&result)?;
+            Some(result.report)
+        } else {
+            None
+        };
+        let value = serde_json::json!({"scan": report, "status": store.status()?, "page": store.list_for_source("", "all", 0, 100,source_filter)?});
         if let Some(path) = argument_value(&args, "--output") {
             std::fs::write(path, serde_json::to_vec_pretty(&value)?)?;
         } else {
@@ -70,7 +123,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
         return Ok(());
     }
-    let first_scan = store.status()?.last_scan_unix_ms.is_none();
+    let first_scan = store.needs_source_scan()?;
     let ui = LibraryWindow::new()?;
     let tray = LibraryTray::new()?;
     let about = AboutWindow::new()?;
@@ -118,7 +171,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let weak = ui.as_weak();
     let query_sender = sender.clone();
     let query_state = state.clone();
-    ui.on_refresh(move |text, favorites, installed, offset| {
+    ui.on_refresh(move |text, favorites, installed, offset, source_index| {
         let revision = query_state.revision.fetch_add(1, Ordering::Relaxed) + 1;
         let query = Query {
             text: text.chars().take(512).collect(),
@@ -131,6 +184,12 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             .into(),
             offset: offset.max(0) as u32,
             revision,
+            source: match source_index {
+                1 => Some(Source::Steam),
+                2 => Some(Source::Epic),
+                3 => Some(Source::Riot),
+                _ => None,
+            },
         };
         let sender = query_sender.clone();
         let weak = weak.clone();
@@ -151,32 +210,18 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             },
         );
     });
-    for pick_folder in [false, true] {
-        let sender = sender.clone();
-        let state = state.clone();
-        let weak = ui.as_weak();
-        let callback = move || {
-            if state.scanning.swap(true, Ordering::SeqCst) {
-                return;
-            }
-            state.cancel_scan.store(false, Ordering::Relaxed);
-            if let Some(ui) = weak.upgrade() {
-                ui.set_scanning(true);
-            }
-            if let Err(error) = sender.try_send(Command::Scan { pick_folder }) {
-                state.scanning.store(false, Ordering::SeqCst);
-                if let Some(ui) = weak.upgrade() {
-                    ui.set_scanning(false);
-                    ui.set_notice(error.to_string().into());
-                }
-            }
-        };
-        if pick_folder {
-            ui.on_add_folder(callback);
-        } else {
-            ui.on_scan(callback);
+    let scan_sender = sender.clone();
+    let scan_state = state.clone();
+    let weak = ui.as_weak();
+    ui.on_scan(move || queue_scan(&scan_sender, &scan_state, &weak, None));
+    let folder_sender = sender.clone();
+    let folder_state = state.clone();
+    let weak = ui.as_weak();
+    ui.on_add_folder(move |index| {
+        if let Some(source) = Source::ALL.get(index as usize) {
+            queue_scan(&folder_sender, &folder_state, &weak, Some(*source));
         }
-    }
+    });
     let cancel_state = state.clone();
     ui.on_cancel_scan(move || cancel_state.cancel_scan.store(true, Ordering::Relaxed));
     let favorite_sender = sender.clone();
@@ -226,7 +271,14 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     });
     let cancel_state = measurements.clone();
     ui.on_cancel_measurement(move || cancel_state.cancel.store(true, Ordering::Relaxed));
-    ui.invoke_refresh("".into(), false, false, 0);
+    let source_index = match source_filter {
+        None => 0,
+        Some(Source::Steam) => 1,
+        Some(Source::Epic) => 2,
+        Some(Source::Riot) => 3,
+    };
+    ui.set_source_index(source_index);
+    ui.invoke_refresh("".into(), false, false, 0, source_index);
     if first_scan && !args.iter().any(|arg| arg == "--benchmark") {
         ui.invoke_scan();
     }
@@ -279,7 +331,11 @@ fn main() {
     if let Err(error) = run() {
         eprintln!("{error}");
         if !std::env::args().any(|argument| {
-            argument == "--benchmark" || argument == "--scan-json" || argument == "--lifecycle-test"
+            argument == "--benchmark"
+                || argument == "--scan-json"
+                || argument == "--lifecycle-test"
+                || argument == "--launch-plan"
+                || argument == "--list-json"
         }) {
             rfd::MessageDialog::new()
                 .set_title("Game Library")

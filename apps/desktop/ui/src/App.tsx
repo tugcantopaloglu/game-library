@@ -7,7 +7,7 @@ import type { Game, GamePage, LibraryStatus, ScanReport } from './bindings';
 import { Performance } from './Performance';
 
 type View = 'library' | 'favorites' | 'performance' | 'sources';
-const emptyStatus: LibraryStatus = { total: 0, installed: 0, favorites: 0, roots: [], warnings: [], lastScanUnixMs: null, lastScanDurationMs: null };
+const emptyStatus: LibraryStatus = { sources: [], total: 0, installed: 0, favorites: 0, roots: [], warnings: [], lastScanUnixMs: null, lastScanDurationMs: null };
 const formatSize = (bytes: number) => bytes ? `${(bytes / 1_073_741_824).toLocaleString('tr-TR', { maximumFractionDigits: 1 })} GB` : 'Steam';
 
 export function App() {

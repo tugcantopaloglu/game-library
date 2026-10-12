@@ -103,6 +103,43 @@ pub fn open_target(target: &str) -> Result<(), String> {
     }
 }
 
+pub fn open_game_uri(uri: &str) -> Result<(), String> {
+    let protocol = if uri.starts_with("steam://rungameid/") {
+        "steam"
+    } else if uri.starts_with("com.epicgames.launcher://apps/") {
+        "com.epicgames.launcher"
+    } else {
+        return Err("Desteklenmeyen oyun başlatma protokolü".into());
+    };
+    let key = winreg::RegKey::predef(winreg::enums::HKEY_CLASSES_ROOT)
+        .open_subkey(format!("{protocol}\\shell\\open\\command"))
+        .map_err(|_| {
+            format!("{protocol} protokolü kayıtlı değil. Launcher kurulumunu kontrol et.")
+        })?;
+    let command: String = key
+        .get_value("")
+        .map_err(|_| "Launcher protokol komutu okunamadı")?;
+    if command.trim().is_empty() {
+        return Err("Launcher protokol komutu boş".into());
+    }
+    open_target(uri)
+}
+
+pub fn start_process(
+    executable: &Path,
+    args: &[String],
+    working_dir: &Path,
+) -> Result<u32, String> {
+    use std::os::windows::process::CommandExt;
+    let child = std::process::Command::new(executable)
+        .args(args)
+        .current_dir(working_dir)
+        .creation_flags(0x08000000)
+        .spawn()
+        .map_err(|error| format!("Launcher başlatılamadı: {error}"))?;
+    Ok(child.id())
+}
+
 #[cfg(test)]
 mod tests {
     use super::InstanceGuard;

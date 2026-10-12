@@ -74,6 +74,15 @@ pub fn identifier(value: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-' | b'.'))
 }
 
+pub fn path_key(path: &Path) -> String {
+    let value = path.to_string_lossy().replace('/', "\\");
+    if let Some(unc) = value.strip_prefix("\\\\?\\UNC\\") {
+        format!("\\\\{unc}").to_lowercase()
+    } else {
+        value.trim_start_matches("\\\\?\\").to_lowercase()
+    }
+}
+
 pub fn roots(extra: &[String], standard: &[PathBuf]) -> Vec<PathBuf> {
     let mut roots = BTreeMap::new();
     for root in standard

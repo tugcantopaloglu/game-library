@@ -200,6 +200,18 @@ impl Store {
         Ok(())
     }
 
+    pub fn needs_source_scan(&self) -> Result<bool> {
+        Ok(self.setting("source_scan_version")?.as_deref() != Some("2"))
+    }
+
+    pub fn apply_source_scan(&mut self, result: &ScanResult) -> Result<()> {
+        self.apply_scan(result)?;
+        if !result.report.cancelled {
+            self.connection.execute("INSERT INTO settings(key,value) VALUES('source_scan_version','2') ON CONFLICT(key) DO UPDATE SET value='2'",[])?;
+        }
+        Ok(())
+    }
+
     pub fn list(&self, query: &str, filter: &str, offset: u32, limit: u32) -> Result<GamePage> {
         self.list_for_source(query, filter, offset, limit, None)
     }
