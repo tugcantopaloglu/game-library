@@ -6,7 +6,7 @@ Bilgisayardaki oyunları tek yerde toplayan, yerel verilerle çalışan masaüst
 
 ## Proje durumu
 
-12 Ekim 2026: ilk Windows sürümü geliştirildi. Steam kütüphane keşfi, kurulum doğrulaması, sayfalı oyun listesi, arama, favoriler, Steam üzerinden başlatma ve RAM/CPU ölçümü içeriyor. Discord ve diğer launcher adaptörleri sonraki aşamalarda.
+12 Ekim 2026: native Windows sürümü Steam, Epic Games ve Riot Games keşfi/başlatma, kaynak filtresi, kurulum doğrulaması, sayfalı oyun listesi, arama, favoriler ve RAM/CPU ölçümü içeriyor. Discord ve diğer launcher adaptörleri sonraki aşamalarda. [Epic/Riot kullanım ve doğrulama ayrıntıları](docs/epic-riot.md).
 
 İlk sürüm Windows için geliştirilecek. Geliştirme ve performans referansı Windows 11 x64; Windows 10 desteği ayrıca doğrulanacak. Diğer işletim sistemleri sonraki aşamalara bırakıldı.
 
@@ -24,6 +24,8 @@ Discord yayın kapsamı: başlatma/durdurma, paylaşılan oyun veya pencereyi de
 | Gelecekteki eklentiler | Sürümlü protokol üzerinden ayrı süreçler |
 
 Pencere açıkken 180 MiB, tepsi açıkken 40 MiB özel çalışma kümesi ve boşta %0,25 altında CPU başlangıç hedefidir. Native tam sürüm 1.000 kayıtta kapaksız 12,15 MiB / %0,141; kapaklı 30,80 MiB / %0,110 ölçüldü. Kapaklı doğrudan tepsi açılışı 23,29 MiB / %0,013. 50 pencere döngüsü ve 15 Rust testi tamamlandı. Ayrıntılar ve ölçüm sınırları [ilk sürüm belgesinde](docs/ilk-surum.md). Önceki Tauri/React uygulaması `apps/desktop` altında karşılaştırma amacıyla korunur; ana uygulama WebView içermez.
+
+Epic/Riot eklendikten sonra 2.004 kayıtla pencere 32,32 MiB / %0,199; doğrudan tepsi 24,06 MiB / %0,028 ölçüldü. 26 Rust testi geçti. Ölçümler tek süreçli release uygulamasını kapsar; başlatılan oyun/launcher kaynakları dahil değildir. [Son ölçüm ve test kapsamı](docs/epic-riot.md#kaynak-tüketimi).
 
 ## Çalıştırma
 
@@ -57,11 +59,12 @@ pwsh -File scripts/measure.ps1 -Mode Tray -Seconds 60
 - [Mimari ve veri modeli](docs/mimari.md)
 - [Dil, paketler ve araçlar](docs/paketler.md)
 - [Oyun tarama ve kapak sistemi](docs/oyun-kesfi.md)
+- [Epic ve Riot desteği](docs/epic-riot.md)
 - [Discord ve istemci eklentileri](docs/discord.md)
 - [Performans ve kararlılık kriterleri](docs/performans.md)
 - [Arayüz yönü](docs/arayuz.md)
 - [Geliştirme sırası](docs/yol-haritasi.md)
 
-Steam kurulu olmayan ortamda fixture testleri uygulanır. Gerçek oyun başlatma kabul testi Steam'in kurulu olduğu bilgisayarda yapılmalıdır. İlk sürüm internetten kapak indirmez; Steam'in mevcut yerel kapak dosyalarını bulursa gösterir. Native arayüz 100 kayıtlık sayfalar ve sanallaştırılmış satırlar kullanır. JPEG/PNG kapaklar işçi thread'inde en fazla 180×270 piksele indirilir; dosya, boyut ve decode bellek sınırları uygulanır.
+Kurulu oyun olmayan ortamda fixture testleri uygulanır. Gerçek oyun başlatma kabul testi ilgili launcher ve oyunun kurulu olduğu bilgisayarda yapılmalıdır. İlk sürüm internetten kapak indirmez; Steam'in mevcut yerel kapak dosyalarını bulursa gösterir. Native arayüz 100 kayıtlık sayfalar ve sanallaştırılmış satırlar kullanır. JPEG/PNG kapaklar işçi thread'inde en fazla 180×270 piksele indirilir; dosya, boyut ve decode bellek sınırları uygulanır.
 
 Slint atfı Yardım → Hakkında ekranında `AboutSlint` bileşeniyle gösterilir. [Slint kullanım koşulları](https://slint.dev/terms-and-conditions).

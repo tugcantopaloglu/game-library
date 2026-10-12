@@ -56,6 +56,8 @@ Olaylar: `scan_progress`, `library_changed`, `session_changed`, `artwork_ready`,
 
 ## Veri modeli
 
+Çalışan şema 2'de `games` her kurulumu `source`, `source_id` ve tipli `launch_json` ile tutar; `source_roots` kaynak türü ve normalize edilmiş yol ile anahtarlanır. Steam'in önceki kimlikleri korunur. Epic ve Riot taramaları yalnızca kendi tamamlanmış köklerini günceller. Şema 1 veritabanı geçişten önce SQLite yedeğine alınır. Aşağıdaki ayrı oyun/kurulum ve sosyal tablolar genişleme planıdır.
+
 | Tablo | İçerik |
 | --- | --- |
 | games | Yerel oyun kimliği, gösterilen başlık, eşleştirme durumu |
@@ -107,4 +109,4 @@ benchmarks/
 docs/
 ```
 
-Ana uygulama `apps/native/`, karşılaştırma uygulamaları `apps/desktop/` ve `apps/native-probe/` altında. Steam keşfi, veri modeli ve SQLite `crates/library-core/`; Windows kaynak sayaçları, shell ve tek örnek denetimi `crates/platform-windows/` içinde. Kaynaklar genişledikçe önerilen sınırlar ayrılacak.
+Ana uygulama `apps/native/`, karşılaştırma uygulamaları `apps/desktop/` ve `apps/native-probe/` altında. Steam/Epic/Riot keşfi, başlatma tanımları, veri modeli ve SQLite `crates/library-core/`; Windows kaynak sayaçları, shell ve tek örnek denetimi `crates/platform-windows/` içinde. Kaynaklar genişledikçe önerilen sınırlar ayrılacak.

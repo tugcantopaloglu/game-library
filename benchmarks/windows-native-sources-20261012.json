@@ -1,0 +1,105 @@
+{
+  "date": "2026-10-12",
+  "commit": "0b59a51",
+  "executableSha256": "88068923B6B25BBAFFB333AF68FC55BB4686BC8D2B306380D2D9B962F133ACA4",
+  "executableBytes": 13745152,
+  "machine": {
+    "os": "Microsoft Windows 11 Enterprise",
+    "osBuild": "26300",
+    "cpu": "12th Gen Intel(R) Core(TM) i5-1235U",
+    "totalRamGiB": 31.64
+  },
+  "logicalProcessors": 12,
+  "build": "release",
+  "warmupSeconds": 8,
+  "dataset": {
+    "type": "synthetic Steam/Epic manifests and Riot metadata",
+    "games": 2004,
+    "sources": {
+      "steam": 1000,
+      "epic": 1000,
+      "riot": 4
+    },
+    "pageSize": 100,
+    "steamCovers": 1000,
+    "visiblePageCovers": 99,
+    "maximumThumbnailSize": "180x270"
+  },
+  "scan": {
+    "sourceReport": "multi-source-final-scan.json",
+    "commit": "fd13b18",
+    "found": 2004,
+    "durationMs": 487.4138,
+    "warnings": 0,
+    "additionalSystemEntries": "Three installed Epic engine/plugin manifests excluded; no real game entries found."
+  },
+  "cpuAverageMethod": "Elapsed-time weighted; percent of machine total.",
+  "measurements": [
+    {
+      "scenario": "NativeWindow",
+      "sourceReport": "window-20261012-162339.json",
+      "durationSeconds": 60,
+      "measuredDurationSeconds": 60.1660965,
+      "maxSampleGapMs": 1017.4493000000002,
+      "interrupted": false,
+      "sampleCount": 61,
+      "privateWorkingSetMiB": 32.32485911885246,
+      "peakPrivateWorkingSetMiB": 32.375,
+      "privateBytesMiB": 33.576780225409834,
+      "workingSetMiB": 57.48904969262295,
+      "cpuPercent": 0.1991016097689945,
+      "processCounts": [
+        1
+      ],
+      "partial": false
+    },
+    {
+      "scenario": "NativeTray",
+      "sourceReport": "tray-20261012-162507.json",
+      "durationSeconds": 60,
+      "measuredDurationSeconds": 60.2418158,
+      "maxSampleGapMs": 1019.5816,
+      "interrupted": false,
+      "sampleCount": 61,
+      "privateWorkingSetMiB": 24.05609631147541,
+      "peakPrivateWorkingSetMiB": 24.12109375,
+      "privateBytesMiB": 25.282146516393443,
+      "workingSetMiB": 47.166111680327866,
+      "cpuPercent": 0.028098560955616702,
+      "processCounts": [
+        1
+      ],
+      "partial": false
+    }
+  ],
+  "excludedMeasurements": [
+    {
+      "sourceReport": "window-20261012-144733.json",
+      "reason": "Interrupted; maximum sample gap 1230901.78 ms."
+    },
+    {
+      "sourceReport": "window-20261012-153028.json",
+      "reason": "Interrupted; maximum sample gap 3089587.7886 ms. Rejected automatically by measure.ps1."
+    }
+  ],
+  "budgets": {
+    "windowPrivateWorkingSetMiB": 180,
+    "trayPrivateWorkingSetMiB": 40,
+    "idleCpuPercent": 0.25
+  },
+  "validation": {
+    "rustTests": 26,
+    "clippy": "passed",
+    "rustfmt": "passed",
+    "legacyWebviewTypecheck": "passed",
+    "nativeSourceFiltersTested": true,
+    "mockedRiotClientLaunchTested": true,
+    "epicLaunchUriValidatedWithoutExecuting": true,
+    "realEpicLaunchTested": false,
+    "realRiotLaunchTested": false,
+    "realSteamLaunchTested": false,
+    "gpuMeasured": false,
+    "eightHourStabilityTested": false
+  },
+  "reportLocation": "Raw reports remain in ignored artifacts/measurements; this file preserves their measured summaries."
+}

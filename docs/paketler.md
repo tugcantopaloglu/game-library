@@ -6,6 +6,8 @@
 
 Ana uygulama native Slint'e geçti. `slint` ve `slint-build` 1.18.1 sabit sürümle, varsayılan feature'lar kapalı olarak kullanılıyor. Seçilen özellikler winit, software renderer, erişilebilirlik, native tepsi ve Windows pencere handle erişimi. Native klasör seçimi `rfd` 0.16, thumbnail decode `image` 0.25 (JPEG/PNG) üzerinden. Normal kullanımda Node, React, WebView2 veya ağ runtime'ı başlamaz. Aşağıdaki Tauri ve web paketleri önceki karşılaştırma sürümüne aittir; diğer paketler sonraki aşamaların adaylarıdır.
 
+Epic manifestleri mevcut `serde_json` ile okunur. Riot metadata için `yaml-rust2` 0.13 eklenmiştir; varsayılan feature'ları kapalı, olay tabanlı parser kullanılır. Windows launcher kayıtları mevcut `winreg` 0.55 üzerinden okunur. Yeni adaptörler ağ runtime'ı veya sürekli çalışan yardımcı süreç eklemez.
+
 | Paket | Kontrol edilen sürüm | Kullanım |
 | --- | --- | --- |
 | tauri | 2.12.3 | Pencere, IPC, tepsi ve paketleme |

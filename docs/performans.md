@@ -37,6 +37,8 @@ GPU motor kullanımı ve dedicated/shared GPU belleği ayrıca izlenecek. Boşta
 
 ## Ölçüm protokolü
 
+Rapor istenen süreyle birlikte gerçek ölçüm süresini ve en uzun örnek aralığını kaydeder. CPU ortalaması geçen süreye göre ağırlıklandırılır. 2,5 saniyeden uzun örnek aralığı veya hedef süreden belirgin sapma `interrupted` olarak işaretlenir; `scripts/measure.ps1` bu kaydı karşılaştırma için kabul etmez. Ham rapor korunur ve kesintisiz ölçüm tekrarlanır.
+
 1. Debug araçları kapalı release derlemesini ölç; Node/Vite geliştirme sunucusunu sonuçlara katma.
 2. Soğuk açılış, sıcak açılış, 60 saniye boşta, yoğun kaydırma, arama, tarama ve tepsi senaryolarını ayır.
 3. 100, 1.000 ve 10.000 oyun; kapaklı/kapaksız; Discord kapalı/açık veri setlerini karşılaştır.
@@ -48,6 +50,8 @@ GPU motor kullanımı ve dedicated/shared GPU belleği ayrıca izlenecek. Boşta
 İlk benchmark arayüz + SQLite + bir Steam adaptörüyle yapılacak. Kaynak bütçesi geçilirse önce görünür kapaklar, WebView yaşam döngüsü, sorgular ve arka plan işleri incelenir. Buna rağmen geçilemiyorsa daha fazla özellik eklenmeden aynı iş yüküyle Rust/Slint karşılaştırılır. Hedef sessizce yükseltilmez.
 
 Native tam sürümün 1.000 kayıtlı kapaksız/kapaklı/tepsi ölçümleri ve 50 pencere döngüsü tamamlandı; RAM/CPU bütçeleri karşılandı. Ölçüm özeti ve doğrulanmayan alanlar [benchmark kaydında](../benchmarks/windows-native-20261012.json) yer alır. Diğer oyun kaynakları bu aşamadan sonra eklenir; her yeni modülün etkisi aynı yöntemle tekrar ölçülür.
+
+Epic/Riot sonrası 2.004 kayıtlı sürüm pencere açıkken 32,32 MiB / %0,199; doğrudan tepsi açılışında 24,06 MiB / %0,028 ölçüldü. Her iki 60 saniyelik kayıt tek süreçli ve kesintisizdi. [Yeni kaynak benchmark kaydı](../benchmarks/windows-native-sources-20261012.json).
 
 ## Kararlılık senaryoları
 

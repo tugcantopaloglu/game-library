@@ -8,6 +8,8 @@ Bilgisayardaki her `.exe` dosyasını oyun saymak doğru sonuç vermez. Taşına
 
 ## Kaynak adaptörleri
 
+Steam, Epic ve Riot adaptörleri uygulandı. Epic/Riot'un çalışan kaynak yolları, başlatma tanımları ve kabul sınırları [ayrı belgede](epic-riot.md). Diğer kaynaklar plan kapsamındadır.
+
 Aşağıdaki yollar aday keşif noktalarıdır. Launcher sürümleri iç formatlarını değiştirebilir; gerçek örnek dosyalarla doğrulama yapılacak. Sabit bir `C:` yolu tek kaynak kabul edilmeyecek.
 
 | Kaynak | Keşif | Başlatma |
