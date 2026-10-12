@@ -8,7 +8,9 @@ Bilgisayardaki oyunları tek yerde toplayan, yerel verilerle çalışan masaüst
 
 12 Ekim 2026: mimari ve geliştirme planı hazır. Bu repo henüz çalışan bir uygulama, oyun tarayıcısı veya Discord entegrasyonu içermiyor. Paket kurulumu ve uygulama geliştirmesi ilk teknik doğrulama aşamasında başlayacak.
 
-İlk sürüm için varsayım Windows 11 x64. Windows 10 desteği ayrıca doğrulanacak; diğer işletim sistemleri için çekirdek sınırları korunacak. Discord yayınında hangi kontrollerin gerektiği henüz açık.
+İlk sürüm Windows için geliştirilecek. Geliştirme ve performans referansı Windows 11 x64; Windows 10 desteği ayrıca doğrulanacak. Diğer işletim sistemleri sonraki aşamalara bırakıldı.
+
+Discord yayın kapsamı: başlatma/durdurma, paylaşılan oyun veya pencereyi değiştirme, çözünürlük/kalite, FPS ve ses ayarları. Bunların tamamı ürün hedefi; her işlemin teknik erişimi ve kararlılığı ilk denemede ayrı doğrulanacak.
 
 ## Teknoloji kararı
 

@@ -48,7 +48,9 @@ Kütüphane: arama, kaynak filtresi, kurulum durumu, sıralama ve kapak boyutu. 
 
 Oyun ayrıntısı: sınırlı hero görseli, belirgin Oyna düğmesi, kurulum seçimi, son oturumlar, koleksiyon ve kapak değişimi. Aynı oyunun iki mağaza kurulumu varsa başlatılacak kurulum seçilir.
 
-Sosyal panel: bütün Discord arayüzünü yeniden kurmak yerine seçili kişiler ve izlenen ses odaları. Durum alınamıyorsa bilinmiyor gösterilir. Kullanıcı adına DM erişimi varsa görüşme çekmecesi; yoksa Discord'da açma eylemi. Yayın kontrolleri yalnızca doğrulanmış yetenekler için görünür.
+Sosyal panel: bütün Discord arayüzünü yeniden kurmak yerine seçili kişiler ve izlenen ses odaları. Durum alınamıyorsa bilinmiyor gösterilir. Kullanıcı adına DM erişimi varsa görüşme çekmecesi; yoksa Discord'da açma eylemi.
+
+Yayın alanı: başlat/durdur, oyun/pencere kaynağı, kalite/çözünürlük, FPS ve ses kontrolleri. Yayın sesi ile mikrofon/sesli görüşme ayarları ayrı tutulur. Yalnızca doğrulanmış yetenekler kullanılabilir olur; sınırlı erişim ilgili ayarın yanında açıklanır. Yayın ve uygulanmış ayarlar Discord'dan alınan gerçek durumu gösterir.
 
 Ayarlar: oyun kaynakları ve tarama kökleri, kapak sağlayıcıları, Discord hesabı, kaynak tasarrufu ve isteğe bağlı istemci eklentileri. Tarama, kapak eşleştirme ve bağlantı hataları ilgili bölümde gösterilir.
 

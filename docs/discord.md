@@ -15,7 +15,7 @@ Discord bağlantısı tek bir sınırsız API değildir. Arkadaş listesi, sunuc
 | Sunucu üyelerinin aktivitesi | Bot + presence intent | Erişim şartları ve kullanıcı görünürlüğüyle sınırlı |
 | Bot olarak mesaj | Bot API | Gönderen bot olarak açıkça gösterilir |
 | Kanal seçme, mute/deafen | Onaylı RPC veya ayrı deneysel istemci köprüsü | RPC yetkileri herkese açık değil |
-| Go Live kaynak, kalite/FPS, başlat/durdur | Teknik deneme gerektiren istemci köprüsü | Belgelenmiş genel API desteği doğrulanmış değil |
+| Go Live kaynak, kalite/FPS, başlat/durdur ve yayın sesi | Teknik deneme gerektiren istemci köprüsü | Belgelenmiş genel API desteği doğrulanmış değil |
 | Vencord kurulum/onarım | Resmi Vencord installer | Ayrı ve isteğe bağlı modül |
 
 Metin kanalında kimin o anda ekranı açık tuttuğunu gösteren genel bir üyelik durumu yok. Ses kanalında üyelik/doluluk izlenebilir. Görünmez kullanıcıyı çevrimiçi olarak tespit etmeye yönelik bir özellik olmayacak; erişilemeyen veri boş veya bilinmiyor olarak gösterilecek.
@@ -44,7 +44,21 @@ Olaylar tek bağlantıda işlenecek; her kişi için ayrı timer açılmayacak. 
 
 Belgelenmiş RPC komutları arasında ses ayarları ve kanal seçme bulunuyor. Bunun Go Live yayınını başlatma, kaynak değiştirme veya kalite ayarı sunan genel bir API olduğu sonucu çıkarılamaz. Birçok RPC ve voice OAuth kapsamı onaylı partnerlere ayrılmış. [RPC komutları](https://docs.discord.com/developers/topics/rpc), [OAuth erişim sınırları](https://docs.discord.com/developers/topics/oauth2).
 
-İlk deneme hangi yayın işlemlerinin istendiğini ve her birinin mümkün olup olmadığını ayrı kaydedecek: başlat/durdur, oyun/pencere seçimi, çözünürlük/FPS, ses veya sahne yönetimi. Nitro ve Discord'un kendi sınırları değiştirilmez. Program videoyu yeniden yakalayıp kodlamaz; görüntü aktarımının sahibi Discord kalır.
+Kullanıcının istediği yayın kontrolleri kesinleşti: başlatma/durdurma, paylaşılan oyun veya pencereyi değiştirme, çözünürlük/kalite, FPS ve ses ayarları. İlk teknik deneme aşağıdaki işlemlerin her birini ayrı doğrulayacak.
+
+| Kontrol | Doğrulanacak davranış |
+| --- | --- |
+| Yayını başlatma | Seçili oyun/pencere ve geçerli ayarlarla yayın açılır; gerçek yayın durumu geri okunur |
+| Yayını durdurma | Yayın sona erer; ses kanalından çıkma ayrı bir işlem olarak kalır |
+| Oyun/pencere değiştirme | Kullanılabilir kaynaklar listelenir ve seçili kaynağa geçiş doğrulanır; kaynak kapanması ele alınır |
+| Çözünürlük/kalite | Hesap ve kaynak için kullanılabilir seçenekler gösterilir; değişiklik uygulandıktan sonra okunur |
+| FPS | Desteklenen hızlardan seçim yapılır; aktif yayında uygulama veya yeniden başlatma gereksinimi belirlenir |
+| Yayın sesi | Paylaşılan uygulama sesinin açılması/kapatılması ve erişilebilir ses seçenekleri ayrı doğrulanır |
+| Sesli görüşme ayarları | Mikrofon susturma, sağırlaştırma, giriş/çıkış cihazı ve ses düzeyi için erişilebilir kontroller doğrulanır |
+
+Yayın sesi ile mikrofon/sesli görüşme ayarları ayrı yeteneklerdir. Her işlem destekli, koşullu veya erişilemez olarak kaydedilecek. Kullanıcı kapsamı kesinleşti; teknik destek henüz doğrulanmadı.
+
+Nitro ve Discord'un kendi sınırları değiştirilmez. Program videoyu yeniden yakalayıp kodlamaz; görüntü aktarımının sahibi Discord kalır. Komutun gönderilmiş olması başarı sayılmaz: işlem sonrası gerçek durum okunacak, uygulanamayan ayar arayüzde uygulanmış gibi gösterilmeyecek. Discord sürüm değişikliğinde yetenekler yeniden değerlendirilecek.
 
 Resmi yol yeterli değilse Vencord tarafında yerel bir companion eklentisi yalnızca istemci kontrolleri için değerlendirilebilir. Bu yolun kararlılığı Discord sürümüne bağlıdır ve resmi destek sayılmaz. Arkadaş/DM erişim engellerini aşmak için özel user-token API kullanılmaz.
 

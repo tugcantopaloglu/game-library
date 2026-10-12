@@ -10,7 +10,7 @@
 | SQLite + gerçek Steam manifest denemesi | Bir kütüphane okunur ve kaynak AppID ile başlatılır |
 | 1.000/10.000 kayıt ve kapak grid'i | RAM, CPU, açılış ve kaydırma ölçümleri raporlanır |
 | Social SDK uygulama/erişim denemesi | Arkadaş/presence/DM erişimi ve launcher uygunluğu ayrı sonuçlanır |
-| Yayın kontrolü keşfi | İstenen her kontrol destekli, koşullu veya erişilemez olarak kaydedilir |
+| Yayın kontrolü keşfi | Başlat/durdur, oyun/pencere, kalite/çözünürlük, FPS ve ses işlemlerinin her biri destekli, koşullu veya erişilemez olarak kaydedilir |
 
 Discord uygulaması/SDK erişimi yoksa sonuç engel olarak kaydedilir; oyun kütüphanesi denemesi devam eder. Teknik deneme için gerekli hesap erişimi sonraki uygulama aşamasına aittir; bu planı tamamlamak için gerekmiyor.
 
@@ -36,7 +36,7 @@ Teknik denemede doğrulanan resmi erişim yolu uygulanır. Hesap bağlama, seçi
 
 ## Aşama 4 — İstemci ve yayın modülü
 
-Resmi Vencord installer ile kurulum/onarım/kaldırma ve doğrulanabilen yayın kontrolleri. İstemci sürüm uyumu, geri dönüş ve köprü bağlantı güvenliği bu modülün parçasıdır. Yayın kontrolleri yalnızca teknik denemede çalışan işlemler için eklenir.
+Resmi Vencord installer ile kurulum/onarım/kaldırma ve doğrulanabilen yayın kontrolleri. Kullanıcı kapsamı başlat/durdur, oyun/pencere değiştirme, kalite/çözünürlük, FPS ve ses ayarlarının tamamını içerir. İstemci sürüm uyumu, geri dönüş ve köprü bağlantı güvenliği bu modülün parçasıdır. Yayın kontrolleri yalnızca teknik denemede çalışan işlemler için eklenir.
 
 Çıkış kriteri: desteklenmeyen Discord sürümünde modül kendi kendini kapatır; kütüphane işlevleri devam eder. Kurulum veya onarım işlemi sonucunun doğrulanması olmadan başarılı bildirimi verilmez.
 
@@ -46,13 +46,17 @@ Sürümlü eklenti protokolü, ayrı süreç yaşam döngüsü, yetki tanımlar�
 
 Çıkış kriteri: bozuk eklenti ana uygulamayı kapatmaz; güvenilmeyen eklentiler için sandbox kararı olmadan genel eklenti mağazası açılmaz. Güncelleme zinciri ve veri geçişi gerçek release paketinde doğrulanır.
 
+## Kesinleşen kapsam
+
+- İlk sürüm Windows; diğer işletim sistemleri sonraki aşamalarda değerlendirilecek. Windows 11 x64 geliştirme referansı; Windows 10 uyumluluğu ayrıca doğrulanacak.
+- Discord yayını için başlatma/durdurma, paylaşılan oyun/pencereyi değiştirme, kalite/çözünürlük, FPS ve ses ayarlarının tamamı hedefleniyor. Kapsam seçimi tamamlandı; her işlemin erişimi ve kararlılığı Aşama 0'da doğrulanacak.
+
 ## Açık kararlar
 
 | Karar | Mevcut varsayım | Ne zaman kesinleşir? |
 | --- | --- | --- |
-| İşletim sistemi | Önce Windows 11 x64 | Kullanıcı tercihi; Aşama 0 öncesi |
 | Kesin RAM tavanı | Açık pencere 180 MiB, tepsi 40 MiB hedef | Kullanıcı beklentisi ve Aşama 0 ölçümü |
-| Yayın kontrol kapsamı | Kaynak/kalite/başlat-durdur adayları | Kullanıcı tercihi ve teknik deneme |
+| Yayın kontrollerinin teknik desteği | Her işlem ayrı doğrulanacak | Aşama 0 denemesi ve istemci sürüm uyumu |
 | Discord SDK launcher uygunluğu | Doğrulanmadı | Uygulama erişimi ve gerekirse Discord incelemesi |
 | Kişisel kullanım / genel dağıtım | İlk deneme kişisel | Bot/metadata servisi ve dağıtım öncesi |
 | Ürün adı | Game Library | Görsel tasarım aşaması |
