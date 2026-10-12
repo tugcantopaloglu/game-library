@@ -1,4 +1,4 @@
-use crate::{CollectionTile, CoverTile, GameTile, LibraryWindow};
+use crate::{CollectionTile, CoverTile, GameTile, LibraryWindow, SocialTile};
 use library_core::models::{Game, LibraryStatus, Source};
 use library_core::{launcher, sources, storage::Store};
 use platform_windows::shell::open_target;
@@ -30,6 +30,7 @@ pub struct Query {
     pub revision: u64,
     pub source: Option<Source>,
     pub collection: Option<i64>,
+    pub columns: usize,
 }
 
 pub enum Command {
@@ -228,6 +229,7 @@ fn publish(
     }
     let revision = query.revision;
     let matched = page.total;
+    let columns = query.columns.clamp(3, 6);
     let state = state.clone();
     ui.upgrade_in_event_loop(move |ui| {
         if state.revision.load(Ordering::Relaxed) != revision {
@@ -265,11 +267,11 @@ fn publish(
                 }
             })
             .collect();
-        while !entries.len().is_multiple_of(5) {
+        while !entries.len().is_multiple_of(columns) {
             entries.push(GameTile::default());
         }
         let rows: Vec<ModelRc<GameTile>> = entries
-            .chunks(5)
+            .chunks(columns)
             .map(|row| Rc::new(VecModel::from(row.to_vec())).into())
             .collect();
         ui.set_game_rows(Rc::new(VecModel::from(rows)).into());
@@ -318,6 +320,27 @@ fn publish_collections(store: &Store, ui: &slint::Weak<LibraryWindow>) -> Result
     .map_err(|error| error.to_string())
 }
 
+fn set_completion(ui: &LibraryWindow, times: Option<&library_core::models::CompletionTimes>) {
+    ui.set_completion_main(
+        times
+            .map(|value| crate::completion::hours(value.main_seconds))
+            .unwrap_or_else(|| "—".into())
+            .into(),
+    );
+    ui.set_completion_extra(
+        times
+            .map(|value| crate::completion::hours(value.extra_seconds))
+            .unwrap_or_else(|| "—".into())
+            .into(),
+    );
+    ui.set_completion_full(
+        times
+            .map(|value| crate::completion::hours(value.completionist_seconds))
+            .unwrap_or_else(|| "—".into())
+            .into(),
+    );
+}
+
 fn detail(store: &Store, id: &str, ui: &slint::Weak<LibraryWindow>) -> Result<(), String> {
     detail_impl(store, id, ui, false)
 }
@@ -338,21 +361,37 @@ fn detail_impl(
         .sessions
         .iter()
         .map(|session| {
+            let now_ms = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|value| value.as_millis() as i64)
+                .unwrap_or(session.started_ms);
+            let minutes = now_ms.saturating_sub(session.started_ms).max(0) / 60_000;
+            let ago = if minutes < 1 {
+                "Az önce".into()
+            } else if minutes < 60 {
+                format!("{minutes} dk önce")
+            } else if minutes < 1440 {
+                format!("{} saat önce", minutes / 60)
+            } else {
+                format!("{} gün önce", minutes / 1440)
+            };
+            let duration = session
+                .ended_ms
+                .filter(|end| *end >= session.started_ms)
+                .map(|end| format!(" · {} dk", (end - session.started_ms) / 60_000))
+                .unwrap_or_default();
             format!(
                 "{} · {}{}",
-                session.started_ms,
+                ago,
                 match session.status.as_str() {
-                    "requested" => "Başlatma isteği",
-                    "running" => "Çalışan süreç doğrulandı",
-                    "ended" => "Süreç sona erdi",
-                    "failed" => "Başlatma başarısız",
-                    "unconfirmed" => "Oyun süreci doğrulanamadı",
-                    _ => "Oturum kesildi",
+                    "requested" => "Başlatılıyor",
+                    "running" => "Oynanıyor",
+                    "ended" => "Oynandı",
+                    "failed" => "Başlatılamadı",
+                    "unconfirmed" => "Başlatma doğrulanamadı",
+                    _ => "Takip kesildi",
                 },
-                session
-                    .pid
-                    .map(|pid| format!(" · PID {pid}"))
-                    .unwrap_or_default()
+                duration
             )
         })
         .collect::<Vec<_>>()
@@ -379,6 +418,11 @@ fn detail_impl(
             ui.set_cover_index(-1);
         }
         ui.set_detail_id(detail.game.id.into());
+        ui.set_detail_source(detail.game.source.label().into());
+        ui.set_detail_size(size_text(detail.game.size_bytes).into());
+        ui.set_detail_favorite(detail.game.favorite);
+        ui.set_detail_has_artwork(pixels.is_some());
+        set_completion(&ui, detail.completion.as_ref());
         ui.set_completion_summary(times.into());
         ui.set_completion_url(
             detail
@@ -424,28 +468,6 @@ fn bridge_status(
         .unwrap_or("Vencord bekleniyor")
         .to_string()];
     if connected {
-        if let Some(friends) = snapshot["friends"].as_array() {
-            lines.push("\nSeçili kişiler".into());
-            for friend in friends {
-                lines.push(format!(
-                    "{} · {} · {}",
-                    friend["name"].as_str().unwrap_or(""),
-                    friend["status"].as_str().unwrap_or("bilinmiyor"),
-                    friend["activity"].as_str().unwrap_or("")
-                ));
-            }
-        }
-        if let Some(rooms) = snapshot["rooms"].as_array() {
-            lines.push("\nSes odaları".into());
-            for room in rooms {
-                lines.push(format!(
-                    "{} / {} · {} kişi",
-                    room["guild"].as_str().unwrap_or(""),
-                    room["name"].as_str().unwrap_or(""),
-                    room["members"]
-                ));
-            }
-        }
         if let Some(result) = snapshot["result"].as_str() {
             if !result.is_empty() {
                 lines.push(format!("\n{result}"));
@@ -455,6 +477,68 @@ fn bridge_status(
     ui.upgrade_in_event_loop(move |ui| {
         ui.set_bridge_connected(connected);
         ui.set_bridge_status(lines.join("\n").into());
+        let friends = if connected {
+            snapshot["friends"].as_array().cloned().unwrap_or_default()
+        } else {
+            vec![]
+        };
+        let friends: Vec<SocialTile> = friends
+            .iter()
+            .take(200)
+            .map(|friend| {
+                let name = friend["name"].as_str().unwrap_or("Bilinmeyen kişi");
+                let status = friend["status"].as_str().unwrap_or("unknown");
+                let label = match status {
+                    "online" => "Çevrimiçi",
+                    "idle" => "Boşta",
+                    "dnd" => "Rahatsız etmeyin",
+                    "offline" => "Çevrimdışı",
+                    _ => "Durum bilinmiyor",
+                };
+                let activity = friend["activity"].as_str().unwrap_or("");
+                SocialTile {
+                    id: friend["id"].as_str().unwrap_or("").into(),
+                    name: name.into(),
+                    subtitle: if activity.is_empty() {
+                        label.to_string()
+                    } else {
+                        format!("{label} · {activity}")
+                    }
+                    .into(),
+                    initial: name
+                        .chars()
+                        .next()
+                        .unwrap_or('?')
+                        .to_uppercase()
+                        .to_string()
+                        .into(),
+                    online: matches!(status, "online" | "idle" | "dnd"),
+                }
+            })
+            .collect();
+        let rooms = if connected {
+            snapshot["rooms"].as_array().cloned().unwrap_or_default()
+        } else {
+            vec![]
+        };
+        let rooms: Vec<SocialTile> = rooms
+            .iter()
+            .take(100)
+            .map(|room| SocialTile {
+                id: room["id"].as_str().unwrap_or("").into(),
+                name: room["name"].as_str().unwrap_or("Ses odası").into(),
+                subtitle: format!(
+                    "{} · {} kişi",
+                    room["guild"].as_str().unwrap_or(""),
+                    room["members"].as_u64().unwrap_or(0)
+                )
+                .into(),
+                initial: "#".into(),
+                online: true,
+            })
+            .collect();
+        ui.set_friends(Rc::new(VecModel::from(friends)).into());
+        ui.set_rooms(Rc::new(VecModel::from(rooms)).into());
         ui.set_can_mute(connected && snapshot["capabilities"]["mute"] == true);
         ui.set_can_deafen(connected && snapshot["capabilities"]["deafen"] == true);
         ui.set_can_stop_stream(
@@ -660,6 +744,7 @@ pub fn start(
                         }
                         if ui.get_detail_id() == id {
                             ui.set_detail_artwork(image);
+                            ui.set_detail_has_artwork(true);
                         }
                     })
                     .map_err(|error| error.to_string())
@@ -750,7 +835,7 @@ pub fn start(
                         }),
                         NetworkResult::Completion(id,result) => (|| {
                             let (summary,url)=match result {Ok(completion)=> {store.save_completion(&id,&completion.times).map_err(|error|error.to_string())?; let game=store.game(&id).map_err(|error|error.to_string())?; if let Some(url)=completion.image_url {store.set_setting(&format!("cover-url:{}:{}",game.source.as_str(),game.source_id),&url).map_err(|error|error.to_string())?;} (crate::completion::summary(&completion.times),Some(format!("https://howlongtobeat.com/game/{}",completion.times.hltb_id)))},Err(error)=>(format!("HowLongToBeat: {error}"),None)};
-                            ui.upgrade_in_event_loop(move |ui| {if ui.get_detail_id()==id {ui.set_completion_summary(summary.into());if let Some(url)=url {ui.set_completion_url(url.into());}}}).map_err(|error|error.to_string())
+                            let times=store.completion(&store.game(&id).map_err(|error|error.to_string())?).map_err(|error|error.to_string())?; ui.upgrade_in_event_loop(move |ui| {if ui.get_detail_id()==id {set_completion(&ui,times.as_ref());ui.set_completion_summary(summary.into());if let Some(url)=url {ui.set_completion_url(url.into());}}}).map_err(|error|error.to_string())
                         })(),
                         NetworkResult::Notice(result) => result.map(|notice|set_notice(&ui,notice)),
                         NetworkResult::Search(id,result) => result.and_then(|candidates| {
@@ -970,7 +1055,16 @@ pub fn start(
                 Command::Favorite(id, value) => store
                     .set_favorite(&id, value)
                     .map_err(|error| error.to_string())
-                    .and_then(|_| publish(&store, &query, &state, &ui)),
+                    .and_then(|_| {
+                        let detail_id = id.clone();
+                        ui.upgrade_in_event_loop(move |ui| {
+                            if ui.get_detail_id() == detail_id {
+                                ui.set_detail_favorite(value);
+                            }
+                        })
+                        .map_err(|error| error.to_string())?;
+                        publish(&store, &query, &state, &ui)
+                    }),
                 Command::Launch(id) => (|| {
                     let game = store.game(&id).map_err(|error| error.to_string())?;
                     let plan = launcher::prepare(&game).map_err(|error| error.to_string())?;

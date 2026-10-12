@@ -14,7 +14,7 @@ Oturumlar başlatma isteği, doğrulanmış çalışan süreç, sona eren süre�
 
 Yerel JPEG/PNG seçimi veya izinli Steam/SteamGridDB CDN adresi kullanılabilir. İndirmeler HTTPS, izinli host, yönlendirme, 8 MiB dosya ve 4096×4096 piksel sınırlarından geçer. Görsel decode tahsisi 64 MiB ile sınırlandırılır. Kullanıcı kapakları `artwork/user`, çevrimiçi önbellek `artwork/cache` altında tutulur; önbellek 512 MiB ile sınırlanır. Kullanıcı kapakları otomatik tahliye edilmez.
 
-SteamGridDB araması için API anahtarı Güncellemeler ekranında kaydedilir. Anahtar Windows Credential Manager'da saklanır; SQLite'a veya loglara yazılmaz. Steam kimliği varsa doğrudan o kimlikle, diğer oyunlarda başlıkla arama yapılır. Kullanıcı aday kapağı seçer; ad benzerliğiyle kapak otomatik uygulanmaz. Ağ kuyruğu tek işçi, tek aktif iş ve sınırlı kuyruk kullanır. API işleri başlangıçta en fazla iki istek/saniye ile seri çalışır; hata halinde sınırsız tekrar yapılmaz. [SteamGridDB API](https://www.steamgriddb.com/api/v2).
+SteamGridDB araması için API anahtarı Ayarlar ekranında kaydedilir. Anahtar Windows Credential Manager'da saklanır; SQLite'a veya loglara yazılmaz. Steam kimliği varsa doğrudan o kimlikle, diğer oyunlarda başlıkla arama yapılır. Kullanıcı aday kapağı seçer; ad benzerliğiyle kapak otomatik uygulanmaz. Ön plan ağı tek işçi, tek aktif iş ve sınırlı kuyruk kullanır. Eksik kapaklar ayrı tek arka plan işçisinde hazırlanır; birlikte en fazla iki ağ işi çalışır. API işleri başlangıçta en fazla iki istek/saniye ile seri çalışır; hata halinde sınırsız tekrar yapılmaz. [SteamGridDB API](https://www.steamgriddb.com/api/v2).
 
 ## Vencord
 

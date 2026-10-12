@@ -27,7 +27,7 @@ Pencere açıkken 180 MiB, tepsi açıkken 40 MiB özel çalışma kümesi ve bo
 
 Epic/Riot eklendikten sonra 2.004 kayıtla pencere 32,32 MiB / %0,199; doğrudan tepsi 24,06 MiB / %0,028 ölçüldü. Bu önceki sürümün ölçümüdür. Yeni kütüphane/Vencord çalışmasında 35 Rust testi geçti. Ölçümler tek süreçli release uygulamasını kapsar; başlatılan oyun/launcher ve Discord kaynakları dahil değildir. [Yeni doğrulama kapsamı](docs/devam-plani.md).
 
-Son release 10.000 kapaklı kayıtta pencere açıkken 29,84 MiB / %0,011, doğrudan tepside 25,09 MiB / %0,004 ölçüldü. Discord bağlantısı bu ölçümde kapalıydı. Açılış p95 661,95 ms (OS paint hariç), çekirdek araması p95 15,93 ms (UI/IPC hariç). Sekiz saat kararlılık testi başlatıldı; sonuç henüz tamamlanmadı. [Ölçüm kaydı ve sınırlar](benchmarks/windows-native-user-library-20261012.json).
+Önceki kütüphane derlemesi 10.000 kapaklı kayıtta pencere açıkken 29,84 MiB / %0,011, doğrudan tepside 25,09 MiB / %0,004 ölçüldü. Discord bağlantısı bu ölçümde kapalıydı. Açılış p95 661,95 ms (OS paint hariç), çekirdek araması p95 15,93 ms (UI/IPC hariç). Sekiz saat raporu yaklaşık 59 dakikada kaldı; sonraki kontrolde süreç çalışmıyordu ve test tamamlanmış sayılmadı. Bu ölçümler yeni arayüzün performans sonucu değildir. [Ölçüm kaydı ve sınırlar](benchmarks/windows-native-user-library-20261012.json).
 
 ## Çalıştırma
 
@@ -70,7 +70,7 @@ pwsh -File scripts/measure.ps1 -Mode Tray -Seconds 60
 - [Yeni kütüphane, Vencord ve güncelleme akışları](docs/kutuphane-ve-guncellemeler.md)
 - [Onaylanan devam kapsamı ve kabul işleri](docs/devam-plani.md)
 
-Fixture testleri makinedeki kurulumlardan yalıtılır; gerçek launcher kabulü ayrıca yapılır. Yerel Steam kapaklarına ek olarak kullanıcı kapağı ve isteğe bağlı SteamGridDB araması desteklenir. API anahtarı Windows Credential Manager'da saklanır. Native arayüz 100 kayıtlık sayfalar ve sanallaştırılmış satırlar kullanır. JPEG/PNG kapaklar işçi thread'inde en fazla 180×270 piksele indirilir; dosya, boyut ve decode bellek sınırları uygulanır.
+Fixture testleri makinedeki kurulumlardan yalıtılır; gerçek launcher kabulü ayrıca yapılır. Yerel Steam kapaklarına ek olarak kullanıcı kapağı ve isteğe bağlı SteamGridDB araması desteklenir. API anahtarı Windows Credential Manager'da saklanır. Native arayüz kapak odaklı kartlar, pencereye göre 3–6 sütun, 100 kayıtlık sayfalar ve sanallaştırılmış satırlar kullanır. Oyun ayrıntısı Genel bakış/Düzenle olarak ayrılır; Discord arkadaş ve ses odalarını liste halinde gösterir. Yeni kapsamda 42 çalışma alanı testi ve Clippy geçti. JPEG/PNG kapaklar işçi thread'inde en fazla 180×270 piksele indirilir; dosya, boyut ve decode bellek sınırları uygulanır.
 
 Uygulama güncelleyicisi Ed25519 imzalı release bildirimi ve SHA-256 doğrulaması kullanır. Bu geliştirme derlemesinde güven anahtarı ve yayımlanmış imzalı release yoktur; canlı otomatik güncelleme henüz etkin değildir. Vencord'un otomatik güncelleme tercihi yerel köprüden yönetilir.
 

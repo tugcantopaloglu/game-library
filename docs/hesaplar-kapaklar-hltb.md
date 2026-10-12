@@ -41,5 +41,5 @@ Süreler açık oyun sayfasındaki yapılandırılmış veriden alınır; koruma
 - Gerçek tarama ilk doğrulamada sıfır uyarı verdi: 8 Steam oyunu, 1 erişilemeyen Epic kurulumu ve 3 Riot kaydı. Tam hesap sayısı giriş/eşitlemeden sonra doğrulanır.
 - Baldur's Gate 3 süreleri gerçek kaynak sayfasından alındı. Tüm kütüphanenin otomatik eşleşeceği varsayılmaz; eksik metadata elle düzeltilebilir.
 - Hogwarts Legacy ve VALORANT için de gerçek açık sayfa eşleşmesi doğrulandı. Tam ad eşleştirmesi Wikidata'nın İngilizce ve evrensel (`@mul`) etiketlerini kapsar.
-- Önceki derlemenin sekiz saat testi ayrı profil ve süreçte devam eder. Bu yeni değişikliklerin uzun çalışma kabulü yerine geçmez.
+- Önceki derlemenin sekiz saat raporu yaklaşık 59 dakikada kaldı; süreç sonraki kontrolde çalışmıyordu. Test tamamlanmadı ve bu yeni değişikliklerin uzun çalışma kabulü yerine geçmez.
 - `snyk_code_scan` ve Snyk CLI bu oturumda mevcut değil; güvenlik taraması tamamlanmış sayılmıyor.

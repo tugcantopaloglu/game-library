@@ -138,7 +138,7 @@
     "snykCodeScan": "Unavailable: tool and CLI absent; not substituted by other checks"
   },
   "stability": {
-    "status": "Running; not accepted as completed",
+    "status": "Incomplete: report stopped near 59 minutes; original PID absent on subsequent check",
     "targetSeconds": 28800,
     "startedAt": "2026-10-12T21:28:45.6798354+03:00",
     "expectedFinish": "2026-10-13T05:28:53.683842+03:00",

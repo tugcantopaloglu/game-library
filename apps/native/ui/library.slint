@@ -1,104 +1,52 @@
-import { LineEdit, TextEdit, CheckBox, ListView, ScrollView, ComboBox, AboutSlint } from "std-widgets.slint";
-
+import { TextEdit, CheckBox, ListView, ScrollView, ComboBox, AboutSlint, Palette } from "std-widgets.slint";
+import { Theme, Glyph, Action, Navigation, Field, Panel, Heading, Caption, Eyebrow, Metric, Tab, PersonRow } from "design.slint";
 export struct CollectionTile { id: int, name: string, count: int }
 export struct CoverTile { title: string, url: string }
-
-export struct GameTile {
-    id: string,
-    name: string,
-    size: string,
-    installed: bool,
-    favorite: bool,
-    artwork: image,
-    has-artwork: bool,
-    source: string,
-    status-label: string,
-}
-
-component Action inherits Rectangle {
-    in property <string> text;
-    in property <bool> accent;
-    in property <bool> enabled: true;
-    callback clicked;
-    height: 34px;
-    min-width: max(78px, label.preferred-width + 24px);
-    border-radius: 7px;
-    border-width: keys.has-focus ? 1px : 0px;
-    border-color: #bdd9a8;
-    background: !enabled ? #202429 : accent ? (touch.has-hover ? #b8db9d : #a5cb87) : (touch.has-hover ? #30383e : #232a30);
-    forward-focus: keys;
-    accessible-role: button;
-    accessible-label: text;
-    accessible-enabled: enabled;
-    label := Text { vertical-stretch: 0; text: root.text; color: !root.enabled ? #6f7a83 : root.accent ? #15200e : #dde3e8; font-size: 12px; horizontal-alignment: center; vertical-alignment: center; }
-    keys := FocusScope {
-        enabled: root.enabled;
-        key-pressed(event) => {
-            if event.text == "\n" || event.text == " " { root.clicked(); return accept; }
-            return reject;
-        }
-    }
-    touch := TouchArea { enabled: root.enabled; clicked => { keys.focus(); root.clicked(); } }
-}
-
-component Navigation inherits Rectangle {
-    in property <string> text;
-    in property <bool> active;
-    callback clicked;
-    height: 41px;
-    border-radius: 7px;
-    background: active ? #273426 : hover.has-hover ? #20262b : transparent;
-    accessible-role: button;
-    accessible-label: text;
-    forward-focus: keys;
-    keys := FocusScope { key-pressed(event) => { if event.text == " " || event.text == "\n" { root.clicked(); return accept; } return reject; } }
-    Text { vertical-stretch: 0; text: root.text; x: 12px; color: root.active ? #c7e3b2 : #a9b3bf; font-size: 13px; vertical-alignment: center; }
-    hover := TouchArea { clicked => { keys.focus(); root.clicked(); } }
-}
-
+export struct SocialTile { id: string, name: string, subtitle: string, initial: string, online: bool }
+export struct GameTile { id: string, name: string, size: string, installed: bool, favorite: bool, artwork: image, has-artwork: bool, source: string, status-label: string }
 component GameCard inherits Rectangle {
     in property <GameTile> game;
     callback launch(string);
     callback favorite(string, bool);
     callback detail(string);
-    height: 310px;
-    background: transparent;
     opacity: game.id == "" ? 0 : 1;
-    VerticalLayout {
-        spacing: 9px;
-        Rectangle {
-            height: 226px;
-            border-radius: 10px;
-            background: #202b30;
-            clip: true;
-            if game.has-artwork: Image { source: game.artwork; image-fit: cover; }
-            if !game.has-artwork: VerticalLayout {
-                padding: 17px;
-                Rectangle { vertical-stretch: 1; background: transparent; }
-                Text { vertical-stretch: 0; text: game.name; color: #d0dfd6; font-size: 19px; font-weight: 600; wrap: word-wrap; }
-                Text { vertical-stretch: 0; text: game.source; color: #9aafa4; font-size: 9px; }
-                Rectangle { vertical-stretch: 1; background: transparent; }
-            }
-            Rectangle {
-                x: 10px; y: 10px; width: 74px; height: 22px; border-radius: 4px;
-                background: #18211de0;
-                Text { vertical-stretch: 0; text: game.status-label; font-size: 9px; color: game.installed ? #c5dfb0 : #bfadb0; horizontal-alignment: center; vertical-alignment: center; }
-            }
-            if game.has-artwork: Rectangle {
-                x: 10px; y: parent.height - 31px; width: 88px; height: 21px; border-radius: 4px; background: #18211de0;
-                Text { vertical-stretch: 0; text: game.source; color: #c2cec8; font-size: 9px; horizontal-alignment: center; vertical-alignment: center; }
-            }
+    min-width: 0px; background: transparent;
+    forward-focus: card-focus;
+    accessible-role: button; accessible-label: game.name + " ayrıntıları"; accessible-enabled: game.id != "";
+    Rectangle {
+        x: 0px; y: 0px; width: parent.width; height: parent.height - 66px; border-radius: 11px; clip: true;
+        background: Theme.surface;
+        if game.has-artwork: Image { x: 0px; y: 0px; width: parent.width; height: parent.height; source: game.artwork; image-fit: ImageFit.cover; }
+        if game.has-artwork: Image { x: 0px; y: 0px; width: parent.width; height: parent.height; source: @image-url("icons/cover-corners.svg"); image-fit: ImageFit.fill; }
+        if !game.has-artwork: VerticalLayout { padding: 18px; spacing: 14px;
+            Rectangle { vertical-stretch: 1; background: transparent; }
+            Glyph { kind: 0; width: 32px; height: 32px; ink: Theme.subtle; }
+            Text { text: game.name; color: Theme.muted; font-size: 18px; font-weight: 600; wrap: word-wrap; vertical-stretch: 0; }
+            Rectangle { vertical-stretch: 1; background: transparent; }
         }
-        Action { text: game.name; min-width: 0px; enabled: game.id != ""; clicked => { root.detail(game.id); } }
-        HorizontalLayout {
-            spacing: 7px;
-            Action { text: "Oyna"; accent: true; enabled: game.installed; clicked => { root.launch(game.id); } }
-            Action { text: game.favorite ? "★" : "☆"; enabled: game.id != ""; min-width: 33px; max-width: 33px; clicked => { root.favorite(game.id, !game.favorite); } }
+        poster-touch := TouchArea { enabled: game.id != ""; mouse-cursor: pointer; clicked => { card-focus.focus(); root.detail(game.id); } }
+        if game.favorite || poster-touch.has-hover || card-focus.has-focus: Rectangle {
+            x: parent.width - 42px; y: 10px; width: 32px; height: 32px; border-radius: 16px; background: #13141ae8;
+            Glyph { x: 8px; y: 8px; width: 16px; height: 16px; kind: 1; ink: game.favorite ? Theme.accent : Theme.text; }
+            TouchArea { mouse-cursor: pointer; clicked => { root.favorite(game.id,!game.favorite); } }
         }
-        Text { vertical-stretch: 0; text: game.size; color: #83909c; font-size: 10px; }
+        if !game.installed: Rectangle {
+            x: 10px; y: parent.height - 32px; height: 22px; width: 90px; border-radius: 5px; background: #13141ae8;
+            Text { text: game.status-label; color: Theme.muted; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; }
+        }
+        Rectangle { width: parent.width; height: parent.height; border-radius: 11px; background: transparent; border-width: card-focus.has-focus || poster-touch.has-hover ? 2px : 0px; border-color: Theme.accent; }
     }
+    Rectangle {
+        x: 0px; y: parent.height - 57px; width: parent.width - 34px; height: 52px; background: transparent;
+        VerticalLayout { spacing: 5px;
+            Text { text: game.name; color: Theme.text; font-size: 13px; font-weight: 600; overflow: elide; vertical-stretch: 0; }
+            Text { text: game.source + (game.installed ? " · " + game.size : ""); color: Theme.subtle; font-size: 11px; overflow: elide; vertical-stretch: 0; }
+        }
+        TouchArea { enabled: game.id != ""; mouse-cursor: pointer; clicked => { root.detail(game.id); } }
+    }
+    Action { x: parent.width - 32px; y: parent.height - 53px; width: 32px; height: 32px; text: ""; icon: 9; ghost: true; enabled: game.installed; accessible-label: game.name + " başlat"; clicked => { root.launch(game.id); } }
+    card-focus := FocusScope { enabled: game.id != ""; key-pressed(event) => { if event.text == "\n" || event.text == " " { root.detail(game.id); return accept; } if event.text == "p" && game.installed { root.launch(game.id); return accept; } if event.text == "f" { root.favorite(game.id,!game.favorite); return accept; } return reject; } }
 }
-
 export component AboutWindow inherits Window {
     title: "Game Library hakkında";
     preferred-width: 420px;
@@ -129,11 +77,10 @@ export component LibraryTray inherits SystemTrayIcon {
 export component LibraryWindow inherits Window {
     title: "Game Library";
     icon: @image-url("../../desktop/src-tauri/icons/icon.png");
-    preferred-width: 1280px;
-    preferred-height: 820px;
-    min-width: 940px;
-    min-height: 620px;
-    background: #101417;
+    preferred-width: 1360px; preferred-height: 860px;
+    min-width: 960px; min-height: 640px;
+    max-width: 4096px; max-height: 2160px;
+    background: Theme.canvas;
     default-font-family: "Segoe UI";
     in property <[[GameTile]]> game-rows;
     in property <int> total;
@@ -189,7 +136,7 @@ export component LibraryWindow inherits Window {
     in property <bool> scanning;
     in property <bool> loading;
     in property <bool> measuring;
-    in property <string> notice;
+    in-out property <string> notice;
     in property <string> scan-notice;
     in property <[string]> source-summaries;
     in property <string> ram: "—";
@@ -245,8 +192,28 @@ export component LibraryWindow inherits Window {
     callback update-preferences(bool,bool);
     focus-idle => { idle-focus.focus(); }
     forward-focus: idle-focus;
-    idle-focus := FocusScope { width: 1px; height: 1px; key-pressed(event) => { if event.text == Key.Escape { section = 0; return accept; } return reject; } }
+    idle-focus := FocusScope { width: 1px; height: 1px; key-pressed(event) => { if event.modifiers.control && event.text == "f" { if section >= 2 { section = 0; root.refresh(query,false,installed-only,0,source-index); } library-search.focus-input(); return accept; } if event.text == Key.Escape && section == 9 { root.return-to-library(); return accept; } return reject; } }
 
+
+    in property <string> detail-source;
+    in property <string> detail-size;
+    in property <bool> detail-favorite;
+    in property <bool> detail-has-artwork;
+    in property <string> completion-main: "—";
+    in property <string> completion-extra: "—";
+    in property <string> completion-full: "—";
+    in property <[SocialTile]> friends;
+    in property <[SocialTile]> rooms;
+    in-out property <int> detail-tab;
+    in-out property <int> detail-origin;
+    function return-to-library() { section = detail-origin; root.refresh(query,section == 1,installed-only,offset,source-index); }
+    in-out property <bool> source-details;
+    in-out property <bool> discord-settings;
+    out property <int> grid-columns: root.height < 700px && root.width < 1150px ? 4 : root.width < 1150px ? 3 : root.width < 1280px ? 4 : root.width < 1700px ? 5 : 6;
+    property <length> card-width: (root.width - 224px - 64px - 16px - (grid-columns - 1) * 20px) / grid-columns;
+    property <length> card-height: card-width * 1.5 + 66px;
+    changed grid-columns => { if section < 2 { root.refresh(query,section == 1,installed-only,offset,source-index); } }
+    init => { Palette.color-scheme = ColorScheme.dark; }
     MenuBar {
         Menu { title: "Uygulama";
             MenuItem { title: "Tepsiye al"; activated => { root.hide-window(); } }
@@ -254,193 +221,262 @@ export component LibraryWindow inherits Window {
         }
         Menu { title: "Yardım"; MenuItem { title: "Hakkında"; activated => { root.about(); } } }
     }
-
-    HorizontalLayout {
-        spacing: 0px;
-        Rectangle {
-            width: 202px;
-            background: #161b1f;
-            VerticalLayout {
-                padding: 21px;
-                spacing: 11px;
-                Text { vertical-stretch: 0; text: "Game Library"; color: #f2f5f6; font-size: 18px; font-weight: 600; height: 49px; }
-                Text { vertical-stretch: 0; text: "KİŞİSEL ALAN"; color: #7b8a97; font-size: 9px; height: 25px; }
-                Navigation { text: "Kütüphane"; active: section == 0; clicked => { section = 0; collection-id = 0; root.refresh(query, false, installed-only, 0, source-index); } }
-                Navigation { text: "Favoriler · " + favorite-count; active: section == 1; clicked => { section = 1; root.refresh(query, true, installed-only, 0, source-index); } }
-                Navigation { text: "Koleksiyonlar"; active: section == 6; clicked => { section = 6; } }
-                Navigation { text: "Discord / Vencord"; active: section == 7; clicked => { section = 7; } }
-                Navigation { text: "Güncellemeler"; active: section == 8; clicked => { section = 8; } }
-                Navigation { text: "Performans"; active: section == 2; clicked => { section = 2; root.sample(); } }
-                Text { vertical-stretch: 0; text: "KAYNAKLAR"; color: #7b8a97; font-size: 9px; height: 34px; }
-                Navigation { text: "Steam · " + steam-count; active: section == 3; clicked => { section = 3; } }
-                Navigation { text: "Epic Games · " + epic-count; active: section == 4; clicked => { section = 4; } }
-                Navigation { text: "Riot Games · " + riot-count; active: section == 5; clicked => { section = 5; } }
-                Navigation { text: "Elle eklenen · " + manual-count; clicked => { source-index = 4; collection-id = 0; section = 0; root.refresh(query,false,installed-only,0,4); } }
-                Rectangle { vertical-stretch: 1; background: transparent; }
-                Text { vertical-stretch: 0; text: "WINDOWS · 0.1.0"; color: #788693; font-size: 9px; }
-                Action { text: "Tepsiye al"; clicked => { root.hide-window(); } }
+    app-keys := FocusScope {
+        key-pressed(event) => { if event.modifiers.control && event.text == "f" { if section >= 2 { section = 0; root.refresh(query,false,installed-only,0,source-index); } library-search.focus-input(); return accept; } if event.text == Key.Escape && section == 9 { root.return-to-library(); return accept; } return reject; }
+    HorizontalLayout { spacing: 0px;
+        Rectangle { width: 224px; background: Theme.sidebar;
+            Rectangle { x: parent.width - 1px; width: 1px; height: parent.height; background: Theme.line; }
+            VerticalLayout { padding: 16px; spacing: 16px;
+                HorizontalLayout { height: 64px; spacing: 11px; padding-left: 8px; padding-top: 14px; padding-bottom: 14px;
+                    Rectangle { width: 32px; height: 32px; border-radius: 9px; background: Theme.accent-surface; Glyph { kind: 0; x: 7px; y: 7px; ink: Theme.accent; } }
+                    VerticalLayout { spacing: 3px;
+                        Text { text: "Game Library"; color: Theme.text; font-size: 16px; font-weight: 600; vertical-stretch: 0; }
+                        Text { text: "Kişisel oyun alanın"; color: Theme.subtle; font-size: 11px; vertical-stretch: 0; }
+                    }
+                }
+                ScrollView { vertical-stretch: 1;
+                    VerticalLayout { spacing: 4px;
+                        Eyebrow { text: "KÜTÜPHANE"; height: 26px; }
+                        Navigation { text: "Tüm oyunlar"; icon: 0; count: "" + total; active: section == 0 && source-index == 0 && collection-id == 0; clicked => { section = 0; source-index = 0; collection-id = 0; root.refresh(query,false,installed-only,0,0); } }
+                        Navigation { text: "Favoriler"; icon: 1; count: "" + favorite-count; active: section == 1; clicked => { section = 1; source-index = 0; collection-id = 0; root.refresh(query,true,installed-only,0,0); } }
+                        Navigation { text: "Koleksiyonlar"; icon: 2; active: section == 6; clicked => { section = 6; } }
+                        for collection in collections: Navigation { text: collection.name; monogram: "·"; count: "" + collection.count; active: section == 0 && collection-id == collection.id; clicked => { collection-id = collection.id; source-index = 0; section = 0; root.refresh(query,false,installed-only,0,0); } }
+                        Rectangle { height: 18px; background: transparent; }
+                        Eyebrow { text: "PLATFORMLAR"; height: 26px; }
+                        Navigation { text: "Steam"; monogram: "S"; count: "" + steam-count; active: section == 3 || (section == 0 && source-index == 1); clicked => { section = 0; collection-id = 0; source-index = 1; root.refresh(query,false,installed-only,0,1); } }
+                        Navigation { text: "Epic Games"; monogram: "E"; count: "" + epic-count; active: section == 4 || (section == 0 && source-index == 2); clicked => { section = 0; collection-id = 0; source-index = 2; root.refresh(query,false,installed-only,0,2); } }
+                        Navigation { text: "Riot Games"; monogram: "R"; count: "" + riot-count; active: section == 5 || (section == 0 && source-index == 3); clicked => { section = 0; collection-id = 0; source-index = 3; root.refresh(query,false,installed-only,0,3); } }
+                        Navigation { text: "Elle eklenen"; icon: 7; count: "" + manual-count; active: section == 0 && source-index == 4; clicked => { source-index = 4; collection-id = 0; section = 0; root.refresh(query,false,installed-only,0,4); } }
+                        Rectangle { vertical-stretch: 1; background: transparent; }
+                    }
+                }
+                VerticalLayout { spacing: 4px;
+                    Navigation { text: "Discord"; icon: 3; active: section == 7; clicked => { section = 7; } }
+                    Navigation { text: "Ayarlar"; icon: 4; active: section == 8; clicked => { section = 8; } }
+                    Navigation { text: "Performans"; icon: 5; active: section == 2; clicked => { section = 2; root.sample(); } }
+                    Rectangle { height: 1px; background: Theme.line; }
+                    HorizontalLayout { height: 38px; padding-left: 12px; spacing: 9px;
+                        Rectangle { width: 6px; height: 6px; border-radius: 3px; background: bridge-connected ? Theme.positive : Theme.subtle; }
+                        Text { text: bridge-connected ? "Discord bağlı" : "Yerel kütüphane"; color: Theme.subtle; font-size: 11px; vertical-alignment: center; }
+                        Action { text: ""; icon: 12; ghost: true; min-width: 32px; max-width: 32px; accessible-label: "Tepsiye al"; clicked => { root.hide-window(); } }
+                    }
+                }
             }
         }
-        VerticalLayout {
-            spacing: 0px;
-            Rectangle {
-                height: 55px;
-                background: #12171b;
-                HorizontalLayout {
-                    padding-left: 30px; padding-right: 30px;
-                    Text { vertical-stretch: 0; text: "Kişisel alan  /  " + (section == 0 ? "Kütüphane" : section == 1 ? "Favoriler" : section == 2 ? "Performans" : section == 3 ? "Steam" : section == 4 ? "Epic Games" : section == 5 ? "Riot Games" : section == 6 ? "Koleksiyonlar" : section == 7 ? "Discord / Vencord" : section == 8 ? "Güncellemeler" : "Oyun ayrıntısı"); color: #9aa8b5; font-size: 11px; vertical-alignment: center; }
-                    Text { vertical-stretch: 0; text: installed-count + " kurulu oyun"; color: #8ea180; font-size: 11px; horizontal-alignment: right; vertical-alignment: center; }
+        VerticalLayout { spacing: 0px; horizontal-stretch: 1; max-width: 4096px;
+            Rectangle { height: 72px; background: Theme.canvas;
+                HorizontalLayout { padding-left: 32px; padding-right: 32px; padding-top: 16px; padding-bottom: 16px; spacing: 16px;
+                    library-search := Field { icon: 6; placeholder: "Kütüphanende ara…"; text <=> query; max-width: 480px; edited => { if section >= 2 { section = 0; } root.refresh(query,section == 1,installed-only,0,source-index); } }
+                    Rectangle { horizontal-stretch: 1; background: transparent; }
+                    Action { text: scanning ? "Taramayı durdur" : "Tara"; icon: 8; ghost: true; clicked => { if scanning { root.cancel-scan(); } else { root.scan(); } } }
+                    Action { text: "Oyun ekle"; icon: 7; accent: true; clicked => { root.add-manual(); } }
                 }
+                Rectangle { y: parent.height - 1px; height: 1px; width: parent.width; background: Theme.line; }
             }
-            VerticalLayout {
-                padding: 30px;
-                spacing: 17px;
-                Text { vertical-stretch: 0; text: section == 0 ? "Kütüphanen" : section == 1 ? "Favorilerin" : section == 2 ? "Kaynak kullanımı" : section == 3 ? "Steam kütüphaneleri" : section == 4 ? "Epic Games kurulumları" : section == 5 ? "Riot Games kurulumları" : section == 6 ? "Koleksiyonlar" : section == 7 ? "Discord ve Vencord" : section == 8 ? "Güncellemeler" : "Oyun ayrıntısı"; color: #eff3f5; font-size: 29px; font-weight: 600; }
-                Text { vertical-stretch: 0; text: section < 2 ? total + " oyun · " + matched + " sonuç" : section == 2 ? "Ölçüm yalnızca Game Library süreçlerini kapsar." : section == 3 ? "Steam manifestleri ve Windows kurulum kayıtları." : section == 4 ? "Epic Games Launcher'ın yerel .item manifestleri." : section == 5 ? "Riot ürün metadata'sı, istemci JSON'u ve Windows kurulum kayıtları." : section == 6 ? "Oyunlarını kendi listelerinde düzenle." : section == 7 ? "Yerel Discord bağlantısı ve resmi Vencord kurulum yönetimi." : section == 8 ? "Güvenilir kaynaklardan doğrulanan güncellemeler." : "Oyun bilgileri, kapak ve oturum geçmişi."; color: #8c9ba8; font-size: 12px; }
-                if notice != "": Rectangle {
-                    height: 40px; background: #202930; border-radius: 7px;
-                    Text { vertical-stretch: 0; text: notice; color: #c5d3df; font-size: 11px; wrap: word-wrap; x: 12px; width: parent.width - 24px; vertical-alignment: center; }
+            VerticalLayout { padding-left: 32px; padding-right: 32px; padding-top: 24px; padding-bottom: 18px; spacing: 18px;
+                if notice != "": Panel { height: 44px;
+                    HorizontalLayout { padding-left: 14px; padding-right: 8px; spacing: 10px; Caption { text: notice; font-size: 12px; } Action { text: "×"; ghost: true; min-width: 28px; max-width: 28px; accessible-label: "Bildirimi kapat"; clicked => { notice = ""; } } }
                 }
-                if scan-notice != "" && (section < 2 || (section >= 3 && section <= 6)): Rectangle {
-                    height: 40px; background: #202930; border-radius: 7px;
-                    Text { text: "Oyun kaynakları · " + scan-notice; color: #c5d3df; font-size: 11px; wrap: word-wrap; x: 12px; width: parent.width - 24px; vertical-alignment: center; }
+                if scan-notice != "" && (section < 2 || (section >= 3 && section <= 6)): Caption { text: scan-notice; font-size: 11px; color: Theme.subtle; }
+                if section != 9: VerticalLayout { spacing: 7px;
+                    Text { text: section == 0 ? (collection-id > 0 ? "Koleksiyonun" : source-index == 1 ? "Steam" : source-index == 2 ? "Epic Games" : source-index == 3 ? "Riot Games" : source-index == 4 ? "Elle eklenen oyunlar" : "Kütüphane") : section == 1 ? "Favorilerin" : section == 2 ? "Performans" : section == 3 ? "Steam bağlantısı" : section == 4 ? "Epic Games bağlantısı" : section == 5 ? "Riot Games bağlantısı" : section == 6 ? "Koleksiyonlar" : section == 7 ? "Discord" : "Ayarlar"; color: Theme.text; font-size: 30px; font-weight: 600; vertical-stretch: 0; }
+                    Caption { text: section < 2 ? matched + " oyun" + (section == 0 && source-index == 0 && collection-id == 0 && query == "" ? " · " + installed-count + " kurulu" : "") : section == 2 ? "Uygulamanın kaynak kullanımını takip et." : section >= 3 && section <= 5 ? "Oyun klasörlerini ve isteğe bağlı hesap bağlantını yönet." : section == 6 ? "Oyunlarını kendi listelerinde bir araya getir." : section == 7 ? "Arkadaşların ve ses odaların, kütüphanenin yanında." : "Güncellemeler ve kapak sağlayıcısı."; }
                 }
-                if section < 2: VerticalLayout {
-                    spacing: 17px;
-                    HorizontalLayout {
-                        spacing: 9px;
-                        LineEdit { placeholder-text: "Oyun ara"; text <=> query; edited => { root.refresh(query, section == 1, installed-only, 0, source-index); } }
-                        ComboBox { width: 150px; model: ["Tüm kaynaklar", "Steam", "Epic Games", "Riot Games", "Elle eklenen"]; current-index <=> root.source-index; selected(value) => { root.refresh(query, section == 1, installed-only, 0, source-index); } }
-                        Action { text: installed-only ? "Kurulu ✓" : "Tüm oyunlar"; clicked => { installed-only = !installed-only; root.refresh(query, section == 1, installed-only, 0, source-index); } }
-                        Action { text: scanning ? "Taramayı iptal et" : "Yeniden tara"; clicked => { if scanning { root.cancel-scan(); } else { root.scan(); } } }
+                if section < 2: VerticalLayout { spacing: 18px;
+                    HorizontalLayout { spacing: 6px;
+                        Tab { text: "Tümü"; active: !installed-only; clicked => { installed-only = false; root.refresh(query,section == 1,false,0,source-index); } }
+                        Tab { text: "Kurulu"; active: installed-only; clicked => { installed-only = true; root.refresh(query,section == 1,true,0,source-index); } }
+                        if collection-id > 0: Action { text: "Filtreyi kaldır"; ghost: true; clicked => { collection-id = 0; root.refresh(query,section == 1,installed-only,0,source-index); } }
+                        Rectangle { horizontal-stretch: 1; background: transparent; }
+                        ComboBox { width: 156px; model: ["Tüm platformlar", "Steam", "Epic Games", "Riot Games", "Elle eklenen"]; current-index <=> root.source-index; selected(value) => { root.refresh(query,section == 1,installed-only,0,source-index); } }
+                        Action { text: ""; icon: 4; ghost: true; min-width: 38px; max-width: 38px; accessible-label: "Kaynak bağlantılarını yönet"; clicked => { section = source-index >= 1 && source-index <= 3 ? source-index + 2 : 3; } }
                     }
-                    HorizontalLayout {
-                        Action { text: "Elle oyun ekle"; clicked => { root.add-manual(); } }
-                        if collection-id > 0: Action { text: "Koleksiyon filtresini kaldır"; clicked => { collection-id = 0; root.refresh(query,section == 1,installed-only,0,source-index); } }
+                    if matched == 0: VerticalLayout { alignment: center; spacing: 14px;
+                        HorizontalLayout { alignment: center; Glyph { kind: query != "" ? 6 : 0; width: 40px; height: 40px; ink: Theme.subtle; } }
+                        Heading { text: loading ? "Oyunların yükleniyor…" : query != "" ? "Sonuç bulunamadı" : section == 1 ? "Favorilerin burada görünecek" : "Burada henüz oyun yok"; horizontal-alignment: center; }
+                        Caption { text: query != "" ? "Başka bir isim dene veya filtreleri değiştir." : section == 1 ? "Bir oyunu yıldızla işaretleyerek buraya ekle." : "Oyun klasörünü seç veya bir oyunu elle ekle."; horizontal-alignment: center; }
+                        HorizontalLayout { alignment: center; Action { text: query != "" ? "Aramayı temizle" : section == 1 ? "Tüm oyunları göster" : "Oyun klasörü ekle"; clicked => { if query != "" { query = ""; root.refresh(query,section == 1,installed-only,0,source-index); } else if section == 1 { section = 0; root.refresh(query,false,installed-only,0,source-index); } else { root.add-folder(source-index > 0 ? source-index - 1 : 0); } } } }
                     }
-                    if matched == 0: VerticalLayout {
-                        spacing: 18px;
-                        Rectangle { vertical-stretch: 1; background: transparent; }
-                        Text { vertical-stretch: 0; text: loading ? "Kütüphane yükleniyor…" : query != "" ? "Aramana uygun oyun bulunamadı." : section == 1 ? "Henüz favori oyun eklemedin." : "Kütüphanen henüz boş."; color: #ced7df; horizontal-alignment: center; font-size: 17px; }
-                        Action { text: "Kaynak klasörü ekle"; enabled: !scanning; clicked => { root.add-folder(source-index > 0 ? source-index - 1 : 0); } }
-                        Rectangle { vertical-stretch: 1; background: transparent; }
+                    if matched > 0: ListView { content-y <=> root.scroll-position;
+                        for row-data in game-rows: HorizontalLayout { height: root.card-height + 24px; spacing: 20px; alignment: start;
+                            for entry in row-data: GameCard { width: root.card-width; height: root.card-height; game: entry; detail(id) => { detail-origin = section; detail-tab = 0; root.detail(id); } launch(id) => { root.launch(id); } favorite(id,value) => { root.favorite(id,value); } }
+                        }
                     }
-                    if matched > 0: ListView {
-                        content-y <=> root.scroll-position;
-                        for row-data in game-rows: HorizontalLayout {
-                            height: 335px; spacing: 17px;
-                            for entry in row-data: GameCard {
-                                game: entry;
-                                launch(id) => { root.launch(id); }
-                                favorite(id, value) => { root.favorite(id, value); }
-                                detail(id) => { root.detail(id); }
+                    HorizontalLayout { spacing: 8px; height: 34px;
+                        Text { text: matched == 0 ? "0 oyun" : (offset + 1) + "–" + min(offset + page-size,matched) + " / " + matched + " oyun"; color: Theme.subtle; font-size: 11px; vertical-alignment: center; }
+                        Rectangle { horizontal-stretch: 1; background: transparent; }
+                        if matched > page-size: Action { text: "Önceki"; ghost: true; enabled: offset > 0 && !loading; clicked => { root.refresh(query,section == 1,installed-only,max(0,offset - page-size),source-index); } }
+                        if matched > page-size: Action { text: "Sonraki"; ghost: true; enabled: offset+page-size < matched && !loading; clicked => { root.refresh(query,section == 1,installed-only,offset+page-size,source-index); } }
+                        Text { text: "Ada göre sıralı"; color: Theme.subtle; font-size: 11px; vertical-alignment: center; horizontal-stretch: 0; }
+                    }
+                }
+                if section == 9: VerticalLayout { spacing: 18px;
+                    HorizontalLayout { spacing: 4px;
+                        Action { text: "← Kütüphane"; ghost: true; clicked => { root.return-to-library(); } }
+                        Rectangle { horizontal-stretch: 1; background: transparent; }
+                        Tab { text: "Genel bakış"; active: detail-tab == 0; clicked => { detail-tab = 0; } }
+                        Tab { text: "Düzenle"; active: detail-tab == 1; clicked => { detail-tab = 1; } }
+                    }
+                    ScrollView { VerticalLayout { spacing: 22px;
+                        HorizontalLayout { height: 276px; spacing: 28px;
+                            Rectangle { width: 184px; height: 276px; border-radius: 12px; clip: true; background: Theme.surface;
+                                if detail-has-artwork: Image { x: 0px; y: 0px; width: parent.width; height: parent.height; source: root.detail-artwork; image-fit: ImageFit.cover; }
+                                if detail-has-artwork: Image { x: 0px; y: 0px; width: parent.width; height: parent.height; source: @image-url("icons/cover-corners.svg"); image-fit: ImageFit.fill; }
+                                if !detail-has-artwork: Glyph { kind: 0; x: parent.width / 2 - 20px; y: parent.height / 2 - 20px; width: 40px; height: 40px; ink: Theme.subtle; }
+                            }
+                            VerticalLayout { spacing: 14px;
+                                Rectangle { vertical-stretch: 1; background: transparent; }
+                                Eyebrow { text: detail-source; color: Theme.accent; }
+                                Text { text: detail-title; color: Theme.text; font-size: 32px; font-weight: 700; wrap: word-wrap; vertical-stretch: 0; }
+                                Caption { text: detail-installed ? "Kurulu · " + detail-size : "Kurulum kullanılamıyor"; }
+                                HorizontalLayout { spacing: 10px;
+                                    Action { text: "Oyna"; icon: 9; accent: true; min-width: 130px; enabled: detail-installed; clicked => { root.launch(detail-id); } }
+                                    Action { text: detail-favorite ? "Favorilerde" : "Favoriye ekle"; icon: 1; clicked => { root.favorite(detail-id,!detail-favorite); } }
+                                    Rectangle { horizontal-stretch: 1; background: transparent; }
+                                }
+                                Caption { text: detail-collections == "" ? "Henüz bir koleksiyona eklenmedi" : detail-collections; font-size: 11px; }
+                                Rectangle { vertical-stretch: 1; background: transparent; }
                             }
                         }
-                    }
-                    HorizontalLayout {
-                        spacing: 8px;
-                        Text { vertical-stretch: 0; text: matched == 0 ? "0 sonuç" : (offset + 1) + "–" + min(offset + page-size, matched) + " / " + matched; color: #8796a3; font-size: 11px; vertical-alignment: center; }
-                        Action { text: "Önceki"; enabled: offset > 0 && !loading; clicked => { root.refresh(query, section == 1, installed-only, max(0, offset - page-size), source-index); } }
-                        Action { text: "Sonraki"; enabled: offset + page-size < matched && !loading; clicked => { root.refresh(query, section == 1, installed-only, offset + page-size, source-index); } }
-                    }
+                        if detail-tab == 0: VerticalLayout { spacing: 18px;
+                            Panel { VerticalLayout { padding: 20px; spacing: 16px;
+                                HorizontalLayout { spacing: 10px; Glyph { kind: 11; } Heading { text: "Ne kadar sürer?"; } Rectangle { horizontal-stretch: 1; background: transparent; } Action { text: "HowLongToBeat ↗"; ghost: true; clicked => { root.completion-open(detail-id,false); } } }
+                                HorizontalLayout { spacing: 12px; Metric { label: "Ana hikâye"; value: completion-main; } Metric { label: "Ana + ek içerik"; value: completion-extra; } Metric { label: "Tamamlama"; value: completion-full; } }
+                                Caption { text: completion-summary; font-size: 11px; }
+                                HorizontalLayout { spacing: 10px; Action { text: "Yenile"; icon: 8; ghost: true; enabled: !integration-busy; clicked => { root.completion-lookup(detail-id,""); } } Action { text: "Eşleşmeyi düzenle"; ghost: true; clicked => { detail-tab = 1; } } Rectangle { horizontal-stretch: 1; background: transparent; } }
+                            } }
+                            HorizontalLayout { spacing: 18px;
+                                Panel { min-width: 0px; preferred-width: 0px; horizontal-stretch: 1; VerticalLayout { padding: 20px; spacing: 12px; Heading { text: "Notların"; } Caption { text: detail-notes == "" ? "Bu oyun için henüz not eklemedin." : detail-notes; } Action { text: "Not ekle / düzenle"; ghost: true; clicked => { detail-tab = 1; } } } }
+                                Panel { min-width: 0px; preferred-width: 0px; horizontal-stretch: 1; VerticalLayout { padding: 20px; spacing: 12px; Heading { text: "Son oturumlar"; } Caption { text: detail-history; } } }
+                            }
+                        }
+                        if detail-tab == 1: VerticalLayout { spacing: 18px;
+                            Panel { VerticalLayout { padding: 20px; spacing: 12px;
+                                Heading { text: "Oyun bilgileri"; }
+                                Caption { text: "Başlık"; } Field { text <=> detail-title; placeholder: "Oyun adı"; }
+                                Caption { text: "Notların"; } TextEdit { text <=> detail-notes; height: 100px; }
+                                Action { text: "Değişiklikleri kaydet"; accent: true; clicked => { root.save-detail(detail-id,detail-title,detail-notes); } }
+                            } }
+                            Panel { VerticalLayout { padding: 20px; spacing: 12px;
+                                Heading { text: "Kapak görseli"; }
+                                HorizontalLayout { spacing: 8px; Action { text: "Dosyadan seç"; clicked => { root.cover(detail-id,false); } } Action { text: "Kaynak kapağına dön"; ghost: true; clicked => { root.cover(detail-id,true); } } Rectangle { horizontal-stretch: 1; background: transparent; } }
+                                HorizontalLayout { spacing: 8px; Field { text <=> remote-cover-url; placeholder: "Kapak görselinin HTTPS adresi"; } Action { text: "İndir"; clicked => { root.remote-cover(detail-id,remote-cover-url); } } }
+                                HorizontalLayout { spacing: 8px; Action { text: "SteamGridDB'de ara"; enabled: !integration-busy; clicked => { root.search-covers(detail-id); } } ComboBox { model: cover-names; current-index <=> cover-index; } Action { text: "Seçili kapağı kullan"; enabled: !integration-busy && cover-candidates.length > 0 && cover-index >= 0; clicked => { root.remote-cover(detail-id,cover-candidates[cover-index].url); } } }
+                            } }
+                            Panel { VerticalLayout { padding: 20px; spacing: 12px;
+                                Heading { text: "Koleksiyon"; }
+                                Caption { text: detail-collections == "" ? "Henüz koleksiyon seçilmedi." : detail-collections; }
+                                HorizontalLayout { spacing: 8px; ComboBox { model: collection-names; current-index <=> detail-collection-index; } Action { text: "Ekle"; enabled: collections.length > 0 && detail-collection-index >= 0; clicked => { root.collection-member(detail-id,collections[detail-collection-index].id,true); } } Action { text: "Çıkar"; ghost: true; enabled: collections.length > 0 && detail-collection-index >= 0; clicked => { root.collection-member(detail-id,collections[detail-collection-index].id,false); } } }
+                            } }
+                            Panel { VerticalLayout { padding: 20px; spacing: 12px;
+                                Heading { text: "HowLongToBeat eşleşmesi"; }
+                                Caption { text: "Bulunamayan veya yanlış eşleşen oyunun sayfa adresini seç."; }
+                                HorizontalLayout { spacing: 8px; Field { text <=> completion-url; placeholder: "HowLongToBeat oyun URL'si veya ID"; } Action { text: "Eşleştir"; enabled: !integration-busy && completion-url != ""; clicked => { root.completion-lookup(detail-id,completion-url); } } }
+                                Action { text: "Oyunu sitede ara ↗"; ghost: true; clicked => { root.completion-open(detail-id,true); } }
+                            } }
+                            Panel { VerticalLayout { padding: 20px; spacing: 12px;
+                                Heading { text: "Kurulum ve oturum takibi"; }
+                                Caption { text: detail-path == "" ? "Bu oyun için yerel kurulum yok." : detail-path; }
+                                Action { text: "İzlenecek oyun dosyasını seç"; clicked => { root.tracking(detail-id); } }
+                            } }
+                        }
+                    } }
                 }
-                if section == 2: VerticalLayout {
-                    spacing: 18px;
-                    HorizontalLayout {
-                        spacing: 14px;
-                        Rectangle { height: 112px; border-radius: 9px; background: #1b2329;
-                            VerticalLayout { padding: 17px; Text { vertical-stretch: 0; text: "ÖZEL RAM"; color: #8c9baa; font-size: 10px; } Text { vertical-stretch: 0; text: ram; color: #d3e8c2; font-size: 27px; } }
-                        }
-                        Rectangle { height: 112px; border-radius: 9px; background: #1b2329;
-                            VerticalLayout { padding: 17px; Text { vertical-stretch: 0; text: "CPU"; color: #8c9baa; font-size: 10px; } Text { vertical-stretch: 0; text: cpu; color: #d3e8c2; font-size: 27px; } }
-                        }
-                        Rectangle { height: 112px; border-radius: 9px; background: #1b2329;
-                            VerticalLayout { padding: 17px; Text { vertical-stretch: 0; text: "ÖZEL COMMIT"; color: #8c9baa; font-size: 10px; } Text { vertical-stretch: 0; text: commit-size; color: #e1e7ed; font-size: 27px; } }
-                        }
-                    }
-                    Text { vertical-stretch: 0; text: "CPU tüm mantıksal işlemcilere göre hesaplanır. İlk örnekte CPU henüz bilinmez.\nKütüphane ekranında sürekli ölçüm yapılmaz."; color: #96a5b1; font-size: 12px; wrap: word-wrap; }
-                    HorizontalLayout {
-                        spacing: 9px;
-                        Action { text: "Anlık ölçüm"; enabled: !measuring; clicked => { root.sample(); } }
-                        Action { text: measuring ? "İptal et" : "60 saniye ölç"; accent: true; clicked => { if measuring { root.cancel-measurement(); } else { root.measure(); } } }
-                        Action { text: "Rapor klasörü"; clicked => { root.open-reports(); } }
-                    }
-                    Text { vertical-stretch: 0; text: measuring ? "Ölçüm sürüyor · " + measurement-progress + " / 60 sn" : measurement-summary; color: #bed2af; font-size: 12px; wrap: word-wrap; }
+                if section >= 3 && section <= 5: ScrollView { VerticalLayout { spacing: 18px;
+                    Panel { VerticalLayout { padding: 22px; spacing: 14px;
+                        Heading { text: "Yerel oyunlar"; }
+                        Caption { text: "Kurulu oyunlar launcher verilerinden otomatik bulunur. Başka bir diskteki klasörü de ekleyebilirsin."; }
+                        HorizontalLayout { spacing: 8px; Action { text: "Klasör ekle"; icon: 2; enabled: !scanning; clicked => { root.add-folder(section - 3); } } Action { text: "Oyunları göster"; ghost: true; clicked => { source-index = section - 2; section = 0; root.refresh(query,false,installed-only,0,source-index); } } Rectangle { horizontal-stretch: 1; background: transparent; } }
+                        Action { text: source-details ? "Tarama ayrıntılarını gizle" : "Tarama ayrıntıları"; ghost: true; clicked => { source-details = !source-details; } }
+                        if source-details: Caption { text: source-summaries[section - 3]; font-size: 12px; }
+                    } }
+                    if section == 3: Panel { VerticalLayout { padding: 22px; spacing: 12px;
+                        Heading { text: "Steam hesabı"; } Caption { text: "Kurulu olmayan oyunlarını da eklemek için hesabını eşitle. Anahtar Windows'ta güvenli olarak saklanır."; }
+                        Caption { text: "SteamID64"; } Field { text <=> steam-account-id; placeholder: "SteamID64"; }
+                        Caption { text: "Kişisel Web API anahtarı"; } Field { text <=> steam-api-key; placeholder: "API anahtarı"; secret: true; }
+                        HorizontalLayout { spacing: 8px; Action { text: "Kaydet"; clicked => { root.steam-credentials(steam-account-id,steam-api-key); steam-api-key = ""; } } Action { text: "Hesap oyunlarını eşitle"; accent: true; enabled: !integration-busy; clicked => { root.sync-account(0); } } Action { text: "Anahtar oluştur ↗"; ghost: true; clicked => { root.steam-key-page(); } } Rectangle { horizontal-stretch: 1; background: transparent; } }
+                        Caption { text: steam-account-status; font-size: 12px; }
+                    } }
+                    if section == 4: Panel { VerticalLayout { padding: 22px; spacing: 14px;
+                        Heading { text: "Epic Games hesabı"; } Caption { text: "Hesabındaki kurulu olmayan oyunları da kütüphanene ekle."; }
+                        HorizontalLayout { spacing: 8px; Action { text: "Hesabı bağla"; accent: true; enabled: !integration-busy; clicked => { root.epic-login(); } } Action { text: "Hesap oyunlarını eşitle"; enabled: !integration-busy; clicked => { root.sync-account(1); } } Rectangle { horizontal-stretch: 1; background: transparent; } }
+                        Caption { text: epic-account-status; font-size: 12px; }
+                    } }
                     Rectangle { vertical-stretch: 1; background: transparent; }
+                } }
+                if section == 6: VerticalLayout { spacing: 18px;
+                    HorizontalLayout { spacing: 10px; Field { placeholder: "Yeni koleksiyonun adı"; text <=> collection-name; max-width: 440px; } Action { text: "Koleksiyon oluştur"; icon: 7; accent: true; enabled: collection-name != ""; clicked => { root.create-collection(collection-name); collection-name = ""; } } Rectangle { horizontal-stretch: 1; background: transparent; } }
+                    if collections.length == 0: Panel { height: 170px; VerticalLayout { padding: 28px; spacing: 12px; Heading { text: "Kendi raflarını oluştur"; } Caption { text: "Bitireceklerim, hafta sonu veya birlikte oynadıklarımız…\nBir koleksiyon oluştur, oyun ayrıntısından oyunlarını ekle."; } } }
+                    ListView { for collection in collections: Rectangle { height: 84px; background: transparent;
+                        Panel { height: 72px; width: parent.width;
+                            HorizontalLayout { padding: 16px; spacing: 14px; Glyph { kind: 2; ink: Theme.accent; } Heading { text: collection.name; overflow: elide; } Caption { text: collection.count + " oyun"; horizontal-stretch: 0; } Rectangle { horizontal-stretch: 1; background: transparent; } Action { text: "Aç"; ghost: true; clicked => { collection-id = collection.id; source-index = 0; section = 0; root.refresh(query,false,installed-only,0,0); } } Action { text: "Sil"; ghost: true; danger: true; clicked => { root.delete-collection(collection.id); } } }
+                        }
+                    } }
                 }
-                if section >= 3 && section <= 5: VerticalLayout {
-                    spacing: 17px;
-                    HorizontalLayout {
-                        spacing: 9px;
-                        Action { text: "Veri klasörü ekle"; enabled: !scanning; clicked => { root.add-folder(section - 3); } }
-                        Action { text: "Oyunları göster"; clicked => { source-index = section - 2; section = 0; root.refresh(query, false, installed-only, 0, source-index); } }
-                        Action { text: scanning ? "İptal et" : "Yeniden tara"; clicked => { if scanning { root.cancel-scan(); } else { root.scan(); } } }
+                if section == 7: ScrollView { VerticalLayout { spacing: 18px;
+                    Panel { VerticalLayout { padding: 20px; spacing: 12px;
+                        HorizontalLayout { spacing: 12px;
+                            Rectangle { width: 38px; height: 38px; border-radius: 11px; background: Theme.accent-surface; Glyph { x: 10px; y: 10px; kind: 3; ink: Theme.accent; } }
+                            VerticalLayout { spacing: 4px; Heading { text: bridge-connected ? "Discord'a bağlı" : bridge-enabled ? "Bağlantı bekleniyor" : "Discord bağlantısı kapalı"; } Caption { text: bridge-connected ? friends.length + " arkadaş · " + rooms.length + " ses odası" : "Vencord köprüsüyle yerel bağlantı kur."; font-size: 12px; } }
+                            CheckBox { text: "Bağlantı"; checked <=> bridge-enabled; toggled => { root.bridge-toggle(bridge-enabled); } }
+                        }
+                        Caption { text: bridge-status; font-size: 12px; }
+                        HorizontalLayout { spacing: 8px; Action { text: muted ? "Mikrofonu aç" : "Mikrofonu sustur"; enabled: can-mute; clicked => { root.bridge-action("mute",""); } } Action { text: deafened ? "Sesi aç" : "Sesi kapat"; enabled: can-deafen; clicked => { root.bridge-action("deafen",""); } } if can-stop-stream: Action { text: "Yayını durdur"; clicked => { root.bridge-action("stream_stop",""); } } Rectangle { horizontal-stretch: 1; background: transparent; } Action { text: "Kurulum ayarları"; icon: 4; ghost: true; clicked => { discord-settings = !discord-settings; } } }
+                    } }
+                    if discord-settings: Panel { VerticalLayout { padding: 20px; spacing: 12px;
+                        Heading { text: "Vencord kurulumu"; }
+                        HorizontalLayout { spacing: 8px; ComboBox { model: ["Discord Stable","Discord PTB","Discord Canary"]; current-index <=> discord-branch; } Action { text: "Kur"; enabled: !integration-busy; clicked => { root.installer(0,discord-branch); } } Action { text: "Onar / güncelle"; enabled: !integration-busy; clicked => { root.installer(1,discord-branch); } } Action { text: "Kaldır"; danger: true; ghost: true; enabled: !integration-busy; clicked => { root.installer(2,discord-branch); } } }
+                        Action { text: "Köprüyü hazırla / güncelle"; enabled: !integration-busy; clicked => { root.prepare-bridge(); } }
+                        Caption { text: "Resmi installer kullanılır. GameLibraryBridge eklentisi etkin olmalı."; font-size: 12px; }
+                        HorizontalLayout { spacing: 8px; Field { text <=> discord-target-id; placeholder: "Arkadaş veya ses kanalı ID"; } Action { text: "Görüşme aç"; enabled: bridge-connected && discord-target-id != ""; clicked => { root.bridge-action("open_dm",discord-target-id); } } Action { text: "Kanala gir"; enabled: bridge-connected && discord-target-id != ""; clicked => { root.bridge-action("join_voice",discord-target-id); } } }
+                    } }
+                    HorizontalLayout { spacing: 18px;
+                        Panel { height: 384px; min-width: 0px; preferred-width: 0px; horizontal-stretch: 1; VerticalLayout { padding: 16px; spacing: 10px;
+                            Heading { text: "Arkadaşlar · " + friends.length; }
+                            if friends.length == 0: Caption { text: "Bağlantı kurulduğunda arkadaşların burada görünür."; }
+                            ListView { for friend in friends: PersonRow { name: friend.name; subtitle: friend.subtitle; initial: friend.initial; online: friend.online; enabled: bridge-connected; clicked => { root.bridge-action("open_dm",friend.id); } } }
+                        } }
+                        Panel { height: 384px; min-width: 0px; preferred-width: 0px; horizontal-stretch: 1; VerticalLayout { padding: 16px; spacing: 10px;
+                            Heading { text: "Ses odaları"; }
+                            if rooms.length == 0: Caption { text: "Şu anda görüntülenen ses odası yok."; }
+                            ListView { for room in rooms: PersonRow { name: room.name; subtitle: room.subtitle; initial: "#"; online: true; enabled: bridge-connected; clicked => { root.bridge-action("join_voice",room.id); } } }
+                            Caption { text: "Yayın kaynağı, kalite, FPS ve ses kontrolleri bu istemcide henüz kullanılamıyor."; font-size: 11px; }
+                        } }
                     }
-                    Text { vertical-stretch: 0; text: section == 3 ? "Steam veya SteamLibrary klasörünü seç." : section == 4 ? "%PROGRAMDATA%\\Epic\\EpicGamesLauncher\\Data\\Manifests" : "%PROGRAMDATA%\\Riot Games (Metadata / RiotClientInstalls.json)"; color: #97a7b3; font-size: 12px; wrap: word-wrap; }
-                    if section == 3: VerticalLayout {
-                        spacing: 8px;
-                        Text { text: "Hesaptaki tüm Steam oyunları"; color: #eef1f4; }
-                        HorizontalLayout { spacing: 8px; LineEdit { text <=> root.steam-account-id; placeholder-text: "SteamID64"; } LineEdit { text <=> root.steam-api-key; input-type: password; placeholder-text: "Steam Web API anahtarı"; } Action { text: "Kaydet"; clicked => { root.steam-credentials(steam-account-id,steam-api-key); steam-api-key = ""; } } }
-                        HorizontalLayout { spacing: 8px; Action { text: "Hesap oyunlarını eşitle"; enabled: !integration-busy; clicked => { root.sync-account(0); } } Action { text: "API anahtarı sayfası"; clicked => { root.steam-key-page(); } } }
-                        Text { text: steam-account-status; color: #97a7b3; wrap: word-wrap; }
-                    }
-                    if section == 4: VerticalLayout {
-                        spacing: 8px;
-                        Text { text: "Hesaptaki tüm Epic oyunları"; color: #eef1f4; }
-                        HorizontalLayout { spacing: 8px; Action { text: "Epic hesabını bağla"; enabled: !integration-busy; clicked => { root.epic-login(); } } Action { text: "Hesap oyunlarını eşitle"; enabled: !integration-busy; clicked => { root.sync-account(1); } } }
-                        Text { text: epic-account-status; color: #97a7b3; wrap: word-wrap; }
-                    }
-                    ScrollView { Text { vertical-stretch: 0; text: source-summaries[section - 3]; color: #aebcc8; font-size: 12px; wrap: word-wrap; vertical-alignment: top; } }
-                }
-                if section == 6: VerticalLayout {
-                    spacing: 12px;
-                    HorizontalLayout { spacing: 8px; LineEdit { placeholder-text: "Yeni koleksiyon adı"; text <=> root.collection-name; } Action { text: "Oluştur"; clicked => { root.create-collection(collection-name); collection-name = ""; } } }
-                    ListView { for collection in root.collections: HorizontalLayout { height: 48px; spacing: 10px; Action { text: collection.name + " · " + collection.count; clicked => { collection-id = collection.id; section = 0; root.refresh(query,false,installed-only,0,source-index); } } Action { text: "Sil"; clicked => { root.delete-collection(collection.id); } } } }
-                }
-                if section == 9: ScrollView {
-                    VerticalLayout {
-                        spacing: 12px;
-                        HorizontalLayout { spacing: 20px; Image { source: root.detail-artwork; width: 140px; height: 210px; image-fit: contain; } VerticalLayout { LineEdit { text <=> root.detail-title; placeholder-text: "Oyun adı"; } Text { vertical-stretch: 0; text: root.detail-path; color: #abb3bd; wrap: word-wrap; } Action { text: "Oyna"; accent: true; enabled: root.detail-installed; clicked => { root.launch(detail-id); } } } }
-                        TextEdit { text <=> root.detail-notes; height: 90px; }
-                        Text { text: root.completion-summary; color: #bfd3af; wrap: word-wrap; vertical-stretch: 0; }
-                        HorizontalLayout { spacing: 8px; Action { text: "Süreleri getir / yenile"; enabled: !integration-busy; clicked => { root.completion-lookup(detail-id,""); } } Action { text: "HowLongToBeat'te aç"; clicked => { root.completion-open(detail-id,false); } } Action { text: "Oyunu sitede ara"; clicked => { root.completion-open(detail-id,true); } } }
-                        HorizontalLayout { spacing: 8px; LineEdit { text <=> root.completion-url; placeholder-text: "Eşleşmeyi düzeltmek için HowLongToBeat oyun URL'si veya ID"; } Action { text: "Bu eşleşmeyi kullan"; enabled: !integration-busy && completion-url != ""; clicked => { root.completion-lookup(detail-id,completion-url); } } }
-                        HorizontalLayout { spacing: 8px; Action { text: "Bilgileri kaydet"; clicked => { root.save-detail(detail-id,detail-title,detail-notes); } } Action { text: "Kapak seç"; clicked => { root.cover(detail-id,false); } } Action { text: "Yerel kapağa dön"; clicked => { root.cover(detail-id,true); } } }
-                        HorizontalLayout { spacing: 8px; LineEdit { text <=> root.remote-cover-url; placeholder-text: "SteamGridDB veya Steam CDN kapak adresi"; } Action { text: "Kapağı indir"; clicked => { root.remote-cover(detail-id,remote-cover-url); } } }
-                        HorizontalLayout { spacing: 8px; Action { text: "SteamGridDB'de kapak ara"; enabled: !integration-busy; clicked => { root.search-covers(detail-id); } } ComboBox { model: root.cover-names; current-index <=> root.cover-index; } Action { text: "Seçili kapağı kullan"; enabled: !integration-busy && root.cover-candidates.length > 0; clicked => { root.remote-cover(detail-id,root.cover-candidates[cover-index].url); } } }
-                        Text { vertical-stretch: 0; text: "Koleksiyonlar: " + root.detail-collections; color: #abb3bd; }
-                        HorizontalLayout { spacing: 8px; ComboBox { model: root.collection-names; current-index <=> root.detail-collection-index; } Action { text: "Ekle"; enabled: root.collections.length > 0; clicked => { root.collection-member(detail-id,root.collections[detail-collection-index].id,true); } } Action { text: "Çıkar"; enabled: root.collections.length > 0; clicked => { root.collection-member(detail-id,root.collections[detail-collection-index].id,false); } } }
-                        Text { vertical-stretch: 0; text: "Son oturumlar"; color: #eef1f4; font-size: 17px; }
-                        Action { text: "Oturum için oyun executable seç"; clicked => { root.tracking(detail-id); } }
-                        Text { vertical-stretch: 0; text: root.detail-history; color: #abb3bd; wrap: word-wrap; }
-                        Action { text: "Kütüphaneye dön"; clicked => { section = 0; root.refresh(query,false,installed-only,0,source-index); } }
-                    }
-                }
-                if section == 7: ScrollView {
-                    VerticalLayout {
-                        spacing: 12px;
-                        CheckBox { text: "Yerel Discord / Vencord bağlantısını aç"; checked <=> root.bridge-enabled; toggled => { root.bridge-toggle(root.bridge-enabled); } }
-                        HorizontalLayout { spacing: 8px; ComboBox { model: ["Discord Stable","Discord PTB","Discord Canary"]; current-index <=> root.discord-branch; } Action { text: "Vencord kur"; clicked => { root.installer(0,discord-branch); } } Action { text: "Onar / güncelle"; clicked => { root.installer(1,discord-branch); } } Action { text: "Kaldır"; clicked => { root.installer(2,discord-branch); } } }
-                        Text { vertical-stretch: 0; text: "Resmi installer kullanılır. Yerel bağlantı için GameLibraryBridge eklentisi etkin olmalı."; color: #abb3bd; wrap: word-wrap; }
-                        Action { text: "Vencord köprüsünü hazırla / güncelle"; clicked => { root.prepare-bridge(); } }
-                        HorizontalLayout { spacing: 8px; Action { text: muted ? "Mikrofonu aç" : "Mikrofonu sustur"; enabled: can-mute; clicked => { root.bridge-action("mute",""); } } Action { text: deafened ? "Sesi aç" : "Sesi kapat"; enabled: can-deafen; clicked => { root.bridge-action("deafen",""); } } Action { text: "Yayını durdur"; enabled: can-stop-stream; clicked => { root.bridge-action("stream_stop",""); } } }
-                        HorizontalLayout { spacing: 8px; LineEdit { placeholder-text: "Arkadaş veya ses kanalı kimliği"; text <=> root.discord-target-id; } Action { text: "Discord'da görüşme"; enabled: bridge-connected; clicked => { root.bridge-action("open_dm",discord-target-id); } } Action { text: "Ses kanalına gir"; enabled: bridge-connected; clicked => { root.bridge-action("join_voice",discord-target-id); } } }
-                        Text { vertical-stretch: 0; text: "Yayın başlatma, kaynak, kalite, FPS ve yayın sesi bu istemci sürümünde doğrulanana kadar kullanılamıyor."; color: #abb3bd; wrap: word-wrap; }
-                        Text { vertical-stretch: 0; text: root.bridge-status; color: #c5d3df; wrap: word-wrap; }
-                    }
-                }
-                if section == 8: VerticalLayout {
-                    spacing: 16px;
-                    HorizontalLayout { spacing: 8px; LineEdit { text <=> root.artwork-api-key; input-type: password; placeholder-text: "SteamGridDB API anahtarı"; } Action { text: "Anahtarı kaydet"; clicked => { root.artwork-key(artwork-api-key); artwork-api-key = ""; } } }
-                    CheckBox { text: "Game Library güncellemelerini otomatik kontrol et ve indir"; checked <=> root.auto-update-app; toggled => { root.update-preferences(auto-update-app,auto-update-vencord); } }
-                    CheckBox { text: "Vencord'un otomatik güncellemesini kullan"; checked <=> root.auto-update-vencord; toggled => { root.update-preferences(auto-update-app,auto-update-vencord); } }
-                    HorizontalLayout { spacing: 8px; Action { text: "Güncellemeleri kontrol et"; clicked => { root.update-check(); } } Action { text: "İndir ve doğrula"; enabled: update-available; clicked => { root.update-stage(); } } Action { text: "Vencord'u güncelle"; enabled: bridge-connected; clicked => { root.bridge-action("vencord_update",""); } } }
-                    Action { text: "Yeniden başlat ve güncellemeyi uygula"; enabled: update-staged; clicked => { root.update-apply(); } }
-                    Text { vertical-stretch: 0; text: root.update-status; color: #c5d3df; wrap: word-wrap; }
-                    Text { vertical-stretch: 0; text: "Vencord değişiklikleri Discord yeniden açılınca etkinleşir. Game Library yalnızca güvenilir kaynaktan gelen imzalı sürümleri kabul eder."; color: #abb3bd; wrap: word-wrap; }
+                } }
+                if section == 8: ScrollView { VerticalLayout { spacing: 18px;
+                    Panel { VerticalLayout { padding: 22px; spacing: 14px;
+                        HorizontalLayout { Heading { text: "Game Library"; } Rectangle { horizontal-stretch: 1; background: transparent; } Caption { text: "Sürüm 0.1.0 · Windows"; horizontal-stretch: 0; } }
+                        Caption { text: update-status; }
+                        CheckBox { text: "Güncellemeleri otomatik kontrol et ve indir"; checked <=> auto-update-app; toggled => { root.update-preferences(auto-update-app,auto-update-vencord); } }
+                        HorizontalLayout { spacing: 8px; Action { text: "Güncellemeleri kontrol et"; icon: 8; enabled: !integration-busy; clicked => { root.update-check(); } } if update-available: Action { text: "İndir ve doğrula"; accent: true; enabled: !integration-busy; clicked => { root.update-stage(); } } if update-staged: Action { text: "Yeniden başlat ve uygula"; accent: true; enabled: !integration-busy; clicked => { root.update-apply(); } } Rectangle { horizontal-stretch: 1; background: transparent; } }
+                    } }
+                    Panel { VerticalLayout { padding: 22px; spacing: 14px;
+                        Heading { text: "Vencord güncellemeleri"; }
+                        CheckBox { text: "Vencord'un otomatik güncellemesini kullan"; checked <=> auto-update-vencord; toggled => { root.update-preferences(auto-update-app,auto-update-vencord); } }
+                        Caption { text: "Güncellemeler Discord yeniden açıldığında etkinleşir."; font-size: 12px; }
+                        Action { text: "Vencord'u güncelle"; enabled: bridge-connected; clicked => { root.bridge-action("vencord_update",""); } }
+                    } }
+                    Panel { VerticalLayout { padding: 22px; spacing: 14px;
+                        Heading { text: "Kapak sağlayıcısı"; }
+                        Caption { text: "SteamGridDB anahtarı, alternatif kapakları oyun ayrıntısından aramanı sağlar."; }
+                        HorizontalLayout { spacing: 8px; Field { text <=> artwork-api-key; secret: true; placeholder: "SteamGridDB API anahtarı"; } Action { text: "Anahtarı kaydet"; clicked => { root.artwork-key(artwork-api-key); artwork-api-key = ""; } } }
+                    } }
+                    HorizontalLayout { Action { text: "Hakkında"; ghost: true; clicked => { root.about(); } } Rectangle { horizontal-stretch: 1; background: transparent; } }
+                    Rectangle { vertical-stretch: 1; background: transparent; }
+                } }
+                if section == 2: VerticalLayout { spacing: 18px;
+                    HorizontalLayout { spacing: 16px; Metric { label: "Özel RAM"; value: ram; } Metric { label: "CPU"; value: cpu; } Metric { label: "Özel commit"; value: commit-size; } }
+                    Panel { VerticalLayout { padding: 22px; spacing: 14px;
+                        Heading { text: "Kaynak ölçümü"; }
+                        Caption { text: "Yalnızca Game Library süreçleri ölçülür. İlk örnekte CPU henüz bilinmez. Kütüphane ekranında sürekli ölçüm yapılmaz."; }
+                        HorizontalLayout { spacing: 8px; Action { text: "Anlık ölçüm"; enabled: !measuring; clicked => { root.sample(); } } Action { text: measuring ? "İptal et" : "60 saniye ölç"; accent: true; clicked => { if measuring { root.cancel-measurement(); } else { root.measure(); } } } Action { text: "Raporları aç"; ghost: true; clicked => { root.open-reports(); } } Rectangle { horizontal-stretch: 1; background: transparent; } }
+                        Caption { text: measuring ? "Ölçüm sürüyor · " + measurement-progress + " / 60 sn" : measurement-summary; }
+                    } }
                     Rectangle { vertical-stretch: 1; background: transparent; }
                 }
             }
         }
+    }
     }
 }

@@ -1,80 +1,52 @@
-# Arayüz yönü
+# Native arayüz
 
-## Görsel dil
+12 Ekim 2026 yenilemesi Rust/Slint ile derlenir; ana uygulamada WebView, React veya ağdan indirilen font bulunmaz. [21st.dev Sidebar](https://21st.dev/@shadcn/components/sidebar), [Dashboard Sidebar](https://21st.dev/@arunjdass/components/dashboard-sidebar) ve [kart koleksiyonu](https://21st.dev/community/components/s/card) gezinme, yüzey ve bilgi hiyerarşisi için incelendi. Üçüncü taraf bileşen kodu kopyalanmadı; bileşenler Slint için yazıldı.
 
-Çalışan ana arayüz Rust/Slint ile derlenir. WebView kullanılmaz. Mevcut kütüphane, favoriler, Steam kaynakları ve kaynak ölçümü native bileşenlerdir. 21st.dev referansları yalnızca tasarım yönünü belirler; Discord görünümü de aynı native bileşen sistemiyle hazırlanacak.
+## Görsel sistem
 
-Oyun kapaklarının öne çıktığı, koyu grafit bir masaüstü arayüzü. Tek vurgu rengi soluk yeşil; Discord bağlantı durumunda gerektiğinde mor. Büyük gradient arka planlar, parlayan çerçeveler, sürekli hareket ve gereksiz istatistik kartları kullanılmayacak.
+Renkler ve ortak bileşenler `apps/native/ui/design.slint` içindedir. Yerel Segoe UI, grafit yüzeyler, ince ayrımlar ve soluk lavanta vurgu kullanılır. Düğmeler birincil, ikincil ve düz varyantlara ayrılır; genişlikleri içerik kadardır. Oyun adı düğme olarak gösterilmez.
 
-| Öğe | İlk tasarım kararı |
+| Token | Değer |
 | --- | --- |
-| Ana arka plan | `#101214` |
-| Panel / kart yüzeyi | `#181B1F` |
-| İnce ayrım çizgisi | `#2A3036` |
-| Birincil metin | `#F1F3F5` |
-| İkincil metin | `#ABB3BD` |
-| Vurgu | `#B6E88B`, koyu buton metni |
-| Köşe | Kart 12 px, giriş ve buton 8 px |
-| Tipografi | Yerel Segoe UI / sistem fontu; 13–14 px gövde |
-| Hareket | 100–160 ms opacity/transform; reduced-motion desteği |
+| Ana yüzey | `#111216` |
+| Sol menü | `#16171C` |
+| Panel | `#1B1D24` |
+| Ayırıcı | `#2B2E38` |
+| Metin | `#F2F2F6` |
+| İkincil metin | `#A1A5B2` |
+| Vurgu | `#B9ADFF` |
+| Vurgu yüzeyi | `#2B263F` |
+| Bağlantı durumu | `#8ECDB1` |
+| Boşluklar | 4, 8, 12, 16, 20, 24, 32 px |
+| Köşeler | Düğme 8, panel 12, kapak yaklaşık 7 px |
+| Yazı | Gövde 13, yardımcı 11, bölüm 30, oyun başlığı 32 px |
 
-Kontrast, DPI ve klavye erişimi tasarım denemesinde doğrulanacak. Ağdan font indirme gerekmeyecek. Açık tema aynı token sistemiyle sonraki aşamada eklenebilir.
+SVG ikonları aynı çizgi dilini kullanır ve binary'ye gömülür. Software renderer'ın dikdörtgen klip sınırı nedeniyle kapak köşeleri küçük yerel SVG maskesiyle tamamlanır; kaynak görsel dosyası değiştirilmez. Sürekli animasyon veya ek zamanlayıcı kullanılmaz.
 
-## Pencere düzeni
+## Kütüphane
 
-Varsayılan tasarım referansı 1440 × 900. Sol navigasyon 208 px, sağ sosyal panel 288 px ve gizlenebilir. Merkez alan genişliğe göre 3–6 kapak sütunu gösterir. 1024 px ve altında sosyal panel çekmeceye dönüşür; yüksek DPI'da içerik kesilmez.
+224 px sol menü kütüphane, favoriler, koleksiyonlar ve platformları içerir. Discord, Ayarlar ve Performans alt alandadır. Platforma tıklamak ilgili oyunları gösterir. Hesap/klasör ayarlarına kütüphanenin filtre satırındaki dişliden erişilir. Üst arama alanı bütün sayfalarda bulunur; düzenleme anında kütüphaneye döner. Oyun ekleme ve tarama üst çubukta tek yerde durur.
 
-```text
-┌──────────────────────────────────────────────────────────────────────┐
-│ Game Library                  Oyun ara                       ─ □ ×  │
-├──────────────┬──────────────────────────────────┬────────────────────┤
-│ Kütüphane    │ Kütüphanen                       │ Discord            │
-│ Favoriler    │ Tümü · Kurulu · Son oynanan       │ Seçili kişiler     │
-│ Koleksiyonlar│                                  │ Kişi / aktivite    │
-│              │  Kapak       Kapak       Kapak   │ Kişi / aktivite    │
-│ Kaynaklar    │  Oyun adı    Oyun adı    Oyun adı │                    │
-│ Steam        │                                  │ İzlenen odalar     │
-│ Epic         │  Kapak       Kapak       Kapak   │ Oda / üye sayısı   │
-│ Riot         │  Oyun adı    Oyun adı    Oyun adı │ Oda / üye sayısı   │
-│ Diğer        │                                  │                    │
-│              │                                  │ Yayın kontrolleri  │
-│ Ayarlar      │                                  │ Erişime bağlı      │
-└──────────────┴──────────────────────────────────┴────────────────────┘
-```
+Kapaklar 2:3 oranında gösterilir. Pencere genişliğine göre 3, 4, 5 veya 6 sütun seçilir; kısa ve dar pencerede kontrollerin görünmesi için dört küçük sütun kullanılır. Başlık ve kaynak/boyut kapağın altındadır; uzun başlık kart genişliğini değiştirmez ve kesilerek gösterilir. Kurulum kullanılamıyorsa kapakta durum etiketi görünür ve başlatma kapalıdır. Kartın kapağı veya adı ayrıntıyı açar; küçük oynatma kontrolü oyunu başlatır. Favori kontrolü hover/odakta görünür; ayrıntıda sürekli erişilebilir.
 
-Bu bir yerleşim şemasıdır; çalışan ürün veya nihai görsel tasarım değildir.
+100 kayıtlık sayfa ve sanallaştırılmış satırlar korunur. Sütun sayısı değişince görünüm modeli yeni sütun sayısına göre gruplanır; filtre ve sayfa konumu korunur. Sayfalama yalnızca birden fazla sayfa varsa görünür. Boş favoriler ve boş aramalar farklı açıklama ve eylem içerir.
 
-## Ekranlar
+## Oyun ayrıntısı
 
-Kütüphane: arama, kaynak filtresi, kurulum durumu, sıralama ve kapak boyutu. Kartın üzerinde yalnızca kapak, başlık ve gerekli kaynak/durum bilgisi. Hover'da başlat düğmesi çıkabilir, fakat klavye ve bağlam menüsüyle aynı eylem sürekli erişilebilir olmalı.
+Kapak, ad, platform, kurulum ve Oyna ilk alandadır. Genel bakışta üç ayrı HowLongToBeat kategorisi, gerçek eşleşme adı/kaynak, notlar ve oturumlar gösterilir. Süre bulunmuyorsa Veri yok; henüz alınmadıysa çizgi kullanılır. Oturumlar göreli zaman ve süreyle sunulur; Unix timestamp ve PID kullanıcı akışından çıkarılmıştır.
 
-Oyun ayrıntısı: sınırlı hero görseli, belirgin Oyna düğmesi, kurulum seçimi, son oturumlar, koleksiyon ve kapak değişimi. Aynı oyunun iki mağaza kurulumu varsa başlatılacak kurulum seçilir.
+Düzenle bölümünde başlık/not kaydı, dosya/URL/SteamGridDB kapağı, koleksiyon üyeliği, HowLongToBeat eşleşmesi ve izlenecek executable vardır. Ayrıntıdan dönüş önceki kütüphane/favoriler görünümünü korur. Favori değişimi başlık/not düzenlemelerini yeniden yüklemez; ağdan gelen süreler yalnızca süre alanlarını günceller.
 
-Sosyal panel: bütün Discord arayüzünü yeniden kurmak yerine seçili kişiler ve izlenen ses odaları. Durum alınamıyorsa bilinmiyor gösterilir. Kullanıcı adına DM erişimi varsa görüşme çekmecesi; yoksa Discord'da açma eylemi.
+## Discord ve ayarlar
 
-Yayın alanı: başlat/durdur, oyun/pencere kaynağı, kalite/çözünürlük, FPS ve ses kontrolleri. Yayın sesi ile mikrofon/sesli görüşme ayarları ayrı tutulur. Yalnızca doğrulanmış yetenekler kullanılabilir olur; sınırlı erişim ilgili ayarın yanında açıklanır. Yayın ve uygulanmış ayarlar Discord'dan alınan gerçek durumu gösterir.
+Discord sayfası bağlantı durumu, kullanılabilen ses kontrolleri, arkadaş satırları ve ses odalarını gösterir. Bir arkadaş görüşmeyi Discord'da açar; ses odası ilgili katılma komutunu kullanır. İstemcinin desteklemediği yayın işlemleri etkin gösterilmez. Vencord kurulum/onarım/kaldırma ve elle ID alanı Kurulum ayarları altında açılır.
 
-Ayarlar: oyun kaynakları ve tarama kökleri, kapak sağlayıcıları, Discord hesabı, kaynak tasarrufu ve isteğe bağlı istemci eklentileri. Tarama, kapak eşleştirme ve bağlantı hataları ilgili bölümde gösterilir.
+Ayarlar uygulama güncellemeleri, Vencord otomatik güncellemesi ve kapak sağlayıcısı olarak gruplanır. Kullanıcı hesap bağlantısını erteledi; arayüz bu tercihten bağımsız kullanılabilir. Kaynak tarama bildirimleri Discord'a taşınmaz.
 
-## İlk açılış
+## Klavye ve doğrulama
 
-Launcher yolları bulunur, tarama başlar ve sonuçlar gelir gelmez liste görünür. İnternet ve Discord bağlantısı beklenmez. Kullanıcıya sonradan isteğe bağlı hesap bağlama, kapak sağlayıcısı ve ek oyun klasörü seçenekleri sunulur. Boş kütüphane durumu elle oyun ekleme eylemini içerir.
+Kontroller native odak, erişilebilir etiket ve Enter/Space eylemi içerir. Ctrl+F aramaya odaklanır; kartta Enter ayrıntıyı, P başlatmayı ve F favoriyi çalıştırır. Escape ayrıntıdan geri döner. Canlı klavye/ekran okuyucu ve Windows DPI geçişi kabulü ayrıca bekliyor; görsel ölçek denemesi bu kabulün yerine geçmez.
 
-## 21st.dev araştırması
+Görsel kontroller gerçek yerel oyunların ayrı doğrulama profilinde yapılır; hesap anahtarı veya Discord kişi bilgisi örnek görsellerde yayımlanmaz. `--screenshot`, `--window-width`, `--window-height`, `--section`, `--detail-tab` ve `--query` ve `--skip-initial-scan` geliştirme kontrolleridir. Görüntüleme, kütüphane yüklemesinin bitmesini bekler ve 30 saniyede zaman aşımına uğrar. Ekran görüntüsü yanındaki `.layout.json` gerçek pencere boyutu, ölçek, sütun ve kayıt sayısını yazar. 10.000 kayıtlık fixture gerçek kullanıcı kütüphanesine karıştırılmaz.
 
-Üç referans incelendi:
-
-- [Dashboard Sidebar — Arun Dass](https://21st.dev/@arunjdass/components/dashboard-sidebar): dar navigasyon, iki tema ve ince yüzey ayrımları için referans.
-- [Dashboard with Collapsible Sidebar — Sonu kumar](https://21st.dev/@uniquesonu/components/dashboard-with-collapsible-sidebar): açılıp kapanan navigasyon ve uygulama kabuğu için referans.
-- [Chat template — Manoj](https://21st.dev/@rayimanoj8/components/chat-template/whatsapp-mock): görüşme listesi ve mesaj alanı oranları için referans.
-
-Hazır dashboard'un grafik ve istatistik alanları bu ürüne taşınmayacak. Yerleşim fikirleri oyun kütüphanesine uyarlanacak; alınan kodun lisansı ve bağımlılıkları parça bazında kontrol edilecek. Bu aşamada üçüncü taraf bileşen kodu kopyalanmadı.
-
-## Kabul kriterleri
-
-- 1.000 oyun ve uzun başlıklarda okunabilir grid; aynı düzen 10.000 kayıtta sanallaştırılmış çalışır.
-- %100, %150 ve %200 DPI'da başlıklar ve pencere kontrolleri çakışmaz.
-- Klavyeyle arama, kart seçme, başlatma, modal kapatma ve kaynak değiştirme.
-- İnternet kapalıyken hiçbir tam ekran bekleme veya boş kapak nedeniyle layout kayması olmaz.
-- Sosyal panel kapalıyken gereksiz render ve görsel yükleme oluşmaz.
-- Görsel önizlemede örnek veriler açıkça belirtilir; gerçek bağlantı varmış gibi gösterilmez.
+Önceki RAM/CPU ölçümleri eski derlemeye aittir. Yeni tasarımın performansı ayrıca ölçülmeden aynı sonuçları sağladığı iddia edilmez. Önceki sekiz saat testinin raporu tamamlanmadı; sonraki kontrolde süreci çalışmıyordu.

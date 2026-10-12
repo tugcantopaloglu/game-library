@@ -4,7 +4,7 @@
 
 ## Epic Games
 
-Standart kaynak `%PROGRAMDATA%\Epic\EpicGamesLauncher\Data\Manifests` altındaki `.item` dosyalarıdır. Epic Games kaynak ekranından bu dizin veya onu içeren Epic veri klasörü seçilebilir. Oyun kimliği namespace/catalog/AppName alanlarından alınır. Kurulum dizini ve kurulum içindeki `LaunchExecutable` doğrulanır. Yarım kurulum oynanabilir sayılmaz; Unreal Engine, eklenti ve DLC kayıtları ayrı oyun olarak içe aktarılmaz.
+Standart kaynak `%PROGRAMDATA%\Epic\EpicGamesLauncher\Data\Manifests` altındaki `.item` dosyalarıdır. Epic Games kaynak ekranından bu dizin veya onu içeren Epic veri klasörü seçilebilir. Oyun kimliği namespace/catalog/AppName alanlarından alınır. Kurulum dizini doğrulanır. `LaunchExecutable` doluysa kurulum içindeki güvenli yol denetlenir; boşsa Epic URI başlatmayı launcher üzerinden çözer. Eksik dizin veya yalnızca indirme metadata içeren kurulum oynanabilir sayılmaz. Yarım kurulum oynanabilir sayılmaz; Unreal Engine, eklenti ve DLC kayıtları ayrı oyun olarak içe aktarılmaz.
 
 Başlatma `com.epicgames.launcher://apps/<namespace>%3A<catalog>%3A<AppName>?action=launch&silent=true` üzerinden Epic Games Launcher'a iletilir. Eski, yalnızca AppName içeren manifestler için belgelenmiş eski URI biçimi desteklenir. Manifestteki `LaunchCommand` shell komutu olarak çalıştırılmaz. Epic hesabı, DRM ve oyunun ihtiyaç duyduğu diğer istemciler Epic tarafından yönetilir. [Epic protokol belgesi](https://assets-unreal2-epic-prod-us2.s3.dualstack.us-east-1.amazonaws.com/original/4X/f/c/4/fc4342c50e1a0abf34943e019ee90bacccc62950.pdf), [manifest alanları](https://github.com/JosefNemec/PlayniteExtensions/blob/master/source/Libraries/EpicLibrary/Models/LauncherInstalled.cs).
 

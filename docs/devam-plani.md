@@ -23,3 +23,13 @@ Vencord köprüsü masaüstü kullanıcı eklentisidir. Standart installer özel
 Genel dağıtım, imzalama anahtarı ve ilk yayımlanmış sürüm olmadan uygulama güncelleme zinciri canlı yayınla doğrulanamaz. Yerel doğrulama ve güncelleme altyapısı bu çalışma içinde hazırlanır.
 
 Snyk talimatı geçerlidir. Bu oturumda `snyk_code_scan` aracı ve Snyk CLI yok; plugin araması da sonuç vermedi. Bu sınırlama derleme, Clippy, bağımlılık ve kritik güvenlik testlerinin yerine geçtiği şeklinde raporlanmayacak.
+
+## Kapaklar ve native arayüz devamı
+
+- [x] Altı kaynak uyarısının Epic/Riot metadata kaynaklı olduğu belirlendi; gerçek tarama artık 0 uyarı, 8 Steam, 1 erişilemeyen Epic ve 3 Riot kaydı veriyor. Steam'in iki kütüphane kökü ve sekiz yerel kapağı doğrulandı.
+- [x] Steam/Epic tam hesap kütüphanesi için ayrı eşitleme, Credential Manager anahtarı ve Legendary yardımcı akışı hazırlandı. Kullanıcı hesap bağlantısını erteledi; canlı tam hesap kabulü bekliyor.
+- [x] HowLongToBeat açık sayfalarından üç süre kategorisi kaydedildi; Baldur's Gate 3, Hogwarts Legacy ve VALORANT eşleşmeleri doğrulandı.
+- [x] 21st.dev örnekleri incelenerek native Slint kütüphane, oyun ayrıntısı, kaynaklar, koleksiyonlar, Discord ve ayarlar yeniden düzenlendi. Tasarım sistemi ve geliştirme görüntüleme seçenekleri [arayüz belgesinde](arayuz.md).
+- [ ] Önceki sekiz saat raporu yaklaşık 59 dakikada kaldı ve sonraki kontrolde süreç bulunamadı. Tamamlanma veya yeni derleme kararlılığı kabulü yapılmadı.
+
+Ayrıntılar: [hesaplar, kapaklar ve HowLongToBeat](hesaplar-kapaklar-hltb.md). Önceki 10.000 oyun RAM/CPU ölçümleri yeni arayüzün performans sonucu olarak sunulmaz.

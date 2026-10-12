@@ -61,6 +61,7 @@ fn argument_value(args: &[String], name: &str) -> Option<String> {
     args.windows(2)
         .find(|pair| pair[0] == name)
         .map(|pair| pair[1].clone())
+        .filter(|value| !value.starts_with("--"))
 }
 
 fn show(ui: &LibraryWindow) {
@@ -283,6 +284,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let auto_update_app = store.setting("auto_update_app")?.as_deref() == Some("true");
     let auto_update_vencord = store.setting("auto_update_vencord")?.as_deref() != Some("false");
     let ui = LibraryWindow::new()?;
+    ui.window().set_size(slint::LogicalSize::new(1360.0, 860.0));
     ui.set_steam_account_id(
         store
             .setting("steam_account_id")?
@@ -422,6 +424,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 .upgrade()
                 .map(|ui| ui.get_collection_id() as i64)
                 .filter(|id| *id > 0),
+            columns: weak
+                .upgrade()
+                .map(|ui| ui.get_grid_columns() as usize)
+                .unwrap_or(4),
         };
         let sender = query_sender.clone();
         let weak = weak.clone();
@@ -571,27 +577,64 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         Some(Source::Manual) => 4,
     };
     ui.set_source_index(source_index);
-    ui.invoke_refresh("".into(), false, false, 0, source_index);
+    if let Some(section) = argument_value(&args, "--section") {
+        ui.set_section(section.parse()?);
+    }
+    if let Some(tab) = argument_value(&args, "--detail-tab") {
+        ui.set_detail_tab(tab.parse()?);
+    }
+    let initial_query = argument_value(&args, "--query").unwrap_or_default();
+    ui.set_query(initial_query.clone().into());
+    ui.invoke_refresh(
+        initial_query.into(),
+        ui.get_section() == 1,
+        false,
+        0,
+        source_index,
+    );
     if let Some(id) = argument_value(&args, "--detail-id") {
         enqueue(&sender, &ui.as_weak(), Command::Detail(id));
     }
-    if first_scan && !args.iter().any(|arg| arg == "--benchmark") {
+    if first_scan
+        && !args
+            .iter()
+            .any(|arg| arg == "--benchmark" || arg == "--skip-initial-scan")
+    {
         ui.invoke_scan();
     }
     if !args.iter().any(|arg| arg == "--tray") {
+        if let Some(width) = argument_value(&args, "--window-width") {
+            let width: f32 = width.parse()?;
+            let height: f32 = argument_value(&args, "--window-height")
+                .unwrap_or_else(|| "860".into())
+                .parse()?;
+            ui.window().set_size(slint::LogicalSize::new(
+                width.clamp(960.0, 4096.0),
+                height.clamp(640.0, 2160.0),
+            ));
+        }
         ui.show()?;
     }
-    let screenshot_timer = Timer::default();
+    let screenshot_timer = Rc::new(Timer::default());
     if let Some(output) = argument_value(&args, "--screenshot") {
         if let Some(section) = argument_value(&args, "--section") {
             ui.set_section(section.parse()?);
         }
         let weak = ui.as_weak();
-        screenshot_timer.start(TimerMode::SingleShot, Duration::from_secs(3), move || {
+        let capture_started = std::time::Instant::now();
+        let detail_target = argument_value(&args, "--detail-id");
+        let capture_timer = screenshot_timer.clone();
+        screenshot_timer.start(TimerMode::Repeated, Duration::from_millis(500), move || {
             if let Some(ui) = weak.upgrade() {
+                let ready = !ui.get_loading() && detail_target.as_ref().is_none_or(|id| ui.get_detail_id() == id);
+                if capture_started.elapsed() < Duration::from_secs(3) || (!ready && capture_started.elapsed() < Duration::from_secs(30)) { return; }
+                capture_timer.stop();
                 if let Err(error) = validation::screenshot(&ui, Path::new(&output)) {
                     eprintln!("{error}");
                 }
+                let rows = ui.get_game_rows();
+                let layout = serde_json::json!({"ready":ready,"physicalSize":{"width":ui.window().size().width,"height":ui.window().size().height},"scaleFactor":ui.window().scale_factor(),"columns":ui.get_grid_columns(),"section":ui.get_section(),"matched":ui.get_matched(),"offset":ui.get_offset(),"rowCount":slint::Model::row_count(&rows),"friends":slint::Model::row_count(&ui.get_friends()),"rooms":slint::Model::row_count(&ui.get_rooms())});
+                let _ = std::fs::write(Path::new(&output).with_extension("layout.json"),serde_json::to_vec_pretty(&layout).unwrap_or_default());
                 let _ = slint::quit_event_loop();
             }
         });

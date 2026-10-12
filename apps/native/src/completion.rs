@@ -154,18 +154,13 @@ pub fn lookup(game: &Game, selected: &str) -> Result<FetchedCompletion, String> 
 }
 
 pub fn summary(completion: &CompletionTimes) -> String {
-    let hours = |seconds: Option<u32>| {
-        seconds
-            .map(|seconds| format!("{:.1} saat", f64::from(seconds) / 3600.0))
-            .unwrap_or_else(|| "Veri yok".into())
-    };
-    format!(
-        "{} · HowLongToBeat\nAna hikâye: {} · Ana + ek içerik: {} · Tamamlama: {}",
-        completion.name,
-        hours(completion.main_seconds),
-        hours(completion.extra_seconds),
-        hours(completion.completionist_seconds)
-    )
+    format!("{} · HowLongToBeat topluluk ortalamaları", completion.name)
+}
+
+pub fn hours(seconds: Option<u32>) -> String {
+    seconds
+        .map(|seconds| format!("{:.1} saat", f64::from(seconds) / 3600.0))
+        .unwrap_or_else(|| "Veri yok".into())
 }
 
 #[cfg(test)]
