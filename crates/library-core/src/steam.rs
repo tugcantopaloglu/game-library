@@ -64,40 +64,46 @@ pub fn normalize_root(path: &Path) -> Result<PathBuf> {
 }
 
 pub fn discover_roots(extra: &[String]) -> Vec<PathBuf> {
+    roots_with_system(extra, true)
+}
+
+fn roots_with_system(extra: &[String], include_system: bool) -> Vec<PathBuf> {
     let mut candidates: Vec<PathBuf> = extra.iter().map(PathBuf::from).collect();
-    #[cfg(windows)]
-    {
-        use winreg::enums::*;
-        use winreg::RegKey;
-        for hive in [HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE] {
-            for view in [KEY_WOW64_64KEY, KEY_WOW64_32KEY] {
-                if let Ok(key) = RegKey::predef(hive)
-                    .open_subkey_with_flags("Software\\Valve\\Steam", KEY_READ | view)
-                {
-                    for name in ["SteamPath", "InstallPath"] {
-                        if let Ok(value) = key.get_value::<String, _>(name) {
-                            candidates.push(PathBuf::from(value));
+    if include_system {
+        #[cfg(windows)]
+        {
+            use winreg::enums::*;
+            use winreg::RegKey;
+            for hive in [HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE] {
+                for view in [KEY_WOW64_64KEY, KEY_WOW64_32KEY] {
+                    if let Ok(key) = RegKey::predef(hive)
+                        .open_subkey_with_flags("Software\\Valve\\Steam", KEY_READ | view)
+                    {
+                        for name in ["SteamPath", "InstallPath"] {
+                            if let Ok(value) = key.get_value::<String, _>(name) {
+                                candidates.push(PathBuf::from(value));
+                            }
                         }
                     }
                 }
             }
-        }
-        if let Ok(key) =
-            RegKey::predef(HKEY_CLASSES_ROOT).open_subkey("steam\\shell\\open\\command")
-        {
-            if let Ok(command) = key.get_value::<String, _>("") {
-                let executable = command
-                    .strip_prefix('"')
-                    .and_then(|rest| rest.split('"').next());
-                if let Some(parent) = executable.and_then(|exe| Path::new(exe).parent()) {
-                    candidates.push(parent.to_owned());
+            if let Ok(key) =
+                RegKey::predef(HKEY_CLASSES_ROOT).open_subkey("steam\\shell\\open\\command")
+            {
+                if let Ok(command) = key.get_value::<String, _>("") {
+                    let executable = command
+                        .strip_prefix('"')
+                        .and_then(|rest| rest.split('"').next());
+                    if let Some(parent) = executable.and_then(|exe| Path::new(exe).parent()) {
+                        candidates.push(parent.to_owned());
+                    }
                 }
             }
         }
-    }
-    for variable in ["ProgramFiles(x86)", "ProgramFiles"] {
-        if let Some(path) = std::env::var_os(variable) {
-            candidates.push(PathBuf::from(path).join("Steam"));
+        for variable in ["ProgramFiles(x86)", "ProgramFiles"] {
+            if let Some(path) = std::env::var_os(variable) {
+                candidates.push(PathBuf::from(path).join("Steam"));
+            }
         }
     }
     let initial = candidates.clone();
@@ -232,8 +238,16 @@ fn local_artwork(roots: &[PathBuf], app_id: u32) -> Option<String> {
 }
 
 pub fn scan(extra: &[String], cancel: &AtomicBool) -> ScanResult {
+    scan_discovered(discover_roots(extra), cancel)
+}
+
+/// Scan only explicitly supplied libraries and their libraryfolders, without host discovery.
+pub fn scan_configured(roots: &[String], cancel: &AtomicBool) -> ScanResult {
+    scan_discovered(roots_with_system(roots, false), cancel)
+}
+
+fn scan_discovered(roots: Vec<PathBuf>, cancel: &AtomicBool) -> ScanResult {
     let start = Instant::now();
-    let roots = discover_roots(extra);
     let mut warnings = Vec::new();
     let mut libraries = Vec::new();
     let mut found = 0_u32;

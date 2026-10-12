@@ -88,7 +88,7 @@ fn scans_multiple_libraries_and_deduplicates_roots() {
     .unwrap();
     std::fs::write(first.join("steamapps/appmanifest_570.acf"), DOTA).unwrap();
     std::fs::write(second.join("steamapps/appmanifest_730.acf"), CS).unwrap();
-    let result = steam::scan(
+    let result = steam::scan_configured(
         &[
             first.to_string_lossy().into_owned(),
             first.join("steamapps").to_string_lossy().into_owned(),
@@ -106,7 +106,7 @@ fn bad_manifest_does_not_prevent_valid_results() {
     let root = library(temp.path(), "Steam");
     std::fs::write(root.join("steamapps/appmanifest_570.acf"), DOTA).unwrap();
     std::fs::write(root.join("steamapps/appmanifest_730.acf"), "broken").unwrap();
-    let result = steam::scan(
+    let result = steam::scan_configured(
         &[root.to_string_lossy().into_owned()],
         &AtomicBool::new(false),
     );
@@ -124,18 +124,18 @@ fn rescan_preserves_favorites_and_missing_game_records() {
     let mut store = Store::open(&temp.path().join("data/library.db")).unwrap();
     let roots = [root.to_string_lossy().into_owned()];
     store
-        .apply_scan(&steam::scan(&roots, &AtomicBool::new(false)))
+        .apply_scan(&steam::scan_configured(&roots, &AtomicBool::new(false)))
         .unwrap();
     let game = store.list("", "all", 0, 20).unwrap().games.remove(0);
     store.set_favorite(&game.id, true).unwrap();
     store
-        .apply_scan(&steam::scan(&roots, &AtomicBool::new(false)))
+        .apply_scan(&steam::scan_configured(&roots, &AtomicBool::new(false)))
         .unwrap();
     assert_eq!(store.status().unwrap().total, 1);
     assert!(store.game(&game.id).unwrap().favorite);
     std::fs::remove_file(manifest).unwrap();
     store
-        .apply_scan(&steam::scan(&roots, &AtomicBool::new(false)))
+        .apply_scan(&steam::scan_configured(&roots, &AtomicBool::new(false)))
         .unwrap();
     assert!(!store.game(&game.id).unwrap().installed);
     assert_eq!(
@@ -154,15 +154,15 @@ fn incomplete_and_cancelled_scans_keep_previous_installation_state() {
     let mut store = Store::open(&temp.path().join("library.db")).unwrap();
     let roots = [root.to_string_lossy().into_owned()];
     store
-        .apply_scan(&steam::scan(&roots, &AtomicBool::new(false)))
+        .apply_scan(&steam::scan_configured(&roots, &AtomicBool::new(false)))
         .unwrap();
     std::fs::write(&manifest, "broken").unwrap();
     store
-        .apply_scan(&steam::scan(&roots, &AtomicBool::new(false)))
+        .apply_scan(&steam::scan_configured(&roots, &AtomicBool::new(false)))
         .unwrap();
     assert_eq!(store.status().unwrap().installed, 1);
     store
-        .apply_scan(&steam::scan(&roots, &AtomicBool::new(true)))
+        .apply_scan(&steam::scan_configured(&roots, &AtomicBool::new(true)))
         .unwrap();
     assert_eq!(store.status().unwrap().installed, 1);
 }
@@ -211,13 +211,13 @@ fn inaccessible_library_keeps_saved_games() {
     let normalized = steam::normalize_root(&root).unwrap();
     store.add_root(&normalized.to_string_lossy()).unwrap();
     store
-        .apply_scan(&steam::scan(
+        .apply_scan(&steam::scan_configured(
             &store.roots().unwrap(),
             &AtomicBool::new(false),
         ))
         .unwrap();
     std::fs::rename(&root, temp.path().join("Disconnected")).unwrap();
-    let result = steam::scan(&store.roots().unwrap(), &AtomicBool::new(false));
+    let result = steam::scan_configured(&store.roots().unwrap(), &AtomicBool::new(false));
     assert!(!result.report.warnings.is_empty());
     store.apply_scan(&result).unwrap();
     assert_eq!(store.status().unwrap().total, 1);
