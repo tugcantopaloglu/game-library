@@ -1,5 +1,7 @@
 # Discord entegrasyonu
 
+12 Ekim 2026 uygulama durumu: Developer Portal uygulaması olmadan yerel Vencord köprüsü kuruldu ve Discord Stable oturumunda gerçek arkadaş/oda verisi okundu. Kurulum yolu kaynaklı main-process açılış hatası düzeltildi. Aşağıdaki Social SDK/bot bölümleri gelecek erişim seçenekleridir; çalışan uygulama yolu ve canlı yetenek sınırları [Vencord kabul kaydında](kutuphane-ve-guncellemeler.md#vencord) yer alır. Yayın kontrolleri mevcut istemcide kapalıdır.
+
 ## Erişim modeli
 
 Entegrasyon native olacak: Rust tarafında resmi SDK/yerel IPC bağlantısı, Slint tarafında kişi/oda/yayın bileşenleri. Discord sitesi, iframe veya Discord istemcisinin WebView içine gömülmesi kullanılmayacak. Video yakalama ve kodlama Discord'un kendi sürecinde kalacak. Native arayüz geçişi Discord API yetkilerini genişletmez; aşağıdaki erişim koşulları her özellik için ayrıca doğrulanır.

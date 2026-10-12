@@ -1,6 +1,10 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod bridge;
 mod measurement;
+mod media;
+mod updates;
+mod validation;
 mod worker;
 
 use library_core::models::Source;
@@ -14,6 +18,18 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use worker::{Command, Query};
+
+fn enqueue(
+    sender: &std::sync::mpsc::SyncSender<Command>,
+    weak: &slint::Weak<LibraryWindow>,
+    command: Command,
+) {
+    if let Err(error) = sender.try_send(command) {
+        if let Some(ui) = weak.upgrade() {
+            ui.set_notice(error.to_string().into());
+        }
+    }
+}
 
 fn queue_scan(
     sender: &std::sync::mpsc::SyncSender<Command>,
@@ -58,6 +74,7 @@ fn show(ui: &LibraryWindow) {
 }
 
 fn run() -> Result<(), Box<dyn std::error::Error>> {
+    let started = std::time::Instant::now();
     let args: Vec<String> = std::env::args().collect();
     if args.iter().any(|arg| arg == "--benchmark")
         && args.iter().any(|arg| arg == "--lifecycle-test")
@@ -73,6 +90,58 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         });
     std::fs::create_dir_all(&data_dir)?;
     let data_dir = std::fs::canonicalize(data_dir)?;
+    if let Some(output) = argument_value(&args, "--data-directory-report") {
+        std::fs::write(
+            output,
+            serde_json::to_vec_pretty(
+                &serde_json::json!({"dataDirectory":updates::external_path(&data_dir)}),
+            )?,
+        )?;
+        return Ok(());
+    }
+    if args.iter().any(|argument| argument == "--prepare-vencord") {
+        println!("{}", updates::prepare_bridge(&data_dir)?);
+        return Ok(());
+    }
+    if let Some(action) = argument_value(&args, "--vencord-action") {
+        let action = match action.as_str() {
+            "install" => updates::InstallerAction::Install,
+            "repair" => updates::InstallerAction::Repair,
+            "uninstall" => updates::InstallerAction::Uninstall,
+            _ => return Err("Geçersiz Vencord işlemi".into()),
+        };
+        println!(
+            "{}",
+            updates::vencord_installer(
+                &data_dir,
+                action,
+                &argument_value(&args, "--discord-branch").unwrap_or_else(|| "stable".into())
+            )?
+        );
+        return Ok(());
+    }
+    if let Some(output) = argument_value(&args, "--bridge-probe") {
+        let bridge = bridge::Bridge::start(&data_dir)?;
+        let start = std::time::Instant::now();
+        loop {
+            let snapshot = bridge.snapshot();
+            if snapshot["connected"] == true || start.elapsed().as_secs() >= 90 {
+                let report = serde_json::json!({"connected":snapshot["connected"],"status":snapshot["status"],"friendCount":snapshot["friends"].as_array().map(Vec::len),"roomCount":snapshot["rooms"].as_array().map(Vec::len),"capabilities":snapshot["capabilities"],"muted":snapshot["muted"],"deafened":snapshot["deafened"],"autoUpdate":snapshot["autoUpdate"]});
+                std::fs::write(output, serde_json::to_vec_pretty(&report)?)?;
+                break;
+            }
+            std::thread::sleep(Duration::from_secs(1));
+        }
+        return Ok(());
+    }
+    if let Some(directory) = argument_value(&args, "--apply-update") {
+        let target = argument_value(&args, "--update-target").ok_or("Güncelleme hedefi yok")?;
+        let parent = argument_value(&args, "--update-parent")
+            .ok_or("Güncelleme parent PID yok")?
+            .parse()?;
+        updates::apply(Path::new(&directory), Path::new(&target), &data_dir, parent)?;
+        return Ok(());
+    }
     let instance = InstanceGuard::acquire(&data_dir)?;
     if !instance.primary
         && !args
@@ -82,6 +151,24 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
     let mut store = Store::open(&data_dir.join("library.db"))?;
+    if let Some(output) = argument_value(&args, "--search-benchmark") {
+        validation::search_benchmark(&store, Path::new(&output))?;
+        return Ok(());
+    }
+    if let Some(executable) = argument_value(&args, "--add-manual") {
+        let title = argument_value(&args, "--title").unwrap_or_else(|| {
+            Path::new(&executable)
+                .file_stem()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned()
+        });
+        let id = store.add_manual(Path::new(&executable), &title, vec![])?;
+        if let Some(output) = argument_value(&args, "--output") {
+            std::fs::write(output, serde_json::to_vec_pretty(&store.detail(&id)?)?)?;
+        }
+        return Ok(());
+    }
     let source_filter = argument_value(&args, "--source")
         .map(|value| Source::parse(&value))
         .transpose()?;
@@ -109,7 +196,11 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         .any(|arg| arg == "--scan-json" || arg == "--list-json")
     {
         let report = if args.iter().any(|arg| arg == "--scan-json") {
-            let result = sources::scan(&store.source_roots()?, &AtomicBool::new(false));
+            let result = if args.iter().any(|argument| argument == "--fixture-only") {
+                library_core::steam::scan_configured(&store.roots()?, &AtomicBool::new(false))
+            } else {
+                sources::scan(&store.source_roots()?, &AtomicBool::new(false))
+            };
             store.apply_source_scan(&result)?;
             Some(result.report)
         } else {
@@ -124,7 +215,22 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
     let first_scan = store.needs_source_scan()?;
+    if args.iter().any(|argument| argument == "--enable-bridge") {
+        store.set_setting("bridge_enabled", "true")?;
+    }
+    if let (Some(id), Some(executable)) = (
+        argument_value(&args, "--launch-test"),
+        argument_value(&args, "--tracking-exe"),
+    ) {
+        store.set_tracking_executable(&id, Path::new(&executable))?;
+    }
+    let bridge_enabled = store.setting("bridge_enabled")?.as_deref() == Some("true");
+    let auto_update_app = store.setting("auto_update_app")?.as_deref() == Some("true");
+    let auto_update_vencord = store.setting("auto_update_vencord")?.as_deref() != Some("false");
     let ui = LibraryWindow::new()?;
+    ui.set_bridge_enabled(bridge_enabled);
+    ui.set_auto_update_app(auto_update_app);
+    ui.set_auto_update_vencord(auto_update_vencord);
     let tray = LibraryTray::new()?;
     let about = AboutWindow::new()?;
     let state = Arc::new(worker::State {
@@ -133,6 +239,47 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         revision: AtomicU64::new(0),
     });
     let sender = worker::start(store, data_dir.clone(), state.clone(), ui.as_weak());
+    if let Some(output) = argument_value(&args, "--bridge-status-report") {
+        let weak = ui.as_weak();
+        ui.on_bridge_ready(move || {if let Some(ui) = weak.upgrade() {
+            if ui.get_bridge_connected() {
+                let report = serde_json::json!({"connected":true,"canMute":ui.get_can_mute(),"canDeafen":ui.get_can_deafen(),"canStopStream":ui.get_can_stop_stream()});
+                let _ = std::fs::write(&output,serde_json::to_vec_pretty(&report).unwrap_or_default());
+            }
+        }});
+    }
+    let startup_timer = Rc::new(Timer::default());
+    let startup_output = argument_value(&args, "--startup-report");
+    let update_health = argument_value(&args, "--update-health-report")
+        .zip(argument_value(&args, "--update-health-token"));
+    if startup_output.is_some() || update_health.is_some() {
+        let timer = startup_timer.clone();
+        let weak = ui.as_weak();
+        let recorded = std::cell::Cell::new(false);
+        ui.on_library_ready(move || {
+            if recorded.replace(true) {return;}
+            let output = startup_output.clone(); let health = update_health.clone(); let weak = weak.clone();
+            timer.start(TimerMode::SingleShot,Duration::from_millis(1),move || {
+                if let Some(ui) = weak.upgrade() {
+                    let rendered = ui.window().take_snapshot().is_ok();
+                    if let Some(output) = &output {
+                        let report = serde_json::json!({"startupUsableMs":started.elapsed().as_secs_f64()*1000.0,"thumbnailAndOffscreenRenderIncluded":true,"osPaintLatencyIncluded":false,"rendered":rendered});
+                        let _ = std::fs::write(output,serde_json::to_vec_pretty(&report).unwrap_or_default());
+                    }
+                    if rendered {
+                        if let Some((output,token)) = &health {
+                            let report = serde_json::json!({"ready":true,"version":env!("CARGO_PKG_VERSION"),"pid":std::process::id(),"token":token});
+                            let temporary = PathBuf::from(output).with_extension("part");
+                            if std::fs::write(&temporary,serde_json::to_vec_pretty(&report).unwrap_or_default()).is_ok() {
+                                let _ = std::fs::rename(temporary,output);
+                            }
+                        }
+                    }
+                }
+                if output.is_some() {let _ = slint::quit_event_loop();}
+            });
+        });
+    }
     let measurements = Arc::new(measurement::Measurements::default());
     let weak = ui.as_weak();
     instance.listen(move || weak.upgrade_in_event_loop(|ui| show(&ui)).is_ok());
@@ -188,8 +335,13 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 1 => Some(Source::Steam),
                 2 => Some(Source::Epic),
                 3 => Some(Source::Riot),
+                4 => Some(Source::Manual),
                 _ => None,
             },
+            collection: weak
+                .upgrade()
+                .map(|ui| ui.get_collection_id() as i64)
+                .filter(|id| *id > 0),
         };
         let sender = query_sender.clone();
         let weak = weak.clone();
@@ -242,9 +394,63 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     });
+    macro_rules! register_command {
+        ($method:ident, ($($argument:ident),*) => $command:expr) => {{
+            let sender = sender.clone(); let weak = ui.as_weak();
+            ui.$method(move |$($argument),*| enqueue(&sender,&weak,$command));
+        }};
+    }
+    register_command!(on_add_manual, () => Command::AddManual);
+    register_command!(on_detail, (id) => Command::Detail(id.into()));
+    register_command!(on_tracking, (id) => Command::Tracking(id.into()));
+    register_command!(on_save_detail, (id,title,notes) => Command::SaveDetail(id.into(),title.into(),notes.into()));
+    register_command!(on_cover, (id,reset) => Command::Cover(id.into(),reset));
+    register_command!(on_remote_cover, (id,url) => Command::RemoteCover(id.into(),url.into()));
+    register_command!(on_create_collection, (name) => Command::CollectionCreate(name.into()));
+    register_command!(on_delete_collection, (id) => Command::CollectionDelete(id as i64));
+    register_command!(on_collection_member, (id,collection,member) => Command::CollectionMember(id.into(),collection as i64,member));
+    register_command!(on_bridge_action, (action,id) => Command::BridgeAction(action.into(),serde_json::json!({"id":id.as_str()})));
+    register_command!(on_update_check, () => Command::UpdateCheck);
+    register_command!(on_prepare_bridge, () => Command::PrepareBridge);
+    register_command!(on_artwork_key, (key) => Command::ArtworkKey(key.into()));
+    register_command!(on_search_covers, (id) => Command::SearchCovers(id.into()));
+    register_command!(on_update_stage, () => Command::UpdateStage);
+    register_command!(on_update_apply, () => Command::UpdateApply);
+    register_command!(on_update_preferences, (app,vencord) => Command::UpdatePreferences(app,vencord));
+    let installer_sender = sender.clone();
     let weak = ui.as_weak();
+    ui.on_installer(move |action,branch| {
+        let branch = match branch { 1=>"ptb",2=>"canary",_=>"stable" };
+        let message = format!("Resmi Vencord installer Discord {branch} kurulumunu değiştirecek. Discord kapanabilir ve yeniden açılması gerekebilir. Devam edilsin mi?");
+        if rfd::MessageDialog::new().set_title("Vencord işlemi").set_description(message).set_buttons(rfd::MessageButtons::YesNo).show() == rfd::MessageDialogResult::Yes {
+            enqueue(&installer_sender,&weak,Command::Installer(match action { 1=>updates::InstallerAction::Repair,2=>updates::InstallerAction::Uninstall,_=>updates::InstallerAction::Install },branch.into()));
+        }
+    });
+    let bridge_timer = Rc::new(Timer::default());
+    let timer = bridge_timer.clone();
+    let bridge_sender = sender.clone();
+    let weak = ui.as_weak();
+    ui.on_bridge_toggle(move |enabled| {
+        enqueue(&bridge_sender, &weak, Command::BridgeEnable(enabled));
+        if enabled {
+            let sender = bridge_sender.clone();
+            let weak = weak.clone();
+            timer.start(TimerMode::Repeated, Duration::from_secs(2), move || {
+                if weak.upgrade().is_some_and(|ui| ui.window().is_visible()) {
+                    enqueue(&sender, &weak, Command::BridgeRefresh);
+                }
+            });
+        } else {
+            timer.stop();
+        }
+    });
+    if bridge_enabled {
+        ui.invoke_bridge_toggle(true);
+    }
+    let weak = ui.as_weak();
+    let reports_sender = sender.clone();
     ui.on_open_reports(move || {
-        if let Err(error) = sender.try_send(Command::Reports) {
+        if let Err(error) = reports_sender.try_send(Command::Reports) {
             if let Some(ui) = weak.upgrade() {
                 ui.set_notice(error.to_string().into());
             }
@@ -276,6 +482,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         Some(Source::Steam) => 1,
         Some(Source::Epic) => 2,
         Some(Source::Riot) => 3,
+        Some(Source::Manual) => 4,
     };
     ui.set_source_index(source_index);
     ui.invoke_refresh("".into(), false, false, 0, source_index);
@@ -284,6 +491,27 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
     if !args.iter().any(|arg| arg == "--tray") {
         ui.show()?;
+    }
+    let screenshot_timer = Timer::default();
+    if let Some(output) = argument_value(&args, "--screenshot") {
+        if let Some(section) = argument_value(&args, "--section") {
+            ui.set_section(section.parse()?);
+        }
+        let weak = ui.as_weak();
+        screenshot_timer.start(TimerMode::SingleShot, Duration::from_secs(3), move || {
+            if let Some(ui) = weak.upgrade() {
+                if let Err(error) = validation::screenshot(&ui, Path::new(&output)) {
+                    eprintln!("{error}");
+                }
+                let _ = slint::quit_event_loop();
+            }
+        });
+    }
+    if let Some(id) = argument_value(&args, "--launch-test") {
+        let report =
+            argument_value(&args, "--acceptance-report").ok_or("Oyun kabul raporu yolu gerekli")?;
+        enqueue(&sender.clone(), &ui.as_weak(), Command::Launch(id.clone()));
+        validation::launch_acceptance(data_dir.join("library.db"), id, PathBuf::from(report));
     }
     tray.show()?;
     let initial_focus = Timer::default();
@@ -313,6 +541,13 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(path) = argument_value(&args, "--lifecycle-test") {
         measurement::lifecycle(measurements.clone(), ui.as_weak(), PathBuf::from(path));
     }
+    if let Some(path) = argument_value(&args, "--stability-report") {
+        let seconds = argument_value(&args, "--stability-seconds")
+            .map(|value| value.parse())
+            .transpose()?
+            .unwrap_or(28_800);
+        validation::stability(PathBuf::from(path), seconds)?;
+    }
     slint::run_event_loop()?;
     state.cancel_scan.store(true, Ordering::Relaxed);
     measurements.cancel.store(true, Ordering::Relaxed);
@@ -336,6 +571,18 @@ fn main() {
                 || argument == "--lifecycle-test"
                 || argument == "--launch-plan"
                 || argument == "--list-json"
+                || argument == "--screenshot"
+                || argument == "--search-benchmark"
+                || argument == "--stability-report"
+                || argument == "--apply-update"
+                || argument == "--add-manual"
+                || argument == "--launch-test"
+                || argument == "--startup-report"
+                || argument == "--vencord-action"
+                || argument == "--bridge-probe"
+                || argument == "--prepare-vencord"
+                || argument == "--data-directory-report"
+                || argument == "--update-health-report"
         }) {
             rfd::MessageDialog::new()
                 .set_title("Game Library")

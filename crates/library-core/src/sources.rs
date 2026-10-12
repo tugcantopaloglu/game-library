@@ -9,6 +9,9 @@ pub fn normalize_root(source: Source, path: &Path) -> Result<PathBuf> {
         Source::Steam => steam::normalize_root(path),
         Source::Epic => epic::normalize_root(path),
         Source::Riot => riot::normalize_root(path),
+        Source::Manual => Err(crate::LibraryError::Invalid(
+            "Elle oyun eklemek için executable seç.".into(),
+        )),
     }
 }
 

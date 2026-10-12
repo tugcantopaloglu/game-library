@@ -1,6 +1,7 @@
 pub mod discovery;
 pub mod epic;
 pub mod launcher;
+pub mod manual;
 pub mod models;
 pub mod riot;
 pub mod sources;

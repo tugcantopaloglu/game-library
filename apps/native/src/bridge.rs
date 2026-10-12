@@ -1,0 +1,187 @@
+use serde_json::{json, Value};
+use std::io::{BufRead, BufReader, Read, Write};
+use std::net::{TcpListener, TcpStream};
+use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{mpsc, Arc, Mutex};
+use std::time::Duration;
+
+pub const PROTOCOL: u64 = 1;
+pub struct Bridge {
+    pub state: Arc<Mutex<Value>>,
+    commands: mpsc::SyncSender<Value>,
+    stop: Arc<AtomicBool>,
+    address: std::net::SocketAddr,
+    config: std::path::PathBuf,
+    token: String,
+}
+
+fn read_message(reader: &mut BufReader<TcpStream>) -> Result<Value, String> {
+    let mut bytes = Vec::new();
+    reader
+        .take(256 * 1024 + 1)
+        .read_until(b'\n', &mut bytes)
+        .map_err(|error| error.to_string())?;
+    if bytes.is_empty() || bytes.len() > 256 * 1024 || bytes.last() != Some(&b'\n') {
+        return Err("Köprü mesajı geçersiz".into());
+    }
+    serde_json::from_slice(&bytes).map_err(|_| "Köprü JSON mesajı geçersiz".into())
+}
+
+fn write_message(stream: &mut TcpStream, value: &Value) -> Result<(), String> {
+    let mut bytes = serde_json::to_vec(value).map_err(|error| error.to_string())?;
+    bytes.push(b'\n');
+    stream.write_all(&bytes).map_err(|error| error.to_string())
+}
+
+impl Bridge {
+    pub fn start(data: &Path) -> Result<Self, String> {
+        let listener = TcpListener::bind("127.0.0.1:0").map_err(|error| error.to_string())?;
+        let address = listener.local_addr().map_err(|error| error.to_string())?;
+        let stop = Arc::new(AtomicBool::new(false));
+        let stopping = stop.clone();
+        let mut random = [0u8; 32];
+        getrandom::fill(&mut random).map_err(|error| error.to_string())?;
+        let token: String = random.iter().map(|byte| format!("{byte:02x}")).collect();
+        let owner_token = token.clone();
+        let directory = data.join("integrations/vencord");
+        std::fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
+        std::fs::write(directory.join("bridge.json"),serde_json::to_vec(&json!({"protocol":PROTOCOL,"port":listener.local_addr().map_err(|error|error.to_string())?.port(),"token":token})).map_err(|error|error.to_string())?).map_err(|error|error.to_string())?;
+        let state = Arc::new(Mutex::new(
+            json!({"connected":false,"status":"Vencord köprüsü bekleniyor"}),
+        ));
+        let state_copy = state.clone();
+        let (commands, receiver) = mpsc::sync_channel(16);
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                if stopping.load(Ordering::Relaxed) {
+                    break;
+                }
+                let Ok(mut stream) = stream else {
+                    break;
+                };
+                let result = (|| -> Result<(), String> {
+                    stream
+                        .set_read_timeout(Some(Duration::from_secs(3)))
+                        .map_err(|error| error.to_string())?;
+                    stream
+                        .set_write_timeout(Some(Duration::from_secs(2)))
+                        .map_err(|error| error.to_string())?;
+                    let mut reader =
+                        BufReader::new(stream.try_clone().map_err(|error| error.to_string())?);
+                    let hello = read_message(&mut reader)?;
+                    if hello["protocol"] != PROTOCOL
+                        || hello["token"] != token
+                        || hello["type"] != "hello"
+                    {
+                        return Err("Köprü kimliği veya sürümü uyumsuz".into());
+                    }
+                    write_message(&mut stream, &json!({"type":"welcome","protocol":PROTOCOL}))?;
+                    while receiver.try_recv().is_ok() {}
+                    loop {
+                        if stopping.load(Ordering::Relaxed) {
+                            break;
+                        }
+                        match read_message(&mut reader) {
+                            Ok(value) => {
+                                if value["type"] == "snapshot" {
+                                    if let Ok(mut state) = state_copy.lock() {
+                                        *state = value;
+                                        state["connected"] = json!(true);
+                                    }
+                                }
+                            }
+                            Err(_) => break,
+                        }
+                        while let Ok(command) = receiver.try_recv() {
+                            write_message(&mut stream, &command)?;
+                        }
+                        write_message(&mut stream, &json!({"type":"ping"}))?;
+                    }
+                    Ok(())
+                })();
+                let _ = result;
+                if let Ok(mut state) = state_copy.lock() {
+                    *state = json!({"connected":false,"status":"Vencord bağlantısı kapalı veya uyumsuz"});
+                }
+            }
+        });
+        Ok(Self {
+            state,
+            commands,
+            stop,
+            address,
+            config: directory.join("bridge.json"),
+            token: owner_token,
+        })
+    }
+
+    pub fn snapshot(&self) -> Value {
+        self.state
+            .lock()
+            .map(|state| state.clone())
+            .unwrap_or_else(|_| json!({"connected":false}))
+    }
+
+    pub fn command(&self, action: &str, data: Value) -> Result<(), String> {
+        let snapshot = self.snapshot();
+        if snapshot["connected"] != true || snapshot["capabilities"][action] != true {
+            return Err("Bu işlem bağlı Discord/Vencord sürümünde desteklenmiyor".into());
+        }
+        self.commands
+            .try_send(json!({"type":"command","action":action,"data":data}))
+            .map_err(|_| "Discord işlem kuyruğu dolu".into())
+    }
+}
+
+impl Drop for Bridge {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::Relaxed);
+        let current = std::fs::read(&self.config)
+            .ok()
+            .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok());
+        if current.is_some_and(|current| current["token"] == self.token) {
+            let _ = std::fs::remove_file(&self.config);
+        }
+        let _ = TcpStream::connect_timeout(&self.address, Duration::from_millis(100));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn bridge_requires_pairing_and_clears_live_data_on_disconnect() {
+        let directory = tempfile::tempdir().unwrap();
+        let bridge = Bridge::start(directory.path()).unwrap();
+        assert!(bridge.command("mute", json!({})).is_err());
+        let config: Value = serde_json::from_slice(
+            &std::fs::read(directory.path().join("integrations/vencord/bridge.json")).unwrap(),
+        )
+        .unwrap();
+        let mut stream = TcpStream::connect(bridge.address).unwrap();
+        write_message(
+            &mut stream,
+            &json!({"type":"hello","protocol":PROTOCOL,"token":config["token"]}),
+        )
+        .unwrap();
+        let mut reader = BufReader::new(stream.try_clone().unwrap());
+        assert_eq!(read_message(&mut reader).unwrap()["type"], "welcome");
+        write_message(&mut stream,&json!({"type":"snapshot","capabilities":{"mute":true},"friends":[{"name":"Test friend"}]})).unwrap();
+        let start = std::time::Instant::now();
+        while bridge.snapshot()["connected"] != true && start.elapsed() < Duration::from_secs(1) {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert_eq!(bridge.snapshot()["connected"], true);
+        assert!(bridge.command("mute", json!({})).is_ok());
+        assert!(bridge.command("stream_start", json!({})).is_err());
+        drop(reader);
+        drop(stream);
+        let start = std::time::Instant::now();
+        while bridge.snapshot()["connected"] == true && start.elapsed() < Duration::from_secs(1) {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert_eq!(bridge.snapshot()["connected"], false);
+        assert!(bridge.snapshot()["friends"].is_null());
+    }
+}

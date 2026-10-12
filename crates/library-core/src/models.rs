@@ -7,15 +7,17 @@ pub enum Source {
     Steam,
     Epic,
     Riot,
+    Manual,
 }
 
 impl Source {
-    pub const ALL: [Self; 3] = [Self::Steam, Self::Epic, Self::Riot];
+    pub const ALL: [Self; 4] = [Self::Steam, Self::Epic, Self::Riot, Self::Manual];
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Steam => "steam",
             Self::Epic => "epic",
             Self::Riot => "riot",
+            Self::Manual => "manual",
         }
     }
     pub fn label(self) -> &'static str {
@@ -23,6 +25,7 @@ impl Source {
             Self::Steam => "Steam",
             Self::Epic => "Epic Games",
             Self::Riot => "Riot Games",
+            Self::Manual => "Elle eklenen",
         }
     }
     pub fn parse(value: &str) -> crate::Result<Self> {
@@ -30,6 +33,7 @@ impl Source {
             "steam" => Ok(Self::Steam),
             "epic" => Ok(Self::Epic),
             "riot" => Ok(Self::Riot),
+            "manual" => Ok(Self::Manual),
             _ => Err(crate::LibraryError::Invalid("Geçersiz oyun kaynağı".into())),
         }
     }
@@ -57,6 +61,38 @@ pub enum LaunchTarget {
         patchline: String,
         executable: String,
     },
+    Manual {
+        executable: String,
+        args: Vec<String>,
+        working_dir: String,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Collection {
+    pub id: i64,
+    pub name: String,
+    pub games: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlaySession {
+    pub id: i64,
+    pub started_ms: i64,
+    pub ended_ms: Option<i64>,
+    pub status: String,
+    pub pid: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GameDetail {
+    pub game: Game,
+    pub notes: String,
+    pub collections: Vec<Collection>,
+    pub sessions: Vec<PlaySession>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

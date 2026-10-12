@@ -1,5 +1,6 @@
 use crate::models::{
-    Game, GamePage, LaunchTarget, LibraryStatus, ScanResult, Source, SourceRoot, SourceStatus,
+    Collection, Game, GameDetail, GamePage, LaunchTarget, LibraryStatus, PlaySession, ScanResult,
+    Source, SourceRoot, SourceStatus,
 };
 use crate::{LibraryError, Result};
 use rusqlite::{params, Connection};
@@ -18,13 +19,17 @@ impl Store {
         let mut connection = Connection::open(path)?;
         connection.busy_timeout(Duration::from_secs(3))?;
         let version: u32 = connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
-        if version > 2 {
+        if version > 3 {
             return Err(LibraryError::Invalid(
                 "Veritabanı bu uygulamadan daha yeni bir sürüm kullanıyor".into(),
             ));
         }
         connection.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA cache_size=-2048; PRAGMA foreign_keys=ON;")?;
+        if version == 3 {
+            return Ok(Self { connection });
+        }
         if version == 2 {
+            upgrade_user_data(&mut connection, path, true)?;
             return Ok(Self { connection });
         }
         if version == 1 {
@@ -72,6 +77,7 @@ impl Store {
         }
         transaction.pragma_update(None, "user_version", 2)?;
         transaction.commit()?;
+        upgrade_user_data(&mut connection, path, false)?;
         Ok(Self { connection })
     }
 
@@ -224,6 +230,18 @@ impl Store {
         limit: u32,
         source: Option<Source>,
     ) -> Result<GamePage> {
+        self.list_filtered(query, filter, offset, limit, source, None)
+    }
+
+    pub fn list_filtered(
+        &self,
+        query: &str,
+        filter: &str,
+        offset: u32,
+        limit: u32,
+        source: Option<Source>,
+        collection: Option<i64>,
+    ) -> Result<GamePage> {
         let query = format!(
             "%{}%",
             query
@@ -237,16 +255,30 @@ impl Store {
             _ => return Err(LibraryError::Invalid("Geçersiz kütüphane filtresi".into())),
         };
         let source = source.map(Source::as_str);
-        let predicate = "search_name LIKE ?1 ESCAPE '\\' AND (?2='all' OR (?2='installed' AND installed=1) OR (?2='favorites' AND favorite=1) OR (?2='favorites-installed' AND favorite=1 AND installed=1)) AND (?5 IS NULL OR source=?5)";
+        let predicate = "search_name LIKE ?1 ESCAPE '\\' AND (?2='all' OR (?2='installed' AND installed=1) OR (?2='favorites' AND favorite=1) OR (?2='favorites-installed' AND favorite=1 AND installed=1)) AND (?5 IS NULL OR source=?5) AND (?6 IS NULL OR id IN (SELECT game_id FROM collection_games WHERE collection_id=?6))";
         let total = self.connection.query_row(
-            &format!("SELECT count(*) FROM games WHERE {predicate}"),
-            params![query, filter, limit.clamp(1, 200), offset, source],
+            &format!("SELECT count(*) FROM library_games WHERE {predicate}"),
+            params![
+                query,
+                filter,
+                limit.clamp(1, 200),
+                offset,
+                source,
+                collection
+            ],
             |row| row.get::<_, u32>(0),
         )?;
-        let mut statement = self.connection.prepare_cached(&format!("SELECT id,app_id,name,library_path,install_path,installed,favorite,size_bytes,artwork_path,source,source_id,launch_json FROM games WHERE {predicate} ORDER BY search_name,id LIMIT ?3 OFFSET ?4"))?;
+        let mut statement = self.connection.prepare_cached(&format!("SELECT id,app_id,name,library_path,install_path,installed,favorite,size_bytes,artwork_path,source,source_id,launch_json FROM library_games WHERE {predicate} ORDER BY search_name,id LIMIT ?3 OFFSET ?4"))?;
         let games = statement
             .query_map(
-                params![query, filter, limit.clamp(1, 200), offset, source],
+                params![
+                    query,
+                    filter,
+                    limit.clamp(1, 200),
+                    offset,
+                    source,
+                    collection
+                ],
                 row_game,
             )?
             .collect::<std::result::Result<Vec<_>, _>>()?;
@@ -254,7 +286,223 @@ impl Store {
     }
 
     pub fn game(&self, id: &str) -> Result<Game> {
-        self.connection.query_row("SELECT id,app_id,name,library_path,install_path,installed,favorite,size_bytes,artwork_path,source,source_id,launch_json FROM games WHERE id=?1", [id], row_game).map_err(Into::into)
+        self.connection.query_row("SELECT id,app_id,name,library_path,install_path,installed,favorite,size_bytes,artwork_path,source,source_id,launch_json FROM library_games WHERE id=?1", [id], row_game).map_err(Into::into)
+    }
+
+    pub fn add_manual(
+        &mut self,
+        executable: &Path,
+        title: &str,
+        args: Vec<String>,
+    ) -> Result<String> {
+        let game = crate::manual::game(executable, title, args)?;
+        let id = game.id.clone();
+        let launch = serde_json::to_string(&game.launch)
+            .map_err(|error| LibraryError::Invalid(error.to_string()))?;
+        self.connection.execute("INSERT INTO games(id,app_id,name,search_name,library_path,install_path,installed,size_bytes,artwork_path,source,source_id,launch_json) VALUES(?1,0,?2,?3,?4,?4,1,0,NULL,'manual',?5,?6) ON CONFLICT(id) DO UPDATE SET name=excluded.name,search_name=excluded.search_name,installed=1,launch_json=excluded.launch_json",params![id,game.name,game.name.to_lowercase(),game.install_path,game.source_id,launch])?;
+        Ok(id)
+    }
+
+    pub fn set_override(
+        &self,
+        id: &str,
+        title: Option<&str>,
+        notes: &str,
+        artwork: Option<&str>,
+    ) -> Result<()> {
+        self.game(id)?;
+        if title.is_some_and(|title| {
+            title.trim().is_empty() || title.len() > 512 || title.contains('\0')
+        }) || notes.len() > 16_384
+            || notes.contains('\0')
+            || artwork.is_some_and(|path| path.len() > 4096 || path.contains('\0'))
+        {
+            return Err(LibraryError::Invalid(
+                "Oyun düzeltmesi boyut veya karakter sınırını aşıyor".into(),
+            ));
+        }
+        let search = title.map(|title| title.trim().to_lowercase());
+        self.connection.execute("INSERT INTO game_overrides(game_id,title,search_title,notes,artwork_path) VALUES(?1,?2,?3,?4,?5) ON CONFLICT(game_id) DO UPDATE SET title=excluded.title,search_title=excluded.search_title,notes=excluded.notes,artwork_path=excluded.artwork_path",
+            params![id,title.map(str::trim),search,notes,artwork])?;
+        Ok(())
+    }
+
+    pub fn collections(&self) -> Result<Vec<Collection>> {
+        let mut statement = self.connection.prepare("SELECT c.id,c.name,count(cg.game_id) FROM collections c LEFT JOIN collection_games cg ON c.id=cg.collection_id GROUP BY c.id ORDER BY c.name,c.id")?;
+        let collections = statement
+            .query_map([], |row| {
+                Ok(Collection {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    games: row.get(2)?,
+                })
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(collections)
+    }
+
+    pub fn create_collection(&self, name: &str) -> Result<i64> {
+        let name = name.trim();
+        if name.is_empty() || name.len() > 120 || name.contains('\0') {
+            return Err(LibraryError::Invalid(
+                "Koleksiyon adı 1–120 karakter olmalı".into(),
+            ));
+        }
+        self.connection
+            .execute("INSERT OR IGNORE INTO collections(name) VALUES(?1)", [name])?;
+        Ok(self.connection.query_row(
+            "SELECT id FROM collections WHERE name=?1",
+            [name],
+            |row| row.get(0),
+        )?)
+    }
+
+    pub fn collection_member(&self, collection: i64, game: &str, member: bool) -> Result<()> {
+        self.game(game)?;
+        if member {
+            self.connection.execute(
+                "INSERT OR IGNORE INTO collection_games(collection_id,game_id) VALUES(?1,?2)",
+                params![collection, game],
+            )?;
+        } else {
+            self.connection.execute(
+                "DELETE FROM collection_games WHERE collection_id=?1 AND game_id=?2",
+                params![collection, game],
+            )?;
+        }
+        Ok(())
+    }
+
+    pub fn delete_collection(&self, id: i64) -> Result<()> {
+        self.connection
+            .execute("DELETE FROM collections WHERE id=?1", [id])?;
+        Ok(())
+    }
+
+    pub fn detail(&self, id: &str) -> Result<GameDetail> {
+        let game = self.game(id)?;
+        use rusqlite::OptionalExtension;
+        let notes = self
+            .connection
+            .query_row(
+                "SELECT notes FROM game_overrides WHERE game_id=?1",
+                [id],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?
+            .unwrap_or_default();
+        let mut memberships = self.connection.prepare("SELECT c.id,c.name,1 FROM collections c JOIN collection_games cg ON c.id=cg.collection_id WHERE cg.game_id=?1 ORDER BY c.name,c.id")?;
+        let collections = memberships
+            .query_map([id], |row| {
+                Ok(Collection {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    games: row.get(2)?,
+                })
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        let mut history = self.connection.prepare("SELECT id,started_ms,ended_ms,status,pid FROM play_sessions WHERE game_id=?1 ORDER BY id DESC LIMIT 20")?;
+        let sessions = history
+            .query_map([id], |row| {
+                Ok(PlaySession {
+                    id: row.get(0)?,
+                    started_ms: row.get(1)?,
+                    ended_ms: row.get(2)?,
+                    status: row.get(3)?,
+                    pid: row.get(4)?,
+                })
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(GameDetail {
+            game,
+            notes,
+            collections,
+            sessions,
+        })
+    }
+
+    pub fn session_start(&self, game: &str) -> Result<i64> {
+        let active: u32 = self.connection.query_row(
+            "SELECT count(*) FROM play_sessions WHERE ended_ms IS NULL",
+            [],
+            |row| row.get(0),
+        )?;
+        if active >= 8 {
+            return Err(LibraryError::Invalid(
+                "Aynı anda en fazla sekiz oyun oturumu izlenebilir".into(),
+            ));
+        }
+        self.game(game)?;
+        self.connection.execute(
+            "INSERT INTO play_sessions(game_id,started_ms,status) VALUES(?1,?2,'requested')",
+            params![game, now_ms()],
+        )?;
+        Ok(self.connection.last_insert_rowid())
+    }
+
+    pub fn tracking_executable(&self, id: &str) -> Result<Option<String>> {
+        self.setting(&format!("tracking:{id}"))
+    }
+
+    pub fn set_tracking_executable(&self, id: &str, executable: &Path) -> Result<()> {
+        let game = self.game(id)?;
+        let root = std::fs::canonicalize(&game.install_path)?;
+        let executable = std::fs::canonicalize(executable)?;
+        if !executable.starts_with(root)
+            || !executable.is_file()
+            || !executable
+                .extension()
+                .is_some_and(|extension| extension.eq_ignore_ascii_case("exe"))
+        {
+            return Err(LibraryError::Invalid(
+                "İzlenecek oyun executable dosyası kurulum içinde olmalı".into(),
+            ));
+        }
+        // Installation IDs can contain long paths, so this setting is written directly with a fixed prefix.
+        self.connection.execute("INSERT INTO settings(key,value) VALUES(?1,?2) ON CONFLICT(key) DO UPDATE SET value=excluded.value",params![format!("tracking:{id}"),executable.to_string_lossy()])?;
+        Ok(())
+    }
+
+    pub fn session_update(
+        &self,
+        id: i64,
+        status: &str,
+        pid: Option<u32>,
+        finished: bool,
+    ) -> Result<()> {
+        if ![
+            "requested",
+            "running",
+            "ended",
+            "failed",
+            "unconfirmed",
+            "interrupted",
+        ]
+        .contains(&status)
+        {
+            return Err(LibraryError::Invalid("Geçersiz oyun oturumu durumu".into()));
+        }
+        self.connection.execute(
+            "UPDATE play_sessions SET status=?1,pid=coalesce(?2,pid),ended_ms=?3 WHERE id=?4",
+            params![status, pid, finished.then(now_ms), id],
+        )?;
+        Ok(())
+    }
+
+    pub fn recover_sessions(&self) -> Result<()> {
+        self.connection.execute(
+            "UPDATE play_sessions SET status='interrupted',ended_ms=?1 WHERE ended_ms IS NULL",
+            [now_ms()],
+        )?;
+        Ok(())
+    }
+
+    pub fn set_setting(&self, key: &str, value: &str) -> Result<()> {
+        if key.len() > 128 || value.len() > 16_384 {
+            return Err(LibraryError::Invalid("Ayar boyut sınırını aşıyor".into()));
+        }
+        self.connection.execute("INSERT INTO settings(key,value) VALUES(?1,?2) ON CONFLICT(key) DO UPDATE SET value=excluded.value",params![key,value])?;
+        Ok(())
     }
 
     pub fn set_favorite(&self, id: &str, favorite: bool) -> Result<()> {
@@ -345,7 +593,7 @@ impl Store {
         })
     }
 
-    fn setting(&self, key: &str) -> Result<Option<String>> {
+    pub fn setting(&self, key: &str) -> Result<Option<String>> {
         use rusqlite::OptionalExtension;
         Ok(self
             .connection
@@ -354,6 +602,31 @@ impl Store {
             })
             .optional()?)
     }
+}
+
+fn now_ms() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis()
+        .min(i64::MAX as u128) as i64
+}
+
+fn upgrade_user_data(connection: &mut Connection, path: &Path, backup: bool) -> Result<()> {
+    if backup {
+        let backup = path.with_file_name(format!("library.schema-2-backup-{}.db", now_ms()));
+        connection.execute("VACUUM INTO ?1", [backup.to_string_lossy().as_ref()])?;
+    }
+    let transaction = connection.transaction()?;
+    transaction.execute_batch("CREATE TABLE game_overrides(game_id TEXT PRIMARY KEY REFERENCES games(id) ON DELETE CASCADE,title TEXT,search_title TEXT,notes TEXT NOT NULL DEFAULT '',artwork_path TEXT);
+        CREATE TABLE collections(id INTEGER PRIMARY KEY,name TEXT NOT NULL UNIQUE);
+        CREATE TABLE collection_games(collection_id INTEGER NOT NULL REFERENCES collections(id) ON DELETE CASCADE,game_id TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,PRIMARY KEY(collection_id,game_id));
+        CREATE TABLE play_sessions(id INTEGER PRIMARY KEY,game_id TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,started_ms INTEGER NOT NULL,ended_ms INTEGER,status TEXT NOT NULL,pid INTEGER);
+        CREATE INDEX sessions_game ON play_sessions(game_id,id);
+        CREATE VIEW library_games AS SELECT g.id,g.app_id,coalesce(o.title,g.name) AS name,coalesce(o.search_title,g.search_name) AS search_name,g.library_path,g.install_path,g.installed,g.favorite,g.size_bytes,coalesce(o.artwork_path,g.artwork_path) AS artwork_path,g.source,g.source_id,g.launch_json FROM games g LEFT JOIN game_overrides o ON g.id=o.game_id;")?;
+    transaction.pragma_update(None, "user_version", 3)?;
+    transaction.commit()?;
+    Ok(())
 }
 
 fn decode_source(value: &str) -> rusqlite::Result<Source> {

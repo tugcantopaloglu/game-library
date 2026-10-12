@@ -1,0 +1,23 @@
+# Geliştirme kapsamı — 12 Ekim 2026
+
+Kullanıcı 1, 2, 4 ve 5 numaralı işleri onayladı. Diğer launcher adaptörleri bu çalışma kapsamına alınmadı. Discord Developer Portal uygulaması yok; yerel Discord/Vencord bağlantısı kullanılacak. Resmi Vencord kaynağı https://vencord.dev/ ve https://github.com/Vencord/Installer.
+
+## Kabul işleri
+
+- [x] Steam fixture taraması makinedeki kurulumlardan yalıtıldı. 35 çalışma alanı testi, Clippy ve release derlemesi geçti.
+- [x] Elle executable ekleme, kullanıcı başlık/not/kapak düzeltmeleri, koleksiyonlar ve oyun ayrıntısı uygulandı. Tarama/yeniden açılışta koruma test edildi.
+- [x] Başlatma isteği ile gerçek süreç ayrıldı. Beholder: Conductor Steam üzerinden açıldı; seçilen executable 23,05 saniyede gözlendi.
+- [x] Yerel kapak, sınırlandırılmış ağ/önbellek, Credential Manager anahtarı ve native odak kontrolleri uygulandı. SteamGridDB canlı API kabulü anahtar olmadığı için bekliyor; klavyeyle uçtan uca gezinme ayrıca bekliyor.
+- [x] Yerel Vencord köprüsü gerçek oturuma bağlandı; 32 arkadaş ve 1 ses odası okundu. Ses/kanal/DM/güncelleme fonksiyonları bulundu. Durum değiştiren ses işlemleri test edilmedi; yayın yeteneklerinin tamamı kapalı.
+- [x] Resmi installer ve özel kaynak derlemesi yönetimi uygulandı. Discord Stable kurulumu ve canlı bağlantı doğrulandı. Electron'a verilen canonical yol öneki kaynaklı açılış hatası düzeltildi. PTB/Canary ve bağımsız onar/kaldır kabulü bekliyor.
+- [x] Vencord otomatik güncelleme tercihi okundu; uygulama için imzalı bildirim, SHA-256, staging ve açılış doğrulamalı executable geri dönüşü uygulandı. İlk yayımlanmış imzalı sürüm zinciri ve tam veri geri dönüşü kabulü bekliyor.
+- [ ] 10.000 kayıtla son release kaynak ölçümü, açılış/arama raporları ve DPI görünüm kontrolü.
+- [ ] Sekiz saat kararlılık sonucu, gerçek Epic/Riot açılışları ve oyun açıkken frame-time/GPU A/B ölçümü.
+
+## Teknik sınırlar
+
+Vencord köprüsü masaüstü kullanıcı eklentisidir. Standart installer özel eklentiyi içermez; geliştirme derlemesine kurulumu ayrıca yönetilir. Discord tokenı okunmaz veya uygulamaya taşınmaz. İstemci API'si değiştiğinde desteklenmeyen yetenek kapanır. Güncelleme sırasında köprü sürüm uyumu tekrar denetlenir.
+
+Genel dağıtım, imzalama anahtarı ve ilk yayımlanmış sürüm olmadan uygulama güncelleme zinciri canlı yayınla doğrulanamaz. Yerel doğrulama ve güncelleme altyapısı bu çalışma içinde hazırlanır.
+
+Snyk talimatı geçerlidir. Bu oturumda `snyk_code_scan` aracı ve Snyk CLI yok; plugin araması da sonuç vermedi. Bu sınırlama derleme, Clippy, bağımlılık ve kritik güvenlik testlerinin yerine geçtiği şeklinde raporlanmayacak.

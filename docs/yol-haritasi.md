@@ -20,7 +20,7 @@ Karar kapısı: Tauri kaynak hedefini karşılıyor mu? Discord için hangi öze
 
 ## Aşama 1 — Kullanılabilir yerel kütüphane
 
-Steam, Epic ve Riot adaptörleri; SQLite, kaynak bazlı hata izolasyonu, kurulum seçimi, başlatma, favoriler, koleksiyonlar ve elle oyun ekleme. Windows uninstall/kısayol adaylarından launcher dışı oyunlar desteklenir. Koyu arayüz ve sanallaştırılmış grid bu aşamada gelir.
+Steam, Epic ve Riot adaptörleri; SQLite, kaynak bazlı hata izolasyonu, kurulum seçimi, başlatma, favoriler, koleksiyonlar ve elle executable ekleme uygulandı. Kullanıcı düzeltmeleri taramalarda korunur. Windows uninstall/kısayol adaylarından otomatik keşif sonraki iş olarak duruyor.
 
 Çıkış kriteri: gerçek makinedeki bu kaynaklar taranır, yeniden taramada kayıtlar çoğalmaz, kullanıcı düzeltmeleri korunur, eksik launcher uygulamayı bozmaz. Ürün kapsamı bu aşamada Steam/Epic/Riot ve bağımsız oyunlarla sınırlı olarak açıkça belirtilir.
 
@@ -32,7 +32,7 @@ Yerel görseller, SteamGridDB, isteğe bağlı IGDB, kullanıcı kapak değişim
 
 ## Aşama 3 — Discord sosyal özellikleri
 
-Teknik denemede doğrulanan resmi erişim yolu uygulanır. Hesap bağlama, seçili kişi listesi, aktivite, oda takibi ve erişim varsa DM. Bot gerektiren özellikler için sunucu erişimi ayrıca kurulur. Kopma, reconnect, yetki reddi ve hesap bağlantısını kaldırma akışları tamamlanır.
+Developer Portal uygulaması olmadığı için mevcut çalışma kullanıcının onayladığı yerel Vencord köprüsüyle ilerledi. Arkadaş durumu/aktivitesi ve ses odası doluluğu gerçek Discord oturumunda okundu. DM görüşmesi açma mevcut; mesaj gönderimi eklenmedi. Social SDK/bot erişimi ve genel dağıtım ayrı gelecek işidir.
 
 Çıkış kriteri: her özellik yetenek tablosuna uygun davranır; erişilemeyen odalar veya eski durumlar canlı veri gibi gösterilmez. Kullanıcı adına ve bot adına gönderim ayrımı açıktır.
 
@@ -63,4 +63,4 @@ Sürümlü eklenti protokolü, ayrı süreç yaşam döngüsü, yetki tanımlar�
 | Kişisel kullanım / genel dağıtım | İlk deneme kişisel | Bot/metadata servisi ve dağıtım öncesi |
 | Ürün adı | Game Library | Görsel tasarım aşaması |
 
-Süre tahmini bu belirsizlikler ve gerçek ölçümler olmadan sabitlenmeyecek. Bir sonraki çalışma, Aşama 0'daki minimal masaüstü denemesiyle başlamalı.
+Sonraki işler: gerçek Epic/Riot kabulü, sekiz saat kararlılık sonucunun değerlendirilmesi, oyun frame-time/GPU ölçümü, Discord sürümünde yayın yeteneklerinin araştırılması ve ilk imzalı release zincirinin doğrulanması. Güncel kabul durumları [devam planında](devam-plani.md) tutulur; minimal masaüstü denemesi tamamlandı.

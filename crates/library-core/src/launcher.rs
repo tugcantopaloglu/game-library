@@ -39,6 +39,37 @@ pub fn prepare(game: &Game) -> Result<LaunchPlan> {
         ));
     }
     match (&game.launch, game.source) {
+        (
+            LaunchTarget::Manual {
+                executable,
+                args,
+                working_dir,
+            },
+            Source::Manual,
+        ) => {
+            let executable = installed_executable(install, executable)?;
+            if !executable
+                .extension()
+                .is_some_and(|extension| extension.eq_ignore_ascii_case("exe"))
+                || args.len() > 32
+                || args
+                    .iter()
+                    .any(|argument| argument.len() > 2048 || argument.contains('\0'))
+            {
+                return Err(LibraryError::Invalid(
+                    "Executable veya başlatma argümanları geçersiz".into(),
+                ));
+            }
+            let working_dir = discovery::absolute_path(working_dir)?;
+            if !working_dir.is_dir() {
+                return Err(LibraryError::Invalid("Çalışma klasörü erişilemiyor".into()));
+            }
+            Ok(LaunchPlan::Process {
+                executable,
+                args: args.clone(),
+                working_dir,
+            })
+        }
         (LaunchTarget::Steam { app_id }, Source::Steam) => Ok(LaunchPlan::Uri {
             uri: steam::launch_uri(*app_id)?,
         }),

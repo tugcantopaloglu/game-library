@@ -1,6 +1,6 @@
-export type Source = "steam" | "epic" | "riot";
+export type Source = "steam" | "epic" | "riot" | "manual";
 
-export type LaunchTarget = { "kind": "steam", appId: number, } | { "kind": "epic", namespaceId: string, catalogId: string, appName: string, executable: string, } | { "kind": "riot", clientPath: string, product: string, patchline: string, executable: string, };
+export type LaunchTarget = { "kind": "steam", appId: number, } | { "kind": "epic", namespaceId: string, catalogId: string, appName: string, executable: string, } | { "kind": "riot", clientPath: string, product: string, patchline: string, executable: string, } | { "kind": "manual", executable: string, args: Array<string>, workingDir: string, };
 
 export type SourceStatus = { source: Source, total: number, installed: number, roots: Array<string>, };
 
