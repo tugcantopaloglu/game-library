@@ -93,6 +93,18 @@ pub struct GameDetail {
     pub notes: String,
     pub collections: Vec<Collection>,
     pub sessions: Vec<PlaySession>,
+    pub completion: Option<CompletionTimes>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompletionTimes {
+    pub hltb_id: u32,
+    pub name: String,
+    pub main_seconds: Option<u32>,
+    pub extra_seconds: Option<u32>,
+    pub completionist_seconds: Option<u32>,
+    pub fetched_ms: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

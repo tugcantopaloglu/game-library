@@ -25,19 +25,30 @@ pub fn scan(roots: &[SourceRoot], cancel: &AtomicBool) -> ScanResult {
             .collect::<Vec<_>>()
     };
     let mut result = steam::scan(&configured(Source::Steam), cancel);
+    for warning in &mut result.report.warnings {
+        *warning = format!("[Steam] {warning}");
+    }
     if !cancel.load(Ordering::Relaxed) {
+        let start = result.report.warnings.len();
         result.libraries.extend(epic::scan(
             &configured(Source::Epic),
             cancel,
             &mut result.report.warnings,
         ));
+        for warning in &mut result.report.warnings[start..] {
+            *warning = format!("[Epic Games] {warning}");
+        }
     }
     if !cancel.load(Ordering::Relaxed) {
+        let start = result.report.warnings.len();
         result.libraries.extend(riot::scan(
             &configured(Source::Riot),
             cancel,
             &mut result.report.warnings,
         ));
+        for warning in &mut result.report.warnings[start..] {
+            *warning = format!("[Riot Games] {warning}");
+        }
     }
     result.report = ScanReport {
         roots: result

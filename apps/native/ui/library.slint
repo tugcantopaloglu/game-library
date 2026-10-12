@@ -12,6 +12,7 @@ export struct GameTile {
     artwork: image,
     has-artwork: bool,
     source: string,
+    status-label: string,
 }
 
 component Action inherits Rectangle {
@@ -81,7 +82,7 @@ component GameCard inherits Rectangle {
             Rectangle {
                 x: 10px; y: 10px; width: 74px; height: 22px; border-radius: 4px;
                 background: #18211de0;
-                Text { vertical-stretch: 0; text: game.installed ? "Kurulu" : "Erişilemiyor"; font-size: 9px; color: game.installed ? #c5dfb0 : #bfadb0; horizontal-alignment: center; vertical-alignment: center; }
+                Text { vertical-stretch: 0; text: game.status-label; font-size: 9px; color: game.installed ? #c5dfb0 : #bfadb0; horizontal-alignment: center; vertical-alignment: center; }
             }
             if game.has-artwork: Rectangle {
                 x: 10px; y: parent.height - 31px; width: 88px; height: 21px; border-radius: 4px; background: #18211de0;
@@ -155,6 +156,12 @@ export component LibraryWindow inherits Window {
     in property <string> detail-collections;
     in property <bool> detail-installed;
     in property <image> detail-artwork;
+    in property <string> completion-summary: "HowLongToBeat süresi henüz alınmadı.";
+    in-out property <string> completion-url;
+    in-out property <string> steam-account-id;
+    in-out property <string> steam-api-key;
+    in property <string> steam-account-status;
+    in property <string> epic-account-status;
     in-out property <string> remote-cover-url;
     in-out property <bool> bridge-enabled;
     in property <bool> bridge-connected;
@@ -183,6 +190,7 @@ export component LibraryWindow inherits Window {
     in property <bool> loading;
     in property <bool> measuring;
     in property <string> notice;
+    in property <string> scan-notice;
     in property <[string]> source-summaries;
     in property <string> ram: "—";
     in property <string> cpu: "—";
@@ -225,6 +233,12 @@ export component LibraryWindow inherits Window {
     callback prepare-bridge;
     callback artwork-key(string);
     callback search-covers(string);
+    callback steam-credentials(string,string);
+    callback steam-key-page;
+    callback sync-account(int);
+    callback epic-login;
+    callback completion-lookup(string,string);
+    callback completion-open(string,bool);
     callback update-check;
     callback update-stage;
     callback update-apply;
@@ -286,6 +300,10 @@ export component LibraryWindow inherits Window {
                 if notice != "": Rectangle {
                     height: 40px; background: #202930; border-radius: 7px;
                     Text { vertical-stretch: 0; text: notice; color: #c5d3df; font-size: 11px; wrap: word-wrap; x: 12px; width: parent.width - 24px; vertical-alignment: center; }
+                }
+                if scan-notice != "" && (section < 2 || (section >= 3 && section <= 6)): Rectangle {
+                    height: 40px; background: #202930; border-radius: 7px;
+                    Text { text: "Oyun kaynakları · " + scan-notice; color: #c5d3df; font-size: 11px; wrap: word-wrap; x: 12px; width: parent.width - 24px; vertical-alignment: center; }
                 }
                 if section < 2: VerticalLayout {
                     spacing: 17px;
@@ -359,6 +377,19 @@ export component LibraryWindow inherits Window {
                         Action { text: scanning ? "İptal et" : "Yeniden tara"; clicked => { if scanning { root.cancel-scan(); } else { root.scan(); } } }
                     }
                     Text { vertical-stretch: 0; text: section == 3 ? "Steam veya SteamLibrary klasörünü seç." : section == 4 ? "%PROGRAMDATA%\\Epic\\EpicGamesLauncher\\Data\\Manifests" : "%PROGRAMDATA%\\Riot Games (Metadata / RiotClientInstalls.json)"; color: #97a7b3; font-size: 12px; wrap: word-wrap; }
+                    if section == 3: VerticalLayout {
+                        spacing: 8px;
+                        Text { text: "Hesaptaki tüm Steam oyunları"; color: #eef1f4; }
+                        HorizontalLayout { spacing: 8px; LineEdit { text <=> root.steam-account-id; placeholder-text: "SteamID64"; } LineEdit { text <=> root.steam-api-key; input-type: password; placeholder-text: "Steam Web API anahtarı"; } Action { text: "Kaydet"; clicked => { root.steam-credentials(steam-account-id,steam-api-key); steam-api-key = ""; } } }
+                        HorizontalLayout { spacing: 8px; Action { text: "Hesap oyunlarını eşitle"; enabled: !integration-busy; clicked => { root.sync-account(0); } } Action { text: "API anahtarı sayfası"; clicked => { root.steam-key-page(); } } }
+                        Text { text: steam-account-status; color: #97a7b3; wrap: word-wrap; }
+                    }
+                    if section == 4: VerticalLayout {
+                        spacing: 8px;
+                        Text { text: "Hesaptaki tüm Epic oyunları"; color: #eef1f4; }
+                        HorizontalLayout { spacing: 8px; Action { text: "Epic hesabını bağla"; enabled: !integration-busy; clicked => { root.epic-login(); } } Action { text: "Hesap oyunlarını eşitle"; enabled: !integration-busy; clicked => { root.sync-account(1); } } }
+                        Text { text: epic-account-status; color: #97a7b3; wrap: word-wrap; }
+                    }
                     ScrollView { Text { vertical-stretch: 0; text: source-summaries[section - 3]; color: #aebcc8; font-size: 12px; wrap: word-wrap; vertical-alignment: top; } }
                 }
                 if section == 6: VerticalLayout {
@@ -371,6 +402,9 @@ export component LibraryWindow inherits Window {
                         spacing: 12px;
                         HorizontalLayout { spacing: 20px; Image { source: root.detail-artwork; width: 140px; height: 210px; image-fit: contain; } VerticalLayout { LineEdit { text <=> root.detail-title; placeholder-text: "Oyun adı"; } Text { vertical-stretch: 0; text: root.detail-path; color: #abb3bd; wrap: word-wrap; } Action { text: "Oyna"; accent: true; enabled: root.detail-installed; clicked => { root.launch(detail-id); } } } }
                         TextEdit { text <=> root.detail-notes; height: 90px; }
+                        Text { text: root.completion-summary; color: #bfd3af; wrap: word-wrap; vertical-stretch: 0; }
+                        HorizontalLayout { spacing: 8px; Action { text: "Süreleri getir / yenile"; enabled: !integration-busy; clicked => { root.completion-lookup(detail-id,""); } } Action { text: "HowLongToBeat'te aç"; clicked => { root.completion-open(detail-id,false); } } Action { text: "Oyunu sitede ara"; clicked => { root.completion-open(detail-id,true); } } }
+                        HorizontalLayout { spacing: 8px; LineEdit { text <=> root.completion-url; placeholder-text: "Eşleşmeyi düzeltmek için HowLongToBeat oyun URL'si veya ID"; } Action { text: "Bu eşleşmeyi kullan"; enabled: !integration-busy && completion-url != ""; clicked => { root.completion-lookup(detail-id,completion-url); } } }
                         HorizontalLayout { spacing: 8px; Action { text: "Bilgileri kaydet"; clicked => { root.save-detail(detail-id,detail-title,detail-notes); } } Action { text: "Kapak seç"; clicked => { root.cover(detail-id,false); } } Action { text: "Yerel kapağa dön"; clicked => { root.cover(detail-id,true); } } }
                         HorizontalLayout { spacing: 8px; LineEdit { text <=> root.remote-cover-url; placeholder-text: "SteamGridDB veya Steam CDN kapak adresi"; } Action { text: "Kapağı indir"; clicked => { root.remote-cover(detail-id,remote-cover-url); } } }
                         HorizontalLayout { spacing: 8px; Action { text: "SteamGridDB'de kapak ara"; enabled: !integration-busy; clicked => { root.search-covers(detail-id); } } ComboBox { model: root.cover-names; current-index <=> root.cover-index; } Action { text: "Seçili kapağı kullan"; enabled: !integration-busy && root.cover-candidates.length > 0; clicked => { root.remote-cover(detail-id,root.cover-candidates[cover-index].url); } } }

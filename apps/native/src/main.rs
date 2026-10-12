@@ -1,6 +1,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod accounts;
 mod bridge;
+mod completion;
 mod measurement;
 mod media;
 mod updates;
@@ -103,6 +105,14 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         println!("{}", updates::prepare_bridge(&data_dir)?);
         return Ok(());
     }
+    if args.iter().any(|argument| argument == "--prepare-epic") {
+        accounts::prepare_epic(&data_dir)?;
+        return Ok(());
+    }
+    if args.iter().any(|argument| argument == "--open-epic-login") {
+        accounts::login_epic(&data_dir)?;
+        return Ok(());
+    }
     if let Some(action) = argument_value(&args, "--vencord-action") {
         let action = match action.as_str() {
             "install" => updates::InstallerAction::Install,
@@ -151,6 +161,51 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
     let mut store = Store::open(&data_dir.join("library.db"))?;
+    if let Some(source) = argument_value(&args, "--sync-account") {
+        let source = Source::parse(&source)?;
+        let (games, covers) = match source {
+            Source::Steam => {
+                let id = argument_value(&args, "--steam-id")
+                    .or(store.setting("steam_account_id")?)
+                    .or_else(library_core::steam::active_user_id)
+                    .ok_or("SteamID64 bulunamadı")?;
+                (accounts::steam(&id)?, vec![])
+            }
+            Source::Epic => accounts::epic(&data_dir)?,
+            _ => return Err("Bu kaynak hesap eşitlemesini desteklemiyor".into()),
+        };
+        store.apply_owned_games(source, &games)?;
+        for (id, url) in covers {
+            store.set_setting(&format!("cover-url:{}:{id}", source.as_str()), &url)?;
+        }
+        if let Some(output) = argument_value(&args, "--output") {
+            std::fs::write(
+                output,
+                serde_json::to_vec_pretty(
+                    &serde_json::json!({"source":source,"ownedGames":games.len()}),
+                )?,
+            )?;
+        }
+        return Ok(());
+    }
+    if let Some(id) = argument_value(&args, "--completion-for") {
+        let game = store.game(&id)?;
+        let completion = completion::lookup(
+            &game,
+            &argument_value(&args, "--hltb-url").unwrap_or_default(),
+        )?;
+        store.save_completion(&id, &completion.times)?;
+        if let Some(url) = &completion.image_url {
+            store.set_setting(
+                &format!("cover-url:{}:{}", game.source.as_str(), game.source_id),
+                url,
+            )?;
+        }
+        if let Some(output) = argument_value(&args, "--output") {
+            std::fs::write(output, serde_json::to_vec_pretty(&completion.times)?)?;
+        }
+        return Ok(());
+    }
     if let Some(output) = argument_value(&args, "--search-benchmark") {
         validation::search_benchmark(&store, Path::new(&output))?;
         return Ok(());
@@ -228,6 +283,29 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let auto_update_app = store.setting("auto_update_app")?.as_deref() == Some("true");
     let auto_update_vencord = store.setting("auto_update_vencord")?.as_deref() != Some("false");
     let ui = LibraryWindow::new()?;
+    ui.set_steam_account_id(
+        store
+            .setting("steam_account_id")?
+            .or_else(library_core::steam::active_user_id)
+            .unwrap_or_default()
+            .into(),
+    );
+    for source in [Source::Steam, Source::Epic] {
+        let status = store
+            .setting(&format!("account_sync:{}", source.as_str()))?
+            .map(|value| {
+                format!(
+                    "Son hesap eşitlemesi: {}",
+                    value.split(" · ").next().unwrap_or("")
+                )
+            })
+            .unwrap_or_else(|| "Hesap kütüphanesi henüz eşitlenmedi.".into());
+        if source == Source::Steam {
+            ui.set_steam_account_status(status.into());
+        } else {
+            ui.set_epic_account_status(status.into());
+        }
+    }
     ui.set_bridge_enabled(bridge_enabled);
     ui.set_auto_update_app(auto_update_app);
     ui.set_auto_update_vencord(auto_update_vencord);
@@ -237,6 +315,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         scanning: AtomicBool::new(false),
         cancel_scan: AtomicBool::new(false),
         revision: AtomicU64::new(0),
+        cover_requests: Default::default(),
+        cover_attempts: Default::default(),
     });
     let sender = worker::start(store, data_dir.clone(), state.clone(), ui.as_weak());
     if let Some(output) = argument_value(&args, "--bridge-status-report") {
@@ -414,6 +494,12 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     register_command!(on_prepare_bridge, () => Command::PrepareBridge);
     register_command!(on_artwork_key, (key) => Command::ArtworkKey(key.into()));
     register_command!(on_search_covers, (id) => Command::SearchCovers(id.into()));
+    register_command!(on_steam_credentials, (id,key) => Command::SteamCredentials(id.into(),key.into()));
+    register_command!(on_steam_key_page, () => Command::SteamKeyPage);
+    register_command!(on_sync_account, (source) => Command::SyncAccount(if source==0 {Source::Steam} else {Source::Epic}));
+    register_command!(on_epic_login, () => Command::EpicLogin);
+    register_command!(on_completion_lookup, (id,url) => Command::Completion(id.into(),url.into()));
+    register_command!(on_completion_open, (id,search) => Command::CompletionOpen(id.into(),search));
     register_command!(on_update_stage, () => Command::UpdateStage);
     register_command!(on_update_apply, () => Command::UpdateApply);
     register_command!(on_update_preferences, (app,vencord) => Command::UpdatePreferences(app,vencord));
@@ -486,6 +572,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     };
     ui.set_source_index(source_index);
     ui.invoke_refresh("".into(), false, false, 0, source_index);
+    if let Some(id) = argument_value(&args, "--detail-id") {
+        enqueue(&sender, &ui.as_weak(), Command::Detail(id));
+    }
     if first_scan && !args.iter().any(|arg| arg == "--benchmark") {
         ui.invoke_scan();
     }
@@ -583,6 +672,10 @@ fn main() {
                 || argument == "--prepare-vencord"
                 || argument == "--data-directory-report"
                 || argument == "--update-health-report"
+                || argument == "--prepare-epic"
+                || argument == "--open-epic-login"
+                || argument == "--sync-account"
+                || argument == "--completion-for"
         }) {
             rfd::MessageDialog::new()
                 .set_title("Game Library")

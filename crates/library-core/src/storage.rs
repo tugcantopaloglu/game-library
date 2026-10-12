@@ -1,6 +1,6 @@
 use crate::models::{
-    Collection, Game, GameDetail, GamePage, LaunchTarget, LibraryStatus, PlaySession, ScanResult,
-    Source, SourceRoot, SourceStatus,
+    Collection, CompletionTimes, Game, GameDetail, GamePage, LaunchTarget, LibraryStatus,
+    PlaySession, ScanResult, Source, SourceRoot, SourceStatus,
 };
 use crate::{LibraryError, Result};
 use rusqlite::{params, Connection};
@@ -26,6 +26,9 @@ impl Store {
         }
         connection.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA cache_size=-2048; PRAGMA foreign_keys=ON;")?;
         if version == 3 {
+            connection.execute_batch(
+                "CREATE INDEX IF NOT EXISTS games_source_id ON games(source,source_id);",
+            )?;
             return Ok(Self { connection });
         }
         if version == 2 {
@@ -120,6 +123,9 @@ impl Store {
     }
 
     pub fn apply_scan(&mut self, result: &ScanResult) -> Result<()> {
+        self.connection.execute_batch(
+            "CREATE INDEX IF NOT EXISTS games_source_id ON games(source,source_id);",
+        )?;
         let transaction = self.connection.transaction()?;
         for root in &result.libraries {
             if root.complete {
@@ -131,7 +137,7 @@ impl Store {
             let mut insert = transaction.prepare_cached("INSERT INTO games (id,app_id,name,search_name,library_path,install_path,installed,size_bytes,artwork_path,source,source_id,launch_json)
                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12) ON CONFLICT(id) DO UPDATE SET
                 name=excluded.name,search_name=excluded.search_name,install_path=excluded.install_path,library_path=excluded.library_path,
-                installed=excluded.installed,size_bytes=excluded.size_bytes,artwork_path=excluded.artwork_path,source=excluded.source,source_id=excluded.source_id,launch_json=excluded.launch_json")?;
+                installed=excluded.installed,size_bytes=excluded.size_bytes,artwork_path=coalesce(excluded.artwork_path,games.artwork_path),source=excluded.source,source_id=excluded.source_id,launch_json=excluded.launch_json")?;
             for game in &root.games {
                 if game.source != root.source {
                     return Err(LibraryError::Invalid(
@@ -140,8 +146,10 @@ impl Store {
                 }
                 let launch = serde_json::to_string(&game.launch)
                     .map_err(|error| LibraryError::Invalid(error.to_string()))?;
+                let account_id: Option<String> = transaction.query_row("SELECT id FROM games WHERE source=?1 AND source_id=?2 AND (library_path LIKE 'account://%' OR id LIKE '%:account') LIMIT 1",params![game.source.as_str(),game.source_id],|row|row.get(0)).ok();
+                let id = account_id.as_deref().unwrap_or(&game.id);
                 insert.execute(params![
-                    game.id,
+                    id,
                     game.app_id,
                     game.name,
                     game.name.to_lowercase(),
@@ -156,6 +164,7 @@ impl Store {
                 ])?;
             }
         }
+        transaction.execute("DELETE FROM games WHERE source='steam' AND app_id=228980 AND favorite=0 AND NOT EXISTS(SELECT 1 FROM game_overrides o WHERE o.game_id=games.id) AND NOT EXISTS(SELECT 1 FROM collection_games c WHERE c.game_id=games.id)",[])?;
         let mut discovered: Vec<SourceRoot> = transaction
             .query_row(
                 "SELECT value FROM settings WHERE key='discovered_sources'",
@@ -207,13 +216,13 @@ impl Store {
     }
 
     pub fn needs_source_scan(&self) -> Result<bool> {
-        Ok(self.setting("source_scan_version")?.as_deref() != Some("2"))
+        Ok(self.setting("source_scan_version")?.as_deref() != Some("3"))
     }
 
     pub fn apply_source_scan(&mut self, result: &ScanResult) -> Result<()> {
         self.apply_scan(result)?;
         if !result.report.cancelled {
-            self.connection.execute("INSERT INTO settings(key,value) VALUES('source_scan_version','2') ON CONFLICT(key) DO UPDATE SET value='2'",[])?;
+            self.connection.execute("INSERT INTO settings(key,value) VALUES('source_scan_version','3') ON CONFLICT(key) DO UPDATE SET value='3'",[])?;
         }
         Ok(())
     }
@@ -287,6 +296,88 @@ impl Store {
 
     pub fn game(&self, id: &str) -> Result<Game> {
         self.connection.query_row("SELECT id,app_id,name,library_path,install_path,installed,favorite,size_bytes,artwork_path,source,source_id,launch_json FROM library_games WHERE id=?1", [id], row_game).map_err(Into::into)
+    }
+
+    pub fn apply_owned_games(&mut self, source: Source, games: &[Game]) -> Result<()> {
+        self.connection.execute_batch(
+            "CREATE INDEX IF NOT EXISTS games_source_id ON games(source,source_id);",
+        )?;
+        if !matches!(source, Source::Steam | Source::Epic) || games.len() > 20_000 {
+            return Err(LibraryError::Invalid(
+                "Hesap kütüphanesi sınırı veya kaynak geçersiz".into(),
+            ));
+        }
+        let transaction = self.connection.transaction()?;
+        for game in games {
+            if game.source != source
+                || !game.library_path.starts_with("account://")
+                || game.installed
+                || game.name.trim().is_empty()
+                || game.name.len() > 512
+            {
+                return Err(LibraryError::Invalid("Hesap oyun kaydı geçersiz".into()));
+            }
+            if source == Source::Steam && game.app_id == 228980 {
+                continue;
+            }
+            let exists: bool = transaction.query_row(
+                "SELECT EXISTS(SELECT 1 FROM games WHERE source=?1 AND source_id=?2)",
+                params![source.as_str(), game.source_id],
+                |row| row.get(0),
+            )?;
+            if !exists {
+                let launch = serde_json::to_string(&game.launch)
+                    .map_err(|error| LibraryError::Invalid(error.to_string()))?;
+                transaction.execute("INSERT INTO games(id,app_id,name,search_name,library_path,install_path,installed,size_bytes,artwork_path,source,source_id,launch_json) VALUES(?1,?2,?3,?4,?5,'',0,0,NULL,?6,?7,?8)",params![game.id,game.app_id,game.name,game.name.to_lowercase(),game.library_path,source.as_str(),game.source_id,launch])?;
+            }
+        }
+        transaction.commit()?;
+        self.set_setting(
+            &format!("account_sync:{}", source.as_str()),
+            &format!("{} oyun · {}", games.len(), now_ms()),
+        )?;
+        Ok(())
+    }
+
+    pub fn save_completion(&self, id: &str, completion: &CompletionTimes) -> Result<()> {
+        let game = self.game(id)?;
+        if completion.hltb_id == 0
+            || completion.name.is_empty()
+            || completion.name.len() > 512
+            || completion.name.contains('\0')
+            || [
+                completion.main_seconds,
+                completion.extra_seconds,
+                completion.completionist_seconds,
+            ]
+            .iter()
+            .flatten()
+            .any(|seconds| *seconds > 36_000_000)
+        {
+            return Err(LibraryError::Invalid("HowLongToBeat kaydı geçersiz".into()));
+        }
+        let value = serde_json::to_string(completion)
+            .map_err(|error| LibraryError::Invalid(error.to_string()))?;
+        self.set_setting(
+            &format!("hltb:{}:{}", game.source.as_str(), game.source_id),
+            &value,
+        )
+    }
+
+    pub fn completion(&self, game: &Game) -> Result<Option<CompletionTimes>> {
+        Ok(self
+            .setting(&format!("hltb:{}:{}", game.source.as_str(), game.source_id))?
+            .and_then(|value| serde_json::from_str(&value).ok()))
+    }
+    pub fn set_source_artwork(&self, id: &str, path: &str) -> Result<()> {
+        if path.len() > 4096 || path.contains('\0') {
+            return Err(LibraryError::Invalid("Kapak yolu geçersiz".into()));
+        }
+        self.connection.execute(
+            "UPDATE games SET artwork_path=?2 WHERE id=?1",
+            params![id, path],
+        )?;
+        Ok(())
     }
 
     pub fn add_manual(
@@ -414,6 +505,7 @@ impl Store {
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         Ok(GameDetail {
+            completion: self.completion(&game)?,
             game,
             notes,
             collections,

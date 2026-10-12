@@ -266,7 +266,19 @@ fn metadata(
         if product(product_id).is_none() {
             continue;
         }
+        if patchline.contains('.') {
+            continue;
+        }
         let file = entry.path().join(format!("{name}.product_settings.yaml"));
+        match file.try_exists() {
+            Ok(false) => continue,
+            Ok(true) => {}
+            Err(error) => {
+                result.complete = false;
+                discovery::warn(warnings, format!("{}: {error}", file.display()));
+                continue;
+            }
+        }
         let parsed = (|| {
             let fields = settings(&discovery::bounded_text(&file)?)?;
             let install = discovery::absolute_path(

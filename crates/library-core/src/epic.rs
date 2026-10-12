@@ -11,6 +11,7 @@ struct Manifest {
     app_name: String,
     display_name: String,
     install_location: String,
+    #[serde(default)]
     launch_executable: String,
     #[serde(default)]
     catalog_namespace: String,
@@ -73,10 +74,12 @@ pub fn parse_manifest(text: &str, root: &Path) -> Result<Option<Game>> {
         || (!manifest.main_game_app_name.is_empty()
             && manifest.main_game_app_name != manifest.app_name)
         || manifest.app_categories.iter().any(|category| {
-            matches!(
-                category.as_str(),
-                "plugins" | "plugins/engine" | "engines" | "ue" | "dlc"
-            )
+            let category = category.to_ascii_lowercase();
+            category == "ue"
+                || category == "dlc"
+                || category == "software"
+                || category.starts_with("plugins")
+                || category.starts_with("engines")
         })
     {
         return Ok(None);
@@ -95,7 +98,15 @@ pub fn parse_manifest(text: &str, root: &Path) -> Result<Option<Game>> {
         ));
     }
     let install = discovery::absolute_path(&manifest.install_location)?;
-    let executable = discovery::relative_executable(&install, &manifest.launch_executable)?;
+    // Epic's launch URI resolves the executable itself. Current game manifests may omit it.
+    let executable = if manifest.launch_executable.is_empty() {
+        None
+    } else {
+        Some(discovery::relative_executable(
+            &install,
+            &manifest.launch_executable,
+        )?)
+    };
     let source_id = if manifest.catalog_namespace.is_empty() {
         manifest.app_name.clone()
     } else {
@@ -122,7 +133,19 @@ pub fn parse_manifest(text: &str, root: &Path) -> Result<Option<Game>> {
         name: manifest.display_name,
         library_path: root.to_string_lossy().into_owned(),
         install_path: install.to_string_lossy().into_owned(),
-        installed: !manifest.incomplete && install.is_dir() && executable.is_file(),
+        installed: !manifest.incomplete
+            && install.is_dir()
+            && executable.as_ref().map_or_else(
+                || {
+                    std::fs::read_dir(&install).is_ok_and(|entries| {
+                        entries
+                            .take(100)
+                            .filter_map(std::result::Result::ok)
+                            .any(|entry| entry.file_name() != ".egstore")
+                    })
+                },
+                |path| path.is_file(),
+            ),
         favorite: false,
         size_bytes: size as f64,
         artwork_path: None,
@@ -130,7 +153,9 @@ pub fn parse_manifest(text: &str, root: &Path) -> Result<Option<Game>> {
             namespace_id: manifest.catalog_namespace,
             catalog_id: manifest.catalog_item_id,
             app_name: manifest.app_name,
-            executable: executable.to_string_lossy().into_owned(),
+            executable: executable
+                .map(|path| path.to_string_lossy().into_owned())
+                .unwrap_or_default(),
         },
     }))
 }

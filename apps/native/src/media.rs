@@ -32,7 +32,10 @@ pub fn download(url: &str, hosts: &[&str], limit: u64) -> Result<Vec<u8>, String
     let client = agent(45);
     let mut response = client
         .get(url.as_str())
-        .header("User-Agent", "GameLibrary/0.1.0")
+        .header(
+            "User-Agent",
+            "GameLibrary/0.1.0 (https://github.com/tugcantopaloglu/game-library)",
+        )
         .call()
         .map_err(|error| error.to_string())?;
     for _ in 0..3 {
@@ -52,7 +55,10 @@ pub fn download(url: &str, hosts: &[&str], limit: u64) -> Result<Vec<u8>, String
         )?;
         response = client
             .get(url.as_str())
-            .header("User-Agent", "GameLibrary/0.1.0")
+            .header(
+                "User-Agent",
+                "GameLibrary/0.1.0 (https://github.com/tugcantopaloglu/game-library)",
+            )
             .call()
             .map_err(|error| error.to_string())?;
     }
@@ -134,6 +140,12 @@ pub fn remote_cover(data: &Path, url: &str) -> Result<PathBuf, String> {
             "cdn.steamgriddb.com",
             "shared.fastly.steamstatic.com",
             "cdn.cloudflare.steamstatic.com",
+            "shared.steamstatic.com",
+            "cdn1.epicgames.com",
+            "cdn2.epicgames.com",
+            "cdn1.unrealengine.com",
+            "cdn2.unrealengine.com",
+            "howlongtobeat.com",
         ],
         MAX_COVER,
     )?;

@@ -82,7 +82,9 @@ pub fn prepare(game: &Game) -> Result<LaunchPlan> {
             },
             Source::Epic,
         ) => {
-            installed_executable(install, executable)?;
+            if !executable.is_empty() {
+                installed_executable(install, executable)?;
+            }
             if !discovery::identifier(app_name) {
                 return Err(LibraryError::Invalid("Epic AppName geçersiz".into()));
             }

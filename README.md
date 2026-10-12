@@ -6,7 +6,7 @@ Bilgisayardaki oyunları tek yerde toplayan, yerel verilerle çalışan masaüst
 
 ## Proje durumu
 
-12 Ekim 2026: native Windows sürümü Steam/Epic/Riot keşfi ve başlatma, elle oyun ekleme, koleksiyonlar, kullanıcı başlık/not/kapak düzeltmeleri, süreçle doğrulanan oturumlar ve yerel Vencord bağlantısı içeriyor. Beholder: Conductor gerçek Steam başlatma testi geçti; Discord Stable bağlantısında arkadaş ve ses odası verisi okundu. Yayın kontrolleri bu istemcide kullanılamıyor. [Kütüphane, Vencord ve güncelleme ayrıntıları](docs/kutuphane-ve-guncellemeler.md), [Epic/Riot kapsamı](docs/epic-riot.md).
+12 Ekim 2026: native Windows sürümü Steam/Epic/Riot keşfi ve başlatma, elle oyun ekleme, koleksiyonlar, kullanıcı başlık/not/kapak düzeltmeleri, süreçle doğrulanan oturumlar ve yerel Vencord bağlantısı içeriyor. Modern Steam kapak önbelleği ve görünür sayfanın eksik kapakları desteklenir; oyun ayrıntısında HowLongToBeat süreleri kaydedilir. Steam/Epic hesap eşitleme akışı hazır; kullanıcı hesap bağlantısını ertelediği için tam hesap listesi canlı olarak doğrulanmadı. Beholder: Conductor gerçek Steam başlatma testi geçti; Discord Stable bağlantısında arkadaş ve ses odası verisi okundu. Yayın kontrolleri bu istemcide kullanılamıyor. [Hesaplar, kapaklar ve süreler](docs/hesaplar-kapaklar-hltb.md), [kütüphane, Vencord ve güncellemeler](docs/kutuphane-ve-guncellemeler.md).
 
 İlk sürüm Windows için geliştirilecek. Geliştirme ve performans referansı Windows 11 x64; Windows 10 desteği ayrıca doğrulanacak. Diğer işletim sistemleri sonraki aşamalara bırakıldı.
 
@@ -62,6 +62,7 @@ pwsh -File scripts/measure.ps1 -Mode Tray -Seconds 60
 - [Dil, paketler ve araçlar](docs/paketler.md)
 - [Oyun tarama ve kapak sistemi](docs/oyun-kesfi.md)
 - [Epic ve Riot desteği](docs/epic-riot.md)
+- [Hesap kütüphaneleri, kapaklar ve HowLongToBeat](docs/hesaplar-kapaklar-hltb.md)
 - [Discord ve istemci eklentileri](docs/discord.md)
 - [Performans ve kararlılık kriterleri](docs/performans.md)
 - [Arayüz yönü](docs/arayuz.md)

@@ -3,6 +3,7 @@ pub mod epic;
 pub mod launcher;
 pub mod manual;
 pub mod models;
+pub mod owned;
 pub mod riot;
 pub mod sources;
 pub mod steam;

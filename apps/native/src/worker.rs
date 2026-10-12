@@ -2,17 +2,24 @@ use crate::{CollectionTile, CoverTile, GameTile, LibraryWindow};
 use library_core::models::{Game, LibraryStatus, Source};
 use library_core::{launcher, sources, storage::Store};
 use platform_windows::shell::open_target;
-use slint::{ModelRc, SharedPixelBuffer, VecModel};
+use slint::{Model, ModelRc, SharedPixelBuffer, VecModel};
 use std::io::{Cursor, Read};
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{mpsc, Arc};
 
+pub struct CoverRequest {
+    game: Game,
+    url: Option<String>,
+}
+type CoverQueue = mpsc::SyncSender<CoverRequest>;
 pub struct State {
     pub scanning: AtomicBool,
     pub cancel_scan: AtomicBool,
     pub revision: AtomicU64,
+    pub cover_requests: std::sync::Mutex<Option<CoverQueue>>,
+    pub cover_attempts: std::sync::Mutex<std::collections::HashSet<String>>,
 }
 
 #[derive(Clone, Default)]
@@ -27,7 +34,9 @@ pub struct Query {
 
 pub enum Command {
     Query(Query),
-    Scan { add_source: Option<Source> },
+    Scan {
+        add_source: Option<Source>,
+    },
     Favorite(String, bool),
     Launch(String),
     Reports,
@@ -52,6 +61,17 @@ pub enum Command {
     Session(i64, String, Option<u32>, bool),
     ArtworkKey(String),
     SearchCovers(String),
+    SteamCredentials(String, String),
+    SteamKeyPage,
+    SyncAccount(Source),
+    EpicLogin,
+    Completion(String, String),
+    CompletionOpen(String, bool),
+    AutoCover(
+        String,
+        Result<PathBuf, String>,
+        Option<library_core::models::CompletionTimes>,
+    ),
     NetworkDone(NetworkResult),
 }
 
@@ -62,6 +82,9 @@ enum NetworkTask {
     PrepareBridge,
     Check,
     Stage(crate::updates::UpdateManifest),
+    Owned(Source, String),
+    EpicLogin,
+    Completion(String, Game, String),
 }
 pub enum NetworkResult {
     Cover(String, Result<PathBuf, String>),
@@ -69,6 +92,8 @@ pub enum NetworkResult {
     Notice(Result<String, String>),
     Check(Result<crate::updates::UpdateManifest, String>),
     Stage(Result<PathBuf, String>),
+    Owned(Source, Result<crate::accounts::EpicLibrary, String>),
+    Completion(String, Result<crate::completion::FetchedCompletion, String>),
 }
 
 struct Network {
@@ -177,6 +202,25 @@ fn publish(
             return Ok(());
         }
         let pixels = game.artwork_path.as_deref().and_then(thumbnail);
+        if pixels.is_none() && game.source != Source::Manual {
+            let url=store.setting(&format!("cover-url:{}:{}",game.source.as_str(),game.source_id)).ok().flatten().or_else(||(game.source==Source::Steam).then(||format!("https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/{}/library_600x900.jpg",game.app_id)));
+            if let (Ok(queue), Ok(mut attempted)) =
+                (state.cover_requests.lock(), state.cover_attempts.lock())
+            {
+                if !attempted.contains(&game.id)
+                    && queue.as_ref().is_some_and(|queue| {
+                        queue
+                            .try_send(CoverRequest {
+                                game: game.clone(),
+                                url,
+                            })
+                            .is_ok()
+                    })
+                {
+                    attempted.insert(game.id.clone());
+                }
+            }
+        }
         if game.artwork_path.is_some() && pixels.is_none() {
             unavailable_artwork += 1;
         }
@@ -210,6 +254,14 @@ fn publish(
                     artwork,
                     has_artwork,
                     source: tile.game.source.label().into(),
+                    status_label: if tile.game.installed {
+                        "Kurulu"
+                    } else if tile.game.install_path.is_empty() {
+                        "Kurulu değil"
+                    } else {
+                        "Erişilemiyor"
+                    }
+                    .into(),
                 }
             })
             .collect();
@@ -312,6 +364,11 @@ fn detail_impl(
         .collect::<Vec<_>>()
         .join(", ");
     let pixels = detail.game.artwork_path.as_deref().and_then(thumbnail);
+    let times = detail
+        .completion
+        .as_ref()
+        .map(crate::completion::summary)
+        .unwrap_or_else(|| "HowLongToBeat süresi henüz alınmadı.".into());
     ui.upgrade_in_event_loop(move |ui| {
         if only_current && (ui.get_detail_id() != detail.game.id || ui.get_section() != 9) {
             return;
@@ -322,6 +379,14 @@ fn detail_impl(
             ui.set_cover_index(-1);
         }
         ui.set_detail_id(detail.game.id.into());
+        ui.set_completion_summary(times.into());
+        ui.set_completion_url(
+            detail
+                .completion
+                .map(|completion| format!("https://howlongtobeat.com/game/{}", completion.hltb_id))
+                .unwrap_or_default()
+                .into(),
+        );
         ui.set_detail_title(detail.game.name.into());
         ui.set_detail_notes(detail.notes.into());
         ui.set_detail_path(path.into());
@@ -437,9 +502,16 @@ fn source_summary(status: &LibraryStatus, selected: Source, artwork_failures: u3
             "Bu sayfada {artwork_failures} yerel kapak okunamadı veya boyut sınırını aştı."
         ));
     }
-    if !status.warnings.is_empty() {
-        lines.push("Son tarama uyarıları (tüm kaynaklar):".into());
-        lines.extend(status.warnings.clone());
+    let prefix = format!("[{}]", selected.label());
+    let warnings: Vec<String> = status
+        .warnings
+        .iter()
+        .filter(|warning| warning.starts_with(&prefix))
+        .cloned()
+        .collect();
+    if !warnings.is_empty() {
+        lines.push("Bu kaynağın son tarama uyarıları:".into());
+        lines.extend(warnings);
     }
     lines.join("\n\n")
 }
@@ -451,6 +523,35 @@ pub fn start(
     ui: slint::Weak<LibraryWindow>,
 ) -> mpsc::SyncSender<Command> {
     let (sender, receiver) = mpsc::sync_channel(16);
+    let (cover_queue, cover_receiver) = mpsc::sync_channel::<CoverRequest>(100);
+    if let Ok(mut queue) = state.cover_requests.lock() {
+        *queue = Some(cover_queue);
+    }
+    let cover_sender = sender.clone();
+    let cover_data = data_dir.clone();
+    std::thread::spawn(move || {
+        while let Ok(request) = cover_receiver.recv() {
+            let mut completion = None;
+            let result = (|| {
+                let url = if let Some(url) = request.url {
+                    url
+                } else {
+                    let found = crate::completion::lookup(&request.game, "")?;
+                    completion = Some(found.times);
+                    found
+                        .image_url
+                        .ok_or("Bu oyunun kaynak kapağı bulunamadı")?
+                };
+                crate::media::remote_cover(&cover_data, &url)
+            })();
+            if cover_sender
+                .send(Command::AutoCover(request.game.id, result, completion))
+                .is_err()
+            {
+                break;
+            }
+        }
+    });
     let session_sender = sender.clone();
     let network_sender = sender.clone();
     let network_data = data_dir.clone();
@@ -479,6 +580,9 @@ pub fn start(
                 NetworkTask::Stage(manifest) => {
                     NetworkResult::Stage(crate::updates::stage(&network_data, &manifest))
                 }
+                NetworkTask::Owned(source,id) => NetworkResult::Owned(source,match source {Source::Steam=>crate::accounts::steam(&id).map(|games|(games,vec![])),Source::Epic=>crate::accounts::epic(&network_data),_=>Err("Hesap kaynağı desteklenmiyor".into())}),
+                NetworkTask::EpicLogin => NetworkResult::Notice(crate::accounts::login_epic(&network_data).map(|_|"Epic giriş penceresi açıldı. Bağlantıyı tamamladıktan sonra hesap oyunlarını eşitle.".into())),
+                NetworkTask::Completion(id,game,url) => NetworkResult::Completion(id,crate::completion::lookup(&game,&url)),
             };
             busy.store(false, Ordering::SeqCst);
             if network_sender.send(Command::NetworkDone(result)).is_err() {
@@ -499,6 +603,7 @@ pub fn start(
             filter: "all".into(),
             ..Query::default()
         };
+        let mut completion_attempts = std::collections::HashSet::new();
         loop {
             let command = if auto_update_app && std::time::Instant::now() >= next_update {
                 next_update =
@@ -518,6 +623,99 @@ pub fn start(
                 }
             };
             let result = match command {
+                Command::AutoCover(id, result, completion) => (|| {
+                    if let Some(completion) = completion {
+                        store
+                            .save_completion(&id, &completion)
+                            .map_err(|error| error.to_string())?;
+                    }
+                    let Ok(path) = result else {
+                        return Ok(());
+                    };
+                    store
+                        .set_source_artwork(&id, &path.to_string_lossy())
+                        .map_err(|error| error.to_string())?;
+                    let current = store.game(&id).map_err(|error| error.to_string())?;
+                    if current.artwork_path.as_deref() != Some(path.to_string_lossy().as_ref()) {
+                        return Ok(());
+                    }
+                    let Some((width, height, bytes)) = thumbnail(&path.to_string_lossy()) else {
+                        return Ok(());
+                    };
+                    ui.upgrade_in_event_loop(move |ui| {
+                        let image = slint::Image::from_rgba8(SharedPixelBuffer::clone_from_slice(
+                            &bytes, width, height,
+                        ));
+                        let rows = ui.get_game_rows();
+                        for row in rows.iter() {
+                            for column in 0..row.row_count() {
+                                if let Some(mut tile) = row.row_data(column) {
+                                    if tile.id == id {
+                                        tile.artwork = image.clone();
+                                        tile.has_artwork = true;
+                                        row.set_row_data(column, tile);
+                                    }
+                                }
+                            }
+                        }
+                        if ui.get_detail_id() == id {
+                            ui.set_detail_artwork(image);
+                        }
+                    })
+                    .map_err(|error| error.to_string())
+                })(),
+                Command::SteamKeyPage => open_target("https://steamcommunity.com/dev/apikey")
+                    .map_err(|error| error.to_string()),
+                Command::SteamCredentials(id, key) => (|| {
+                    if id.len() != 17 || !id.bytes().all(|byte| byte.is_ascii_digit()) {
+                        return Err("SteamID64 17 rakam olmalı".into());
+                    }
+                    if !key.is_empty() {
+                        platform_windows::credentials::save_steam_key(&key)?;
+                    }
+                    store
+                        .set_setting("steam_account_id", &id)
+                        .map_err(|error| error.to_string())?;
+                    let _ = ui.upgrade_in_event_loop(|ui| {
+                        ui.set_steam_account_status(
+                            "Hesap bilgileri kaydedildi. Hesap oyunlarını eşitle ile getir.".into(),
+                        )
+                    });
+                    Ok(())
+                })(),
+                Command::SyncAccount(source) => submit(
+                    &network,
+                    &ui,
+                    NetworkTask::Owned(
+                        source,
+                        store
+                            .setting("steam_account_id")
+                            .ok()
+                            .flatten()
+                            .or_else(library_core::steam::active_user_id)
+                            .unwrap_or_default(),
+                    ),
+                ),
+                Command::EpicLogin => submit(&network, &ui, NetworkTask::EpicLogin),
+                Command::Completion(id, url) => store
+                    .game(&id)
+                    .map_err(|error| error.to_string())
+                    .and_then(|game| submit(&network, &ui, NetworkTask::Completion(id, game, url))),
+                Command::CompletionOpen(id, search) => (|| {
+                    let game = store.game(&id).map_err(|error| error.to_string())?;
+                    let mut url = url::Url::parse("https://howlongtobeat.com/")
+                        .map_err(|error| error.to_string())?;
+                    if let Some(completion) = store
+                        .completion(&game)
+                        .map_err(|error| error.to_string())?
+                        .filter(|_| !search)
+                    {
+                        url.set_path(&format!("/game/{}", completion.hltb_id));
+                    } else {
+                        url.query_pairs_mut().append_pair("q", &game.name);
+                    }
+                    open_target(url.as_str()).map_err(|error| error.to_string())
+                })(),
                 Command::ArtworkKey(key) => platform_windows::credentials::save_artwork_key(&key)
                     .map(|_| {
                         set_notice(
@@ -542,6 +740,18 @@ pub fn start(
                 Command::NetworkDone(result) => {
                     let _ = ui.upgrade_in_event_loop(|ui| ui.set_integration_busy(false));
                     match result {
+                        NetworkResult::Owned(source,result) => result.and_then(|(mut games,covers)| {
+                            if source==Source::Steam { let roots=library_core::steam::discover_roots(&store.roots().map_err(|error|error.to_string())?);for game in &mut games {game.artwork_path=library_core::steam::local_artwork(&roots,game.app_id);} }
+                            store.apply_owned_games(source,&games).map_err(|error|error.to_string())?;
+                            for (id,url) in covers { store.set_setting(&format!("cover-url:{}:{id}",source.as_str()),&url).map_err(|error|error.to_string())?; }
+                            let status=format!("{} hesabından {} oyun eşitlendi. Kurulum bilgileri korundu.",source.label(),games.len());
+                            ui.upgrade_in_event_loop(move |ui| if source==Source::Steam {ui.set_steam_account_status(status.into());}else{ui.set_epic_account_status(status.into());}).map_err(|error|error.to_string())?;
+                            publish(&store,&query,&state,&ui)
+                        }),
+                        NetworkResult::Completion(id,result) => (|| {
+                            let (summary,url)=match result {Ok(completion)=> {store.save_completion(&id,&completion.times).map_err(|error|error.to_string())?; let game=store.game(&id).map_err(|error|error.to_string())?; if let Some(url)=completion.image_url {store.set_setting(&format!("cover-url:{}:{}",game.source.as_str(),game.source_id),&url).map_err(|error|error.to_string())?;} (crate::completion::summary(&completion.times),Some(format!("https://howlongtobeat.com/game/{}",completion.times.hltb_id)))},Err(error)=>(format!("HowLongToBeat: {error}"),None)};
+                            ui.upgrade_in_event_loop(move |ui| {if ui.get_detail_id()==id {ui.set_completion_summary(summary.into());if let Some(url)=url {ui.set_completion_url(url.into());}}}).map_err(|error|error.to_string())
+                        })(),
                         NetworkResult::Notice(result) => result.map(|notice|set_notice(&ui,notice)),
                         NetworkResult::Search(id,result) => result.and_then(|candidates| {
                             if candidates.is_empty() {return Err("Uygun kapak bulunamadı.".into());}
@@ -587,7 +797,23 @@ pub fn start(
                     publish(&store, &query, &state, &ui)?;
                     detail(&store, &id, &ui)
                 })(),
-                Command::Detail(id) => detail(&store, &id, &ui),
+                Command::Detail(id) => (|| {
+                    detail(&store, &id, &ui)?;
+                    let game = store.game(&id).map_err(|error| error.to_string())?;
+                    let cached = store.completion(&game).map_err(|error| error.to_string())?;
+                    if cached.is_none()
+                        && !completion_attempts.contains(&id)
+                        && !network.busy.load(Ordering::SeqCst)
+                    {
+                        submit(
+                            &network,
+                            &ui,
+                            NetworkTask::Completion(id.clone(), game, String::new()),
+                        )?;
+                        completion_attempts.insert(id);
+                    }
+                    Ok(())
+                })(),
                 Command::Tracking(id) => (|| {
                     let game = store.game(&id).map_err(|error| error.to_string())?;
                     let Some(path) = rfd::FileDialog::new()
@@ -858,7 +1084,8 @@ pub fn start(
                                 scanned.report.warnings.len()
                             )
                         };
-                        set_notice(&ui, message);
+                        let _ =
+                            ui.upgrade_in_event_loop(move |ui| ui.set_scan_notice(message.into()));
                         publish(&store, &query, &state, &ui)
                     })();
                     state.scanning.store(false, Ordering::SeqCst);

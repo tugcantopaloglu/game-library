@@ -6,6 +6,51 @@ use std::sync::atomic::AtomicBool;
 const EPIC: &str = include_str!("../../../fixtures/epic/game.item");
 const RIOT: &str = include_str!("../../../fixtures/riot/valorant.live.product_settings.yaml");
 
+#[test]
+fn epic_can_launch_a_manifest_without_an_executable_and_omits_software() {
+    let temp = tempfile::tempdir().unwrap();
+    let (root, mut value) = epic_setup(temp.path());
+    value["LaunchExecutable"] = "".into();
+    let game = epic::parse_manifest(&value.to_string(), &root)
+        .unwrap()
+        .unwrap();
+    assert!(game.installed);
+    assert!(launcher::prepare(&game).is_ok());
+    value["LaunchExecutable"] = "../outside.exe".into();
+    assert!(epic::parse_manifest(&value.to_string(), &root).is_err());
+    value["LaunchExecutable"] = "".into();
+    value["AppCategories"] = serde_json::json!(["software", "applications"]);
+    assert!(epic::parse_manifest(&value.to_string(), &root)
+        .unwrap()
+        .is_none());
+    value["AppCategories"] = serde_json::json!(["games"]);
+    value["InstallLocation"] = temp
+        .path()
+        .join("removed-game")
+        .to_string_lossy()
+        .as_ref()
+        .into();
+    assert!(
+        !epic::parse_manifest(&value.to_string(), &root)
+            .unwrap()
+            .unwrap()
+            .installed
+    );
+}
+
+#[test]
+fn riot_empty_placeholders_and_patch_metadata_do_not_produce_game_warnings() {
+    let temp = tempfile::tempdir().unwrap();
+    let (root, _) = riot_setup(temp.path());
+    std::fs::create_dir_all(root.join("Metadata/bacon.live")).unwrap();
+    std::fs::create_dir_all(root.join("Metadata/league_of_legends.live.game_patch")).unwrap();
+    let mut warnings = vec![];
+    let scan = riot::scan_at(&root, &AtomicBool::new(false), &mut warnings);
+    assert!(scan.complete);
+    assert_eq!(scan.games.len(), 1);
+    assert!(warnings.is_empty());
+}
+
 fn epic_setup(base: &Path) -> (PathBuf, serde_json::Value) {
     let manifests = base.join("Epic/Data/Manifests");
     let install = base.join("Epic Game With Spaces");

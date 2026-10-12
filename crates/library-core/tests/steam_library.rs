@@ -6,6 +6,55 @@ use std::sync::atomic::AtomicBool;
 const DOTA: &str = include_str!("../../../fixtures/steam/appmanifest_570.acf");
 const CS: &str = include_str!("../../../fixtures/steam/appmanifest_730.acf");
 
+#[test]
+fn active_account_skips_game_libraries_without_client_configuration() {
+    let temp = tempfile::tempdir().unwrap();
+    let missing = temp.path().join("SteamLibrary");
+    let client = temp.path().join("Steam");
+    std::fs::create_dir_all(client.join("config")).unwrap();
+    std::fs::write(client.join("config/loginusers.vdf"),r#""users" { "76561198000000001" { "MostRecent" "0" } "76561198000000002" { "MostRecent" "1" } }"#).unwrap();
+    assert_eq!(
+        steam::active_user_id_from(&[missing, client]),
+        Some("76561198000000002".into())
+    );
+}
+
+#[test]
+fn current_steam_cover_folders_are_found_and_redistributables_are_not_games() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = library(temp.path(), "Steam");
+    std::fs::write(root.join("steamapps/appmanifest_570.acf"), DOTA).unwrap();
+    std::fs::write(
+        root.join("steamapps/appmanifest_228980.acf"),
+        DOTA.replace("570", "228980"),
+    )
+    .unwrap();
+    let cover = root.join("appcache/librarycache/570/library_600x900.jpg");
+    std::fs::create_dir_all(cover.parent().unwrap()).unwrap();
+    std::fs::write(&cover, b"fixture cover path").unwrap();
+    let scan = steam::scan_configured(&[root.to_string_lossy().into()], &AtomicBool::new(false));
+    assert_eq!(scan.report.found, 1);
+    assert!(scan.report.warnings.is_empty());
+    assert_eq!(
+        scan.libraries[0].games[0].artwork_path.as_deref(),
+        Some(
+            std::fs::canonicalize(cover)
+                .unwrap()
+                .to_string_lossy()
+                .as_ref()
+        )
+    );
+    let hashed = root.join(
+        "appcache/librarycache/730/0123456789abcdef0123456789abcdef01234567/library_capsule.jpg",
+    );
+    std::fs::create_dir_all(hashed.parent().unwrap()).unwrap();
+    std::fs::write(&hashed, b"new Steam capsule path").unwrap();
+    assert_eq!(
+        std::fs::canonicalize(steam::local_artwork(&[root], 730).unwrap()).unwrap(),
+        std::fs::canonicalize(hashed).unwrap()
+    );
+}
+
 fn library(base: &Path, name: &str) -> PathBuf {
     let root = base.join(name);
     std::fs::create_dir_all(root.join("steamapps/common/dota 2 beta")).unwrap();

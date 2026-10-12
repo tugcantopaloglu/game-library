@@ -223,14 +223,76 @@ pub fn parse_manifest(text: &str, root: &Path, expected_app_id: u32) -> Result<G
     })
 }
 
-fn local_artwork(roots: &[PathBuf], app_id: u32) -> Option<String> {
+pub fn local_artwork(roots: &[PathBuf], app_id: u32) -> Option<String> {
     for root in roots {
+        let cache = root.join("appcache/librarycache").join(app_id.to_string());
+        let mut directories = vec![cache.clone()];
+        if let Ok(entries) = fs::read_dir(&cache) {
+            let mut hashes: Vec<_> = entries
+                .take(128)
+                .filter_map(std::result::Result::ok)
+                .filter(|entry| {
+                    entry.file_type().is_ok_and(|kind| kind.is_dir())
+                        && entry.file_name().to_str().is_some_and(|name| {
+                            name.len() >= 32
+                                && name.len() <= 64
+                                && name.bytes().all(|byte| byte.is_ascii_hexdigit())
+                        })
+                })
+                .map(|entry| entry.path())
+                .collect();
+            hashes.sort();
+            directories.extend(hashes);
+        }
+        for name in [
+            "library_600x900.jpg",
+            "library_600x900.png",
+            "library_capsule.jpg",
+            "library_header.jpg",
+            "header.jpg",
+        ] {
+            for directory in &directories {
+                let path = directory.join(name);
+                if path.is_file() {
+                    return Some(path.to_string_lossy().into_owned());
+                }
+            }
+        }
         for suffix in ["library_600x900.jpg", "library_600x900.png", "header.jpg"] {
             let path = root
                 .join("appcache/librarycache")
                 .join(format!("{app_id}_{suffix}"));
             if path.is_file() {
                 return Some(path.to_string_lossy().into_owned());
+            }
+        }
+    }
+    None
+}
+
+pub fn active_user_id() -> Option<String> {
+    active_user_id_from(&discover_roots(&[]))
+}
+pub fn active_user_id_from(roots: &[PathBuf]) -> Option<String> {
+    for root in roots {
+        let Ok(text) = bounded_text(&root.join("config/loginusers.vdf"), 1024 * 1024) else {
+            continue;
+        };
+        let Ok(users) = keyvalues_parser::parse(&text) else {
+            continue;
+        };
+        let Some(users) = users.value.get_obj() else {
+            continue;
+        };
+        for (id, values) in users.iter() {
+            if id.len() == 17
+                && id.bytes().all(|byte| byte.is_ascii_digit())
+                && values
+                    .first()
+                    .and_then(|value| value.get_obj())
+                    .is_some_and(|user| field(user, "MostRecent") == Some("1"))
+            {
+                return Some(id.to_string());
             }
         }
     }
@@ -284,6 +346,10 @@ fn scan_discovered(roots: Vec<PathBuf>, cancel: &AtomicBool) -> ScanResult {
                     else {
                         continue;
                     };
+                    // Steamworks Common Redistributables is launcher infrastructure, not a game.
+                    if app_id == 228980 {
+                        continue;
+                    }
                     let result = bounded_text(&entry.path(), 1024 * 1024)
                         .and_then(|text| parse_manifest(&text, root, app_id));
                     match result {
