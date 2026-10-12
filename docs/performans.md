@@ -2,7 +2,7 @@
 
 ## Başlangıç bütçesi
 
-Bu rakamlar tasarım ve kabul hedefleridir. Henüz uygulama geliştirilmediği için ölçülmüş sonuç veya bütün bilgisayarlarda garanti değildir. Windows 11 x64, SSD, release derlemesi, 1.000 oyun ve 1440p ekran başlangıç referansı olacak; gerçek cihaz özellikleri rapora yazılacak.
+Bu rakamlar tasarım ve kabul hedefleridir; bütün bilgisayarlarda garanti değildir. İlk sürümün ölçümleri [ilk sürüm belgesinde](ilk-surum.md) kaydedilir. Windows 11 x64, SSD, release derlemesi, 1.000 oyun ve 1440p ekran başlangıç referansı; gerçek cihaz ve kullanılan veri seti rapora yazılacak.
 
 | Senaryo / ölçüt | Hedef |
 | --- | --- |

@@ -62,4 +62,4 @@ Vencord kurulum yöneticisi kendi patch yöntemini yazmak yerine resmi installer
 - Kritik arayüz davranışları için Vitest/Testing Library; gerçek masaüstü yaşam döngüsü ayrıca Windows üzerinde doğrulanacak.
 - Paket güncelleme, lisans ve bağımlılık denetimi; kullanıcı makinelerinde otomatik paket çözümleme yapılmayacak.
 
-TypeScript 7, Vite 8 ve React 19'un birlikte çalışması ilk derleme denemesinin parçasıdır. Uyum sorunu varsa desteklenen kararlı sürüm seti seçilecek; yeni sürüm numarası performans veya kararlılık gerekçesi sayılmayacak.
+TypeScript 7, Vite 8 ve React 19 ilk Windows sürümünde birlikte derlendi. Kesin bağımlılıklar lockfile'larda kayıtlı. Bu deneme yalnızca React, Tauri API, sanallaştırma ve Lucide kullanıyor; stiller statik CSS, oyun ayrıntısı yerel HTML dialog ile uygulanıyor. Tailwind/Radix ve diğer adaylar ihtiyaç doğduğunda eklenecek. Yeni sürüm numarası performans veya kararlılık gerekçesi sayılmayacak.

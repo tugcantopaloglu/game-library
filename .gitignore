@@ -13,3 +13,4 @@ test-results/
 artifacts/
 .DS_Store
 Thumbs.db
+apps/desktop/src-tauri/gen/

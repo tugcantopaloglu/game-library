@@ -105,4 +105,4 @@ benchmarks/
 docs/
 ```
 
-Bu yapı henüz oluşturulmadı. İlk denemede ihtiyaç olmayan crate ve süreçler açılmayacak; sınırlar gerçek sorumluluklar ortaya çıktıkça ayrılacak.
+İlk sürümde `apps/desktop/` ve `crates/library-core/` oluşturuldu. Steam keşfi, veri modeli ve SQLite henüz aynı küçük çekirdek crate içinde; kaynaklar genişledikçe önerilen sınırlar ayrılacak. İhtiyaç olmayan crate ve yardımcı süreçler açılmayacak.

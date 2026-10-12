@@ -6,3 +6,8 @@
 *.css text eol=lf
 *.json text eol=lf
 *.toml text eol=lf
+*.ps1 text eol=lf
+*.slint text eol=lf
+*.yaml text eol=lf
+*.acf text eol=lf
+*.vdf text eol=lf

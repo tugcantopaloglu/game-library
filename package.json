@@ -1,0 +1,14 @@
+{
+  "name": "game-library",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@11.25.0",
+  "scripts": {
+    "dev": "pnpm --filter @game-library/desktop dev",
+    "build": "pnpm --filter @game-library/desktop build",
+    "check": "pnpm --filter @game-library/desktop check",
+    "ui:dev": "pnpm --filter @game-library/desktop ui:dev",
+    "ui:build": "pnpm --filter @game-library/desktop ui:build",
+    "test": "cargo test --workspace"
+  }
+}
