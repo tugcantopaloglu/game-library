@@ -1,0 +1,66 @@
+# Performans ve kararlılık
+
+## Başlangıç bütçesi
+
+Bu rakamlar tasarım ve kabul hedefleridir. Henüz uygulama geliştirilmediği için ölçülmüş sonuç veya bütün bilgisayarlarda garanti değildir. Windows 11 x64, SSD, release derlemesi, 1.000 oyun ve 1440p ekran başlangıç referansı olacak; gerçek cihaz özellikleri rapora yazılacak.
+
+| Senaryo / ölçüt | Hedef |
+| --- | --- |
+| Kütüphane açık, veri yüklenmiş, boşta | Tüm uygulama süreçlerinde toplam özel çalışma kümesi ≤ 180 MiB |
+| WebView kapalı, tepsi açık, sosyal bağlantı kapalı | ≤ 40 MiB |
+| Tepsi açık, Discord yardımcısı bağlı | Toplam ≤ 70 MiB; SDK etkisi ayrıca raporlanır |
+| Boşta CPU | 60 saniyede makine toplamına göre ortalama < %0,25 |
+| Boşta disk/ağ | Uygulamadan periyodik tarama/metadata isteği yok; gerekli bağlantı heartbeat'i hariç |
+| Yerel veriden ilk kullanılabilir ekran | p95 ≤ 1 saniye |
+| Sıcak yeniden açılma | p95 ≤ 500 ms |
+| 10.000 kayıtta arama yanıtı | Rust sorgusu + IPC p95 ≤ 50 ms |
+| Kaydırma | 60 Hz ekranda p95 frame aralığı ≤ 16,7 ms; > 50 ms uzun görev yok |
+| Görsel indirme | En fazla 2 eşzamanlı iş |
+| Görsel disk önbelleği | Varsayılan 512 MiB |
+| UI görsel çalışma kümesi | İlk denemede görünür kapaklar için 32 MiB hedef; WebView ile doğrulanır |
+
+Sadece Rust PID'si ölçülmeyecek. Uygulamaya ait WebView renderer, utility/GPU ve yardımcı süreçler dahil edilecek. Paylaşılan WebView2 süreçleri varsa ilişkilendirme ve ölçüm sınırlaması rapora yazılacak. Özel çalışma kümesi, private bytes/commit ve toplam çalışma kümesi birlikte kaydedilecek; tek metriğin düşmesi bellek kullanımının azaldığı kabul edilmeyecek.
+
+GPU motor kullanımı ve dedicated/shared GPU belleği ayrıca izlenecek. Boşta sürekli render olmaması hedef; WebView/GPU sürücüsünün taban tüketimi deneyde ölçülecek. RAM bütçesi düşük tutulurken VRAM'e kontrolsüz yük aktarılmayacak.
+
+## Çalışma politikası
+
+- Dosya olayları yalnızca manifest köklerinde; olaylar birleştirilip kaynak bazında yeniden işlenir.
+- Açılışta önce SQLite snapshot'ı gösterilir; keşif ve ağ işleri sonradan başlar.
+- UI sadece görünür satırları render eder; kapaklar iki ekranı aşan ön yükleme yapmaz.
+- Tam boy artwork, blur ve arka plan video kullanılmaz. Hareketler kısa, etkileşime bağlı ve durabilir.
+- Kişi ve oda durumları olaylarla güncellenir; bağlantı heartbeat'i dışında sürekli sorgulama yok.
+- SQLite bağlantı/cache boyutları sınırlı; iş kuyrukları sınırlı ve iptal edilebilir.
+- Oyun başladığında ağır keşif ve metadata kuyruğu duraklatılır. Kullanıcı açıkça devam ettirebilir.
+- Başlatılan oyun süreçleri öncelikle OS olaylarıyla izlenir. Kaçırılan olayları düzeltmek için yalnızca ilgili süreçlerde seyrek ve sınırlı kontrol uygulanabilir.
+- Pencere kapatılıp tepsiye geçildiğinde WebView gerçekten yok edilir; tekrar açılmada tercih ve kütüphane SQLite'dan yüklenir.
+
+## Ölçüm protokolü
+
+1. Debug araçları kapalı release derlemesini ölç; Node/Vite geliştirme sunucusunu sonuçlara katma.
+2. Soğuk açılış, sıcak açılış, 60 saniye boşta, yoğun kaydırma, arama, tarama ve tepsi senaryolarını ayır.
+3. 100, 1.000 ve 10.000 oyun; kapaklı/kapaksız; Discord kapalı/açık veri setlerini karşılaştır.
+4. Açılış ve aramayı en az 20 kez ölç; p50/p95 ve en kötü sonucu kaydet.
+5. Windows süreç ölçümleri ve gerektiğinde WPR/WPA ile CPU, disk ve GPU kaynaklarını doğrula.
+6. 50 pencere aç/kapat döngüsü ve 8 saat boşta çalışma sonunda kalıcı büyüme veya yeni orphan süreç olmadığını kontrol et.
+7. Oyun kapalı/açık halde kontrollü A/B ölçüm yap; arka plan işlerinin frame-time üzerindeki etkisini kaydet.
+
+İlk benchmark arayüz + SQLite + bir Steam adaptörüyle yapılacak. Kaynak bütçesi geçilirse önce görünür kapaklar, WebView yaşam döngüsü, sorgular ve arka plan işleri incelenir. Buna rağmen geçilemiyorsa daha fazla özellik eklenmeden aynı iş yüküyle Rust/Slint karşılaştırılır. Hedef sessizce yükseltilmez.
+
+## Kararlılık senaryoları
+
+| Durum | Beklenen davranış |
+| --- | --- |
+| Bozuk / yarım manifest | Kaynak hatası gösterilir; diğer oyunlar korunur |
+| Tarama iptali | Yarım snapshot mevcut oyunları kaldırmaz |
+| Disk çıkarılması | Kurulum erişilemiyor olur; kullanıcı verileri kalır |
+| Launcher güncellemesi | Kaynak tekrar doğrulanır; kayıtlar isimden yeniden üretilmez |
+| Oyun başlatma hatası | Başarısız oturum olarak kaydedilir; uygulama kapanmaz |
+| İnternet kesintisi | Yerel kütüphane çalışır, ağ kuyruğu gecikmeli bekler |
+| Discord kapanması | Sosyal durum bilinmiyor olur; bağlantı kontrollü tekrar denenir |
+| Yetki reddi | İlgili yetenek kapanır; tekrar giriş seçeneği kalır |
+| SDK/eklenti çökmesi | Yardımcı süreç sınırlı tekrar denenir; çekirdek çalışır |
+| Veritabanı geçişi hatası | Yedek korunur; eski verinin üstüne yazılmaz |
+| İkinci uygulama açılışı | Yeni süreç mevcut pencereyi öne getirip çıkar |
+
+Testler parser, kaynak eşleştirme, silinme koşulları, migration, launcher komutları ve kritik bağlantı durumlarını kapsayacak. Görsel stil ayrıntılarını tekrar eden testler yazılmayacak. Windows yaşam döngüsü ve gerçek launcher davranışı yalnızca tarayıcı testleriyle doğrulanmış sayılmayacak.
