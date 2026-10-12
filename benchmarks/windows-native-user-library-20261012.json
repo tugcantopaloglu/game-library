@@ -1,0 +1,159 @@
+{
+  "date": "2026-10-12",
+  "testedSourceCommit": "689fa5543afdf77797ef0b85c2d6193ea3f0fa07",
+  "executableSha256": "FA80EE722CA3504AFDFCB510BAA45084806617CC2F0FD5CB9A7CACE5B853E900",
+  "executableBytes": 16431616,
+  "machine": {
+    "os": "Microsoft Windows 11 Pro",
+    "osBuild": "26200",
+    "cpu": "AMD Ryzen 5 7500F 6-Core Processor             ",
+    "totalRamGiB": 31.73
+  },
+  "logicalProcessors": 12,
+  "build": "release",
+  "warmupSeconds": 8,
+  "dataset": {
+    "type": "Isolated synthetic Steam manifests with 600x900 JPEG covers",
+    "games": 10000,
+    "pageSize": 100,
+    "maximumThumbnailSize": "180x270",
+    "systemDiscoveryIncluded": false
+  },
+  "measurementScope": "Game Library process only. Bridge disabled; Discord/Steam/game resource consumption excluded. No build or second native instance during measurements.",
+  "cpuAverageMethod": "Elapsed-time weighted; percent of machine total.",
+  "measurements": [
+    {
+      "scenario": "Tray",
+      "sourceReport": "tray-20261012-212503.json",
+      "durationSeconds": 60,
+      "measuredDurationSeconds": 60.2008304,
+      "maxSampleGapMs": 1010.3295999999991,
+      "interrupted": false,
+      "sampleCount": 61,
+      "privateWorkingSetMiB": 25.09342981557377,
+      "peakPrivateWorkingSetMiB": 25.10546875,
+      "privateBytesMiB": 26.358414446721312,
+      "workingSetMiB": 45.8367699795082,
+      "cpuPercent": 0.004325798580125024,
+      "processCounts": [
+        1
+      ],
+      "partial": false
+    },
+    {
+      "scenario": "Window",
+      "sourceReport": "window-20261012-212327.json",
+      "durationSeconds": 60,
+      "measuredDurationSeconds": 60.2070672,
+      "maxSampleGapMs": 1010.0175999999992,
+      "interrupted": false,
+      "sampleCount": 61,
+      "privateWorkingSetMiB": 29.838370901639344,
+      "peakPrivateWorkingSetMiB": 29.8515625,
+      "privateBytesMiB": 31.025230532786885,
+      "workingSetMiB": 52.84836065573771,
+      "cpuPercent": 0.010813376185622715,
+      "processCounts": [
+        1
+      ],
+      "partial": false
+    }
+  ],
+  "search": {
+    "games": 10000,
+    "includesUiOrIpc": false,
+    "runs": 100,
+    "searchRustMaxMs": 16.958299999999998,
+    "searchRustP50Ms": 14.3058,
+    "searchRustP95Ms": 15.9259
+  },
+  "startup": {
+    "runs": 20,
+    "games": 10000,
+    "startupP50Ms": 648.74,
+    "startupP95Ms": 661.9493,
+    "startupMaxMs": 669.9494000000001,
+    "thumbnailAndOffscreenRenderIncluded": true,
+    "osPaintLatencyIncluded": false,
+    "filesystemCacheSharedBetweenRuns": true
+  },
+  "windowsUi": {
+    "slintScaleFactors": [
+      1.5,
+      2.0
+    ],
+    "renderedScreenshotsInspected": [
+      "updates-150",
+      "discord-200",
+      "library-200"
+    ],
+    "realWindowsDpiTransitionTested": false,
+    "keyboardEndToEndTested": false
+  },
+  "realGameLaunch": {
+    "game": "Beholder: Conductor",
+    "source": "Steam",
+    "newExecutableObserved": true,
+    "elapsedSeconds": 23.0510732,
+    "gameFrameTimeOrGpuMeasured": false,
+    "acceptanceDuringDevelopmentBeforeFinalBuild": true
+  },
+  "vencord": {
+    "discordStable": "1.0.9261",
+    "sourceRevision": "16ec4ea838899706019e7f472e45f055070abeb1",
+    "bridgeProtocol": 1,
+    "connected": true,
+    "friendCount": 32,
+    "roomCount": 1,
+    "autoUpdate": true,
+    "capabilities": {
+      "auto_update": true,
+      "deafen": true,
+      "join_voice": true,
+      "mute": true,
+      "open_dm": true,
+      "stream_audio": false,
+      "stream_fps": false,
+      "stream_quality": false,
+      "stream_source": false,
+      "stream_start": false,
+      "stream_stop": false,
+      "vencord_update": true
+    },
+    "nativeUi": {
+      "canDeafen": true,
+      "canMute": true,
+      "canStopStream": false,
+      "connected": true
+    },
+    "stateChangingCommandsExecuted": false,
+    "electronExtendedPathRegressionFixed": true
+  },
+  "checks": {
+    "rustTests": 35,
+    "clippyWarningsDenied": true,
+    "vencordTypecheck": true,
+    "vencordBuild": true,
+    "releaseStartupHealthReportVerified": true,
+    "snykCodeScan": "Unavailable: tool and CLI absent; not substituted by other checks"
+  },
+  "stability": {
+    "status": "Running; not accepted as completed",
+    "targetSeconds": 28800,
+    "startedAt": "2026-10-12T21:28:45.6798354+03:00",
+    "expectedFinish": "2026-10-13T05:28:53.683842+03:00",
+    "scope": "Idle tray with isolated 10000-game profile and bridge disabled",
+    "sourceReport": "user-library-stability-8h.json"
+  },
+  "pending": [
+    "Eight-hour stability completion",
+    "Live SteamGridDB API with a user key",
+    "Real Epic/Riot launches",
+    "Game frame-time/GPU A/B measurement",
+    "Discord streaming controls unavailable in tested client",
+    "State-changing voice/channel/DM/update command acceptance",
+    "PTB/Canary and independent installer repair/uninstall acceptance",
+    "Signed public release chain and full database rollback",
+    "Keyboard navigation and live OS DPI transitions"
+  ]
+}

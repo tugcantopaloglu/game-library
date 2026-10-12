@@ -29,7 +29,7 @@ GPU motor kullanımı ve dedicated/shared GPU belleği ayrıca izlenecek. Boşta
 - Açılışta önce SQLite snapshot'ı gösterilir; keşif ve ağ işleri sonradan başlar.
 - UI sadece görünür satırları render eder. İlk native sürüm 100 kayıtlık sayfanın JPEG/PNG kapaklarını en fazla 180×270 piksele indirir; tam sayfanın RGBA verisi en fazla 18,54 MiB'dir. Decode işçi thread'inde, tek görsel üzerinde yapılır. Daha büyük kütüphanelerde görünür kapaklara göre yükleme sonraki optimizasyondur.
 - Tam boy artwork, blur ve arka plan video kullanılmaz. Hareketler kısa, etkileşime bağlı ve durabilir.
-- Kişi ve oda durumları olaylarla güncellenir; bağlantı heartbeat'i dışında sürekli sorgulama yok.
+- Mevcut Vencord eklentisi tek timer ile saniyede bir, en fazla 50 kişi/50 oda snapshot'ı gönderir; native görünüm açıkken iki saniyede bir yenilenir. Kişi başına timer yoktur. Olay tabanlı snapshot optimizasyonu sonraki iştir; eklentinin Discord sürecine ek maliyeti henüz ayrı ölçülmedi.
 - SQLite bağlantı/cache boyutları sınırlı; iş kuyrukları sınırlı ve iptal edilebilir.
 - Oyun başladığında ağır keşif ve metadata kuyruğu duraklatılır. Kullanıcı açıkça devam ettirebilir.
 - Başlatılan oyun süreçleri öncelikle OS olaylarıyla izlenir. Kaçırılan olayları düzeltmek için yalnızca ilgili süreçlerde seyrek ve sınırlı kontrol uygulanabilir.
@@ -49,9 +49,11 @@ Rapor istenen süreyle birlikte gerçek ölçüm süresini ve en uzun örnek ara
 
 İlk benchmark arayüz + SQLite + bir Steam adaptörüyle yapılacak. Kaynak bütçesi geçilirse önce görünür kapaklar, WebView yaşam döngüsü, sorgular ve arka plan işleri incelenir. Buna rağmen geçilemiyorsa daha fazla özellik eklenmeden aynı iş yüküyle Rust/Slint karşılaştırılır. Hedef sessizce yükseltilmez.
 
-Native tam sürümün 1.000 kayıtlı kapaksız/kapaklı/tepsi ölçümleri ve 50 pencere döngüsü tamamlandı; RAM/CPU bütçeleri karşılandı. Ölçüm özeti ve doğrulanmayan alanlar [benchmark kaydında](../benchmarks/windows-native-20261012.json) yer alır. Diğer oyun kaynakları bu aşamadan sonra eklenir; her yeni modülün etkisi aynı yöntemle tekrar ölçülür.
+Native tam sürümün önceki 1.000 kayıtlı kapaksız/kapaklı/tepsi ölçümleri ve 50 pencere döngüsü tamamlandı; RAM/CPU bütçeleri karşılandı. Ölçüm özeti ve doğrulanmayan alanlar [benchmark kaydında](../benchmarks/windows-native-20261012.json) yer alır. Yeni modüllerin etkisi aynı yöntemle tekrar ölçülür; geçmiş yaşam döngüsü testi yeni modüllerin kabulü yerine geçmez.
 
 Epic/Riot sonrası 2.004 kayıtlı sürüm pencere açıkken 32,32 MiB / %0,199; doğrudan tepsi açılışında 24,06 MiB / %0,028 ölçüldü. Her iki 60 saniyelik kayıt tek süreçli ve kesintisizdi. [Yeni kaynak benchmark kaydı](../benchmarks/windows-native-sources-20261012.json).
+
+Kullanıcı kütüphanesi/Vencord sonrası release, 10.000 kapaklı fixture kaydında pencere 29,84 MiB / %0,011; doğrudan tepsi 25,09 MiB / %0,004 ölçüldü. Bu iki kesintisiz 60 saniyelik ölçümde köprü kapalıydı; Discord'un ve eklentinin kaynakları dahil değil. 100 çekirdek aramasında p95 15,93 ms ölçüldü; UI/IPC gecikmesi henüz dahil edilmedi. 20 ayrı süreç açılışında thumbnail yükleme ve software snapshot dahil p95 661,95 ms; dosya sistemi cache'i ortaktı, OS paint gecikmesi ölçülmedi. Önceki ölçümden veri seti ve bilgisayar farklı olduğu için doğrudan hızlanma iddiası yapılmaz. Son cihaz Windows 11 Pro, Ryzen 5 7500F ve 31,73 GiB RAM. [Yeni benchmark ve kalan kabul işleri](../benchmarks/windows-native-user-library-20261012.json).
 
 ## Kararlılık senaryoları
 

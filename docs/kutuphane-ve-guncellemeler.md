@@ -47,7 +47,7 @@ Yeniden başlat ve uygula, ayrı güncelleme yardımcısını başlatır. Yardı
 Geliştirme derlemesinde yayımlanmış imzalı release ve güven anahtarı yoktur; canlı otomatik güncelleme bu yüzden açık sayılmaz. Yayın hazırlığı:
 
 1. Ed25519 özel anahtarını depo dışında güvenli tut. Açık anahtarın ham 32 baytının base64 değerini `GAME_LIBRARY_UPDATE_PUBLIC_KEY` derleme değişkeniyle tanımla.
-2. Release executable'ını derle.
+2. `apps/native/Cargo.toml` sürümünü bildirimdeki sürümle eşleştir ve güven anahtarı tanımlı release executable'ını derle. Açılış raporundaki derleme sürümü bildirime uymuyorsa yardımcı geri dönüş uygular.
 3. `node scripts/sign-update.mjs <exe> <sürüm> <özel-anahtar.pem> <update.json>` ile bildirimi imzala.
 4. İlk sürüm ve sonraki güncellemeyi gerçek paketle doğruladıktan sonra `v<sürüm>` release'ine executable ve `update.json` ekle. Bu geliştirme çalışması release yayımlamaz.
 
