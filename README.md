@@ -17,36 +17,33 @@ Discord yayın kapsamı: başlatma/durdurma, paylaşılan oyun veya pencereyi de
 | Katman | Seçim |
 | --- | --- |
 | Çekirdek ve işletim sistemi işlemleri | Rust |
-| Masaüstü kabuğu | Tauri 2 |
-| Arayüz | React, TypeScript, Vite |
-| Stil ve etkileşim | Tailwind CSS, seçili Radix bileşenleri, Lucide |
+| Masaüstü kabuğu ve arayüz | Slint 1.18.1 / Rust, native Windows pencere ve tepsi |
+| Çizim | Software renderer; derlenen `.slint` bileşenleri |
 | Yerel veri | SQLite / rusqlite |
 | Discord | Yeteneğe göre Social SDK, onaylı RPC veya sunucu botu |
 | Gelecekteki eklentiler | Sürümlü protokol üzerinden ayrı süreçler |
 
-Pencere açıkken 180 MiB, arayüz kapalı ve tepsi açıkken 40 MiB toplam özel çalışma kümesi başlangıç hedefidir. İlk ölçüm protokolü ve sonuçlar [ilk sürüm belgesinde](docs/ilk-surum.md) takip edilir. Özellikle sürekli 50–80 MiB altında bir arayüz istenirse Rust/Slint alternatifi aynı yükle değerlendirilecek.
+Pencere açıkken 180 MiB, tepsi açıkken 40 MiB özel çalışma kümesi ve boşta %0,25 altında CPU başlangıç hedefidir. Native karşılaştırma denemesi 1.000 kapaksız kayıtta 10,84 MiB özel RAM ve %0,123 CPU ölçüldü. Ana sürümün sonuçları [ilk sürüm belgesinde](docs/ilk-surum.md) takip edilir. Önceki Tauri/React uygulaması `apps/desktop` altında karşılaştırma amacıyla korunur; ana uygulama WebView içermez.
 
 ## Çalıştırma
 
-Windows x64 release uygulaması: `target/release/game-library.exe`. WebView2 Runtime gerekir. Pencereyi kapatmak veya Tepsiye al düğmesine basmak arayüzü kapatır; uygulamadan çıkmak için tepsi menüsündeki Çıkış kullanılır. Tepsi simgesine tıklamak kütüphaneyi yeniden açar.
+Windows x64 geliştirme uygulaması: `target/release/game-library-native.exe`. Pencereyi kapatmak veya Tepsiye al düğmesine basmak pencereyi gizler; uygulamadan çıkmak için Uygulama veya tepsi menüsündeki Çıkış kullanılır. Tepsi simgesine tıklamak kütüphaneyi yeniden açar. Paketleme ertelendi.
 
-Geliştirme için Rust MSVC, C++ Build Tools, WebView2, Node.js ve pnpm:
+Native uygulama için Rust MSVC ve C++ Build Tools yeterlidir:
 
 ```powershell
-pnpm install --frozen-lockfile
-pnpm dev
+cargo run -p game-library-native
 ```
 
 Release derlemesi ve doğrulama:
 
 ```powershell
-pnpm build
-pnpm check
+cargo build -p game-library-native --release
 cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 ```
 
-Performans ekranında 60 saniyelik ölçüm başlatılabilir. Ölçüm yalnızca uygulama ve WebView2 süreçlerini kapsar; Steam ve başlatılan oyunlar dahil edilmez. Raporlar `%LOCALAPPDATA%\GameLibrary\measurements\` altında saklanır. Kütüphane ekranında sürekli kaynak izleme yapılmaz.
+Performans ekranında anlık örnek veya 60 saniyelik ölçüm alınabilir. Ölçüm yalnızca uygulamayı kapsar; Steam ve başlatılan oyunlar dahil edilmez. Raporlar `%LOCALAPPDATA%\GameLibrary\measurements\` altında saklanır. Kütüphane ekranında sürekli kaynak izleme yapılmaz.
 
 Arayüz açık/tepsi ölçümlerini aynı release dosyasıyla almak için önce Game Library'den çık:
 
@@ -65,4 +62,6 @@ pwsh -File scripts/measure.ps1 -Mode Tray -Seconds 60
 - [Arayüz yönü](docs/arayuz.md)
 - [Geliştirme sırası](docs/yol-haritasi.md)
 
-Steam kurulu olmayan ortamda fixture testleri uygulanır. Gerçek oyun başlatma kabul testi Steam'in kurulu olduğu bilgisayarda yapılmalıdır. İlk sürüm internetten kapak indirmez; Steam'in mevcut yerel kapak dosyalarını bulursa gösterir.
+Steam kurulu olmayan ortamda fixture testleri uygulanır. Gerçek oyun başlatma kabul testi Steam'in kurulu olduğu bilgisayarda yapılmalıdır. İlk sürüm internetten kapak indirmez; Steam'in mevcut yerel kapak dosyalarını bulursa gösterir. Native arayüz 100 kayıtlık sayfalar ve sanallaştırılmış satırlar kullanır. JPEG/PNG kapaklar işçi thread'inde en fazla 180×270 piksele indirilir; dosya, boyut ve decode bellek sınırları uygulanır.
+
+Slint atfı Yardım → Hakkında ekranında `AboutSlint` bileşeniyle gösterilir. [Slint kullanım koşulları](https://slint.dev/terms-and-conditions).

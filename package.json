@@ -4,9 +4,12 @@
   "version": "0.1.0",
   "packageManager": "pnpm@11.25.0",
   "scripts": {
-    "dev": "pnpm --filter @game-library/desktop dev",
-    "build": "pnpm --filter @game-library/desktop build",
-    "check": "pnpm --filter @game-library/desktop check",
+    "dev": "cargo run -p game-library-native",
+    "build": "cargo build -p game-library-native --release",
+    "check": "cargo clippy -p game-library-native --all-targets -- -D warnings",
+    "webview:dev": "pnpm --filter @game-library/desktop dev",
+    "webview:build": "pnpm --filter @game-library/desktop build",
+    "webview:check": "pnpm --filter @game-library/desktop check",
     "ui:dev": "pnpm --filter @game-library/desktop ui:dev",
     "ui:build": "pnpm --filter @game-library/desktop ui:build",
     "test": "cargo test --workspace"

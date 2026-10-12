@@ -2,6 +2,8 @@
 
 ## Erişim modeli
 
+Entegrasyon native olacak: Rust tarafında resmi SDK/yerel IPC bağlantısı, Slint tarafında kişi/oda/yayın bileşenleri. Discord sitesi, iframe veya Discord istemcisinin WebView içine gömülmesi kullanılmayacak. Video yakalama ve kodlama Discord'un kendi sürecinde kalacak. Native arayüz geçişi Discord API yetkilerini genişletmez; aşağıdaki erişim koşulları her özellik için ayrıca doğrulanır.
+
 Discord bağlantısı tek bir sınırsız API değildir. Arkadaş listesi, sunucu üyeleri, ses odaları, mesaj gönderimi ve Go Live kontrolü farklı yetkilere sahip. Her sağlayıcı desteklediği işlemleri bildirecek; arayüz yalnızca kullanılabilir özellikleri açacak.
 
 ## Yetenek tablosu

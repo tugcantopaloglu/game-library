@@ -10,11 +10,11 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $taskWorkspace = Split-Path -Parent $PSScriptRoot
-if (-not $ExecutablePath) { $ExecutablePath = Join-Path $taskWorkspace 'target\release\game-library.exe' }
+if (-not $ExecutablePath) { $ExecutablePath = Join-Path $taskWorkspace 'target\release\game-library-native.exe' }
 if (-not $OutputDirectory) { $OutputDirectory = Join-Path $taskWorkspace 'artifacts\measurements' }
 $ExecutablePath = [System.IO.Path]::GetFullPath($ExecutablePath)
 $OutputDirectory = [System.IO.Path]::GetFullPath($OutputDirectory)
-if (-not (Test-Path -LiteralPath $ExecutablePath)) { throw 'Release uygulaması bulunamadı. Önce pnpm build çalıştır.' }
+if (-not (Test-Path -LiteralPath $ExecutablePath)) { throw 'Release uygulaması bulunamadı. Önce cargo build -p game-library-native --release çalıştır.' }
 $taskProcessName = [System.IO.Path]::GetFileNameWithoutExtension($ExecutablePath)
 if (Get-Process -Name $taskProcessName -ErrorAction SilentlyContinue) { throw 'Ölçüm için önce test edilecek uygulamadan tamamen çık.' }
 New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null

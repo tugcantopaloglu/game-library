@@ -2,6 +2,8 @@
 
 ## Görsel dil
 
+Çalışan ana arayüz Rust/Slint ile derlenir. WebView kullanılmaz. Mevcut kütüphane, favoriler, Steam kaynakları ve kaynak ölçümü native bileşenlerdir. 21st.dev referansları yalnızca tasarım yönünü belirler; Discord görünümü de aynı native bileşen sistemiyle hazırlanacak.
+
 Oyun kapaklarının öne çıktığı, koyu grafit bir masaüstü arayüzü. Tek vurgu rengi soluk yeşil; Discord bağlantı durumunda gerektiğinde mor. Büyük gradient arka planlar, parlayan çerçeveler, sürekli hareket ve gereksiz istatistik kartları kullanılmayacak.
 
 | Öğe | İlk tasarım kararı |

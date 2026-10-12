@@ -1,0 +1,282 @@
+import { LineEdit, ListView, ScrollView, AboutSlint } from "std-widgets.slint";
+
+export struct GameTile {
+    id: string,
+    name: string,
+    size: string,
+    installed: bool,
+    favorite: bool,
+    artwork: image,
+    has-artwork: bool,
+}
+
+component Action inherits Rectangle {
+    in property <string> text;
+    in property <bool> accent;
+    in property <bool> enabled: true;
+    callback clicked;
+    height: 34px;
+    min-width: 78px;
+    border-radius: 7px;
+    border-width: keys.has-focus ? 1px : 0px;
+    border-color: #bdd9a8;
+    background: !enabled ? #202429 : accent ? (touch.has-hover ? #b8db9d : #a5cb87) : (touch.has-hover ? #30383e : #232a30);
+    forward-focus: keys;
+    accessible-role: button;
+    accessible-label: text;
+    accessible-enabled: enabled;
+    Text { text: root.text; color: !root.enabled ? #6f7a83 : root.accent ? #15200e : #dde3e8; font-size: 12px; horizontal-alignment: center; vertical-alignment: center; }
+    keys := FocusScope {
+        enabled: root.enabled;
+        key-pressed(event) => {
+            if event.text == "\n" || event.text == " " { root.clicked(); return accept; }
+            return reject;
+        }
+    }
+    touch := TouchArea { enabled: root.enabled; clicked => { keys.focus(); root.clicked(); } }
+}
+
+component Navigation inherits Rectangle {
+    in property <string> text;
+    in property <bool> active;
+    callback clicked;
+    height: 41px;
+    border-radius: 7px;
+    background: active ? #273426 : hover.has-hover ? #20262b : transparent;
+    accessible-role: button;
+    accessible-label: text;
+    Text { text: root.text; x: 12px; color: root.active ? #c7e3b2 : #a9b3bf; font-size: 13px; vertical-alignment: center; }
+    hover := TouchArea { clicked => { root.clicked(); } }
+}
+
+component GameCard inherits Rectangle {
+    in property <GameTile> game;
+    callback launch(string);
+    callback favorite(string, bool);
+    height: 310px;
+    background: transparent;
+    opacity: game.id == "" ? 0 : 1;
+    VerticalLayout {
+        spacing: 9px;
+        Rectangle {
+            height: 226px;
+            border-radius: 10px;
+            background: #202b30;
+            clip: true;
+            if game.has-artwork: Image { source: game.artwork; image-fit: cover; }
+            if !game.has-artwork: VerticalLayout {
+                padding: 17px;
+                Rectangle { vertical-stretch: 1; background: transparent; }
+                Text { text: game.name; color: #d0dfd6; font-size: 19px; font-weight: 600; wrap: word-wrap; }
+                Text { text: "STEAM"; color: #9aafa4; font-size: 9px; }
+                Rectangle { vertical-stretch: 1; background: transparent; }
+            }
+            Rectangle {
+                x: 10px; y: 10px; width: 74px; height: 22px; border-radius: 4px;
+                background: #18211de0;
+                Text { text: game.installed ? "Kurulu" : "Erişilemiyor"; font-size: 9px; color: game.installed ? #c5dfb0 : #bfadb0; horizontal-alignment: center; vertical-alignment: center; }
+            }
+        }
+        Text { text: game.name; color: #eef1f4; font-size: 12px; overflow: elide; }
+        HorizontalLayout {
+            spacing: 7px;
+            Action { text: "Oyna"; accent: true; enabled: game.installed; clicked => { root.launch(game.id); } }
+            Action { text: game.favorite ? "★" : "☆"; enabled: game.id != ""; min-width: 33px; max-width: 33px; clicked => { root.favorite(game.id, !game.favorite); } }
+        }
+        Text { text: game.size; color: #83909c; font-size: 10px; }
+    }
+}
+
+export component AboutWindow inherits Window {
+    title: "Game Library hakkında";
+    preferred-width: 420px;
+    preferred-height: 300px;
+    background: #181c20;
+    VerticalLayout {
+        padding: 26px;
+        spacing: 18px;
+        Text { text: "Game Library"; color: #f1f3f5; font-size: 24px; font-weight: 600; }
+        Text { text: "0.1.0 · Windows\nKişisel oyun kütüphanesi"; color: #aab4bf; font-size: 13px; }
+        AboutSlint {}
+    }
+}
+
+export component LibraryTray inherits SystemTrayIcon {
+    icon: @image-url("../../desktop/src-tauri/icons/icon.png");
+    tooltip: "Game Library";
+    callback open;
+    callback exit;
+    clicked => { root.open(); }
+    Menu {
+        MenuItem { title: "Kütüphaneyi aç"; activated => { root.open(); } }
+        MenuSeparator {}
+        MenuItem { title: "Çıkış"; activated => { root.exit(); } }
+    }
+}
+
+export component LibraryWindow inherits Window {
+    title: "Game Library";
+    icon: @image-url("../../desktop/src-tauri/icons/icon.png");
+    preferred-width: 1280px;
+    preferred-height: 820px;
+    min-width: 940px;
+    min-height: 620px;
+    background: #101417;
+    default-font-family: "Segoe UI";
+    in property <[[GameTile]]> game-rows;
+    in property <int> total;
+    in property <int> installed-count;
+    in property <int> favorite-count;
+    in property <int> matched;
+    in property <int> offset;
+    in property <int> page-size: 100;
+    in property <bool> scanning;
+    in property <bool> loading;
+    in property <bool> measuring;
+    in property <string> notice;
+    in property <string> source-summary;
+    in property <string> ram: "—";
+    in property <string> cpu: "—";
+    in property <string> commit-size: "—";
+    in property <string> measurement-summary;
+    in property <int> measurement-progress;
+    in-out property <int> section;
+    in-out property <bool> installed-only;
+    in-out property <string> query;
+    in-out property <length> scroll-position;
+    callback refresh(string, bool, bool, int);
+    callback scan;
+    callback cancel-scan;
+    callback add-folder;
+    callback launch(string);
+    callback favorite(string, bool);
+    callback sample;
+    callback measure;
+    callback cancel-measurement;
+    callback open-reports;
+    callback hide-window;
+    callback about;
+    callback quit;
+    callback focus-idle;
+    focus-idle => { idle-focus.focus(); }
+    forward-focus: idle-focus;
+    idle-focus := FocusScope { width: 1px; height: 1px; }
+
+    MenuBar {
+        Menu { title: "Uygulama";
+            MenuItem { title: "Tepsiye al"; activated => { root.hide-window(); } }
+            MenuItem { title: "Çıkış"; activated => { root.quit(); } }
+        }
+        Menu { title: "Yardım"; MenuItem { title: "Hakkında"; activated => { root.about(); } } }
+    }
+
+    HorizontalLayout {
+        spacing: 0px;
+        Rectangle {
+            width: 202px;
+            background: #161b1f;
+            VerticalLayout {
+                padding: 21px;
+                spacing: 11px;
+                Text { text: "Game Library"; color: #f2f5f6; font-size: 18px; font-weight: 600; height: 49px; }
+                Text { text: "KİŞİSEL ALAN"; color: #7b8a97; font-size: 9px; height: 25px; }
+                Navigation { text: "Kütüphane"; active: section == 0; clicked => { section = 0; root.refresh(query, false, installed-only, 0); } }
+                Navigation { text: "Favoriler · " + favorite-count; active: section == 1; clicked => { section = 1; root.refresh(query, true, installed-only, 0); } }
+                Navigation { text: "Performans"; active: section == 2; clicked => { section = 2; root.sample(); } }
+                Text { text: "KAYNAKLAR"; color: #7b8a97; font-size: 9px; height: 34px; }
+                Navigation { text: "Steam"; active: section == 3; clicked => { section = 3; } }
+                Rectangle { vertical-stretch: 1; background: transparent; }
+                Text { text: "WINDOWS · 0.1.0"; color: #788693; font-size: 9px; }
+                Action { text: "Tepsiye al"; clicked => { root.hide-window(); } }
+            }
+        }
+        VerticalLayout {
+            spacing: 0px;
+            Rectangle {
+                height: 55px;
+                background: #12171b;
+                HorizontalLayout {
+                    padding-left: 30px; padding-right: 30px;
+                    Text { text: "Kişisel alan  /  " + (section == 0 ? "Kütüphane" : section == 1 ? "Favoriler" : section == 2 ? "Performans" : "Steam"); color: #9aa8b5; font-size: 11px; vertical-alignment: center; }
+                    Text { text: installed-count + " kurulu oyun"; color: #8ea180; font-size: 11px; horizontal-alignment: right; vertical-alignment: center; }
+                }
+            }
+            VerticalLayout {
+                padding: 30px;
+                spacing: 17px;
+                Text { text: section == 0 ? "Kütüphanen" : section == 1 ? "Favorilerin" : section == 2 ? "Kaynak kullanımı" : "Steam kütüphaneleri"; color: #eff3f5; font-size: 29px; font-weight: 600; }
+                Text { text: section < 2 ? total + " oyun · " + matched + " sonuç" : section == 2 ? "Ölçüm yalnızca Game Library süreçlerini kapsar." : "Kurulumlar kayıt defteri ve Steam manifestlerinden bulunur."; color: #8c9ba8; font-size: 12px; }
+                if notice != "": Rectangle {
+                    min-height: 40px; background: #202930; border-radius: 7px;
+                    Text { text: notice; color: #c5d3df; font-size: 11px; wrap: word-wrap; x: 12px; width: parent.width - 24px; vertical-alignment: center; }
+                }
+                if section < 2: VerticalLayout {
+                    spacing: 17px;
+                    HorizontalLayout {
+                        spacing: 9px;
+                        LineEdit { placeholder-text: "Oyun ara"; text <=> query; edited => { root.refresh(query, section == 1, installed-only, 0); } }
+                        Action { text: installed-only ? "Kurulu ✓" : "Tüm oyunlar"; clicked => { installed-only = !installed-only; root.refresh(query, section == 1, installed-only, 0); } }
+                        Action { text: scanning ? "Taramayı iptal et" : "Yeniden tara"; clicked => { if scanning { root.cancel-scan(); } else { root.scan(); } } }
+                    }
+                    if matched == 0: VerticalLayout {
+                        spacing: 18px;
+                        Rectangle { vertical-stretch: 1; background: transparent; }
+                        Text { text: loading ? "Kütüphane yükleniyor…" : query != "" ? "Aramana uygun oyun bulunamadı." : section == 1 ? "Henüz favori oyun eklemedin." : "Kütüphanen henüz boş."; color: #ced7df; horizontal-alignment: center; font-size: 17px; }
+                        Action { text: "Steam klasörü ekle"; enabled: !scanning; clicked => { root.add-folder(); } }
+                        Rectangle { vertical-stretch: 1; background: transparent; }
+                    }
+                    if matched > 0: ListView {
+                        content-y <=> root.scroll-position;
+                        for row-data in game-rows: HorizontalLayout {
+                            height: 335px; spacing: 17px;
+                            for entry in row-data: GameCard {
+                                game: entry;
+                                launch(id) => { root.launch(id); }
+                                favorite(id, value) => { root.favorite(id, value); }
+                            }
+                        }
+                    }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Text { text: matched == 0 ? "0 sonuç" : (offset + 1) + "–" + min(offset + page-size, matched) + " / " + matched; color: #8796a3; font-size: 11px; vertical-alignment: center; }
+                        Action { text: "Önceki"; enabled: offset > 0 && !loading; clicked => { root.refresh(query, section == 1, installed-only, max(0, offset - page-size)); } }
+                        Action { text: "Sonraki"; enabled: offset + page-size < matched && !loading; clicked => { root.refresh(query, section == 1, installed-only, offset + page-size); } }
+                    }
+                }
+                if section == 2: VerticalLayout {
+                    spacing: 18px;
+                    HorizontalLayout {
+                        spacing: 14px;
+                        Rectangle { height: 112px; border-radius: 9px; background: #1b2329;
+                            VerticalLayout { padding: 17px; Text { text: "ÖZEL RAM"; color: #8c9baa; font-size: 10px; } Text { text: ram; color: #d3e8c2; font-size: 27px; } }
+                        }
+                        Rectangle { height: 112px; border-radius: 9px; background: #1b2329;
+                            VerticalLayout { padding: 17px; Text { text: "CPU"; color: #8c9baa; font-size: 10px; } Text { text: cpu; color: #d3e8c2; font-size: 27px; } }
+                        }
+                        Rectangle { height: 112px; border-radius: 9px; background: #1b2329;
+                            VerticalLayout { padding: 17px; Text { text: "ÖZEL COMMIT"; color: #8c9baa; font-size: 10px; } Text { text: commit-size; color: #e1e7ed; font-size: 27px; } }
+                        }
+                    }
+                    Text { text: "CPU tüm mantıksal işlemcilere göre hesaplanır. İlk örnekte CPU henüz bilinmez.\nKütüphane ekranında sürekli ölçüm yapılmaz."; color: #96a5b1; font-size: 12px; wrap: word-wrap; }
+                    HorizontalLayout {
+                        spacing: 9px;
+                        Action { text: "Anlık ölçüm"; enabled: !measuring; clicked => { root.sample(); } }
+                        Action { text: measuring ? "İptal et" : "60 saniye ölç"; accent: true; clicked => { if measuring { root.cancel-measurement(); } else { root.measure(); } } }
+                        Action { text: "Rapor klasörü"; clicked => { root.open-reports(); } }
+                    }
+                    Text { text: measuring ? "Ölçüm sürüyor · " + measurement-progress + " / 60 sn" : measurement-summary; color: #bed2af; font-size: 12px; wrap: word-wrap; }
+                    Rectangle { vertical-stretch: 1; background: transparent; }
+                }
+                if section == 3: VerticalLayout {
+                    spacing: 17px;
+                    HorizontalLayout {
+                        spacing: 9px;
+                        Action { text: "Steam klasörü ekle"; enabled: !scanning; clicked => { root.add-folder(); } }
+                        Action { text: scanning ? "İptal et" : "Yeniden tara"; clicked => { if scanning { root.cancel-scan(); } else { root.scan(); } } }
+                    }
+                    ScrollView { Text { text: source-summary; color: #aebcc8; font-size: 12px; wrap: word-wrap; } }
+                }
+            }
+        }
+    }
+}

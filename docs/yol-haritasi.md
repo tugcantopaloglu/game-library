@@ -16,6 +16,8 @@ Discord uygulaması/SDK erişimi yoksa sonuç engel olarak kaydedilir; oyun küt
 
 Karar kapısı: Tauri kaynak hedefini karşılıyor mu? Discord için hangi özellikler resmi, hangileri onaya bağlı, hangileri deneysel? Karşılanmayan hedef çözülmeden kapsam büyütülmez.
 
+12 Ekim 2026: Tauri pencere CPU bütçesini geçince native Slint karşılaştırması yapıldı. Native deneme hedefleri karşıladı; ana arayüz Rust/Slint'e taşındı. Dağıtım kullanıcı isteğiyle ertelendi. Öncelik sırası RAM/CPU ve kararlılık, diğer oyun kaynakları, ardından arayüz ve native Discord entegrasyonu. Tam native sürümün kapaklı/kapaksız ve tepsi ölçümleri ayrı doğrulanır.
+
 ## Aşama 1 — Kullanılabilir yerel kütüphane
 
 Steam, Epic ve Riot adaptörleri; SQLite, kaynak bazlı hata izolasyonu, kurulum seçimi, başlatma, favoriler, koleksiyonlar ve elle oyun ekleme. Windows uninstall/kısayol adaylarından launcher dışı oyunlar desteklenir. Koyu arayüz ve sanallaştırılmış grid bu aşamada gelir.

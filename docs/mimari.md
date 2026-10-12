@@ -2,17 +2,17 @@
 
 ## Karar
 
-Rust çekirdek, Tauri 2 kabuk, React/TypeScript arayüz ve SQLite. İlk uygulama tek bir Rust ana süreçte modüllere ayrılacak. Tarama, veritabanı ve ağ işleri arayüz iş parçacığına taşınmayacak. İşletim sistemi işlemleri Rust tarafında kalacak.
+Rust çekirdek, Slint native masaüstü arayüzü ve SQLite. Ana uygulama tek Rust süreçte çalışır. Tarama, veritabanı ve kapak decode işleri 16 komutla sınırlı kuyruğu olan bir işçi thread'inde yürütülür. Arayüz yalnızca görünüm modelini günceller. Ölçüm işleri ayrı ve yalnızca talep üzerine başlar. Discord da native Rust/SDK/IPC modülleri üzerinden bağlanacak.
 
 Tauri Windows üzerinde WebView2 kullanıyor ve birden fazla süreç oluşturabiliyor. Sistem WebView'ını kullanması, tek başına düşük RAM garantisi değildir. Ölçüm uygulamanın Rust süreciyle birlikte ona ait bütün WebView2 süreçlerini kapsayacak. [Tauri süreç modeli](https://v2.tauri.app/concept/process-model/), [WebView sürümleri](https://v2.tauri.app/reference/webview-versions/).
 
-Modern arayüz ve 21st.dev bileşen ekosistemi bu seçimle uyumlu. Kesin kaynak bütçesi geçilemezse arayüz kabuğu Rust/Slint ile değiştirilebilir. Slint'in masaüstü için royalty-free ve GPL seçenekleri bulunuyor; geçiş halinde dağıtım koşulları ayrıca değerlendirilecek. [Slint lisans seçenekleri](https://slint.dev/pricing).
+Tauri ilk ölçümde açık pencere CPU bütçesini geçince aynı SQLite verisi ve ölçüm yöntemiyle Slint denendi. Native deneme RAM/CPU hedeflerini karşıladı ve kullanıcının native tercihiyle ana kabuk Slint olarak değişti. Önceki uygulama karşılaştırma için tutuluyor. 21st.dev yerleşim ve görsel dil referansı; React bileşenleri native arayüze yüklenmez. Slint atfı erişilebilir Yardım → Hakkında ekranında yer alır. [Slint kullanım koşulları](https://slint.dev/terms-and-conditions).
 
 ## Modüller
 
 ```mermaid
 flowchart TD
-    UI[React arayüz] <-->|Sürümlü komutlar ve olaylar| HOST[Tauri masaüstü kabuğu]
+    UI[Native Slint arayüz] <-->|Sınırlı iş kuyruğu ve UI olayları| HOST[Rust masaüstü kabuğu]
     HOST --> CORE[Kütüphane çekirdeği]
     CORE --> SCAN[Kaynak adaptörleri]
     CORE --> DB[(SQLite)]
@@ -37,9 +37,11 @@ flowchart TD
 | desktop | Pencere, tepsi, IPC izinleri ve bildirimler |
 | extensions | Eklenti protokolü, sürüm uyumu ve süreç yaşam döngüsü |
 
-UI yalnızca görünüm durumu tutar. Oyun listesi, launcher yolları, tokenlar ve veritabanı Rust tarafından yönetilir. Discord SDK gerekiyorsa resmi C++ SDK'yı kullanan küçük, talep üzerine başlayan yardımcı süreç değerlendirilecek; bütün çekirdek C++ ile yazılmayacak.
+UI yalnızca görünüm durumu tutar. Oyun listesi, launcher yolları, tokenlar ve veritabanı Rust tarafından yönetilir. Discord SDK gerekiyorsa resmi C++ SDK'yı kullanan küçük, talep üzerine başlayan yardımcı süreç değerlendirilecek. Discord web sitesi veya istemcisi uygulamanın içine gömülmeyecek.
 
 ## IPC sözleşmesi
+
+Ana native uygulamada Rust ve Slint aynı süreçte; kütüphane işlemleri JSON IPC üzerinden geçmez. Tipli callback'ler sınırlı iş kuyruğuna komut gönderir; arama 150 ms birleştirilir ve sürüm numarasıyla eski sorgu yanıtları elenir. Aşağıdaki sözleşme gelecekteki yardımcı süreçler ve önceki Tauri karşılaştırma kabuğu için referanstır.
 
 İlk komutlar: `list_games`, `get_game`, `scan_sources`, `cancel_scan`, `launch_game`, `set_favorite`, `set_game_override`, `get_social_capabilities`, `get_settings`, `update_settings`.
 
@@ -77,7 +79,7 @@ Veriler `%LOCALAPPDATA%\GameLibrary\` altında; veritabanı, görseller ve döne
 
 ## Pencere ve tepsi
 
-Pencereyi kapatma, simge durumuna küçültme ve uygulamadan çıkma farklı işlemlerdir. Tepsi modu seçildiyse ana WebView penceresi yok edilir; tekrar açıldığında SQLite ve küçük çekirdek durumundan oluşturulur. Sadece pencereyi gizlemek RAM tasarrufu kabul edilmez.
+Pencereyi kapatma, simge durumuna küçültme ve uygulamadan çıkma farklı işlemlerdir. Native pencere tepsi modunda gizlenir; WebView ve tarayıcı süreçleri yoktur. Native görünüm modeli korunur, tepsi tüketimi ayrıca ölçülür. Windows named mutex tek örneği korur; ikinci örnek bir event ile mevcut pencereyi açtırır. Bekleyen event thread'i timer kullanmaz.
 
 Tarama ve kapak indirme işleri oyun oturumu başlayınca duraklatılabilir. Discord bağlantısı kullanıcı tercihine göre devam eder. Discord yardımcısının kaynak tüketimi ayrı ölçülür ve toplam bütçeye eklenir.
 
@@ -105,4 +107,4 @@ benchmarks/
 docs/
 ```
 
-İlk sürümde `apps/desktop/` ve `crates/library-core/` oluşturuldu. Steam keşfi, veri modeli ve SQLite henüz aynı küçük çekirdek crate içinde; kaynaklar genişledikçe önerilen sınırlar ayrılacak. İhtiyaç olmayan crate ve yardımcı süreçler açılmayacak.
+Ana uygulama `apps/native/`, karşılaştırma uygulamaları `apps/desktop/` ve `apps/native-probe/` altında. Steam keşfi, veri modeli ve SQLite `crates/library-core/`; Windows kaynak sayaçları, shell ve tek örnek denetimi `crates/platform-windows/` içinde. Kaynaklar genişledikçe önerilen sınırlar ayrılacak.
