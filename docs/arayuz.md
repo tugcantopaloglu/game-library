@@ -50,3 +50,11 @@ Kontroller native odak, erişilebilir etiket ve Enter/Space eylemi içerir. Ctrl
 Görsel kontroller gerçek yerel oyunların ayrı doğrulama profilinde yapılır; hesap anahtarı veya Discord kişi bilgisi örnek görsellerde yayımlanmaz. `--screenshot`, `--window-width`, `--window-height`, `--section`, `--detail-tab` ve `--query` ve `--skip-initial-scan` geliştirme kontrolleridir. Görüntüleme, kütüphane yüklemesinin bitmesini bekler ve 30 saniyede zaman aşımına uğrar. Ekran görüntüsü yanındaki `.layout.json` gerçek pencere boyutu, ölçek, sütun ve kayıt sayısını yazar. 10.000 kayıtlık fixture gerçek kullanıcı kütüphanesine karıştırılmaz.
 
 Önceki RAM/CPU ölçümleri eski derlemeye aittir. Yeni tasarımın performansı ayrıca ölçülmeden aynı sonuçları sağladığı iddia edilmez. Önceki sekiz saat testinin raporu tamamlanmadı; sonraki kontrolde süreci çalışmıyordu.
+
+## Native yenileme doğrulaması
+
+Yeni release gerçek kullanıcı profiliyle açıldı; Discord bağlantısı yeniden kuruldu ve 32 arkadaş satırı okundu. Görüntüleme anında ses odası yoktu; uygulama oda uydurmaz. Mikrofon/ses kontrollerinin yetenekleri okundu; ses/DM/kanal eylemi bu görsel kontrolde tetiklenmedi.
+
+Gerçek profilde 12 yerel kaydın 12 kapağı dosya olarak doğrulandı (Steam 8, Epic 1, Riot 3); 10 kayıt kurulu. Kullanıcı hesabı eşitlenmedi. Baldur's Gate 3 ve VALORANT süreleri gerçek profile de kaydedildi. 10.000 kayıtlık ayrı fixture, 100 kaydı 20 satırda yükledi. Normal/dar pencere, oyun ayrıntısı, boş arama, ayarlar, Discord ve Slint 1,5 ölçeği release binary ile görüntülendi. Bunlar yeni RAM/CPU veya uzun kararlılık ölçümü sayılmaz.
+
+Kaynak commit, binary SHA-256, gerçek ekran boyutları ve kabul sınırları [doğrulama kaydında](../benchmarks/windows-native-metadata-and-ui-20261012.json).

@@ -65,7 +65,7 @@ pwsh -File scripts/measure.ps1 -Mode Tray -Seconds 60
 - [Hesap kütüphaneleri, kapaklar ve HowLongToBeat](docs/hesaplar-kapaklar-hltb.md)
 - [Discord ve istemci eklentileri](docs/discord.md)
 - [Performans ve kararlılık kriterleri](docs/performans.md)
-- [Arayüz yönü](docs/arayuz.md)
+- [Native arayüz ve görsel doğrulama](docs/arayuz.md)
 - [Geliştirme sırası](docs/yol-haritasi.md)
 - [Yeni kütüphane, Vencord ve güncelleme akışları](docs/kutuphane-ve-guncellemeler.md)
 - [Onaylanan devam kapsamı ve kabul işleri](docs/devam-plani.md)

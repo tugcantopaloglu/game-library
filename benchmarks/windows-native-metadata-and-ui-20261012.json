@@ -1,0 +1,199 @@
+{
+  "date": "2026-10-12",
+  "kind": "Native metadata and interface acceptance",
+  "sourceCommit": "fe2f4cce5940df25cb93f10f6fe867ec1b645d95",
+  "metadataCommit": "31d0f82",
+  "executableSha256": "8AA6F90F5224378CFA7348DD3A62925C471A6FD992857621580393793303987C",
+  "technology": {
+    "ui": "Slint 1.18.1",
+    "externalComponentCodeCopied": false,
+    "webView": false,
+    "renderer": "software"
+  },
+  "sources": {
+    "warningsAfter": 0,
+    "epic": {
+      "installed": 0,
+      "total": 1,
+      "validCoverFiles": 1
+    },
+    "riot": {
+      "installed": 2,
+      "total": 3,
+      "validCoverFiles": 3
+    },
+    "accountSync": "Deferred by user; full owned library not live verified",
+    "steam": {
+      "installed": 8,
+      "total": 8,
+      "validCoverFiles": 8
+    },
+    "warningsBefore": 6
+  },
+  "completion": {
+    "categories": [
+      "main",
+      "main plus extra",
+      "completionist"
+    ],
+    "validated": [
+      "Baldurs Gate 3",
+      "Hogwarts Legacy",
+      "VALORANT"
+    ],
+    "provider": "HowLongToBeat public game pages with Wikidata identity lookup",
+    "liveCachedRecords": 5
+  },
+  "ui": {
+    "referencePages": [
+      "https://21st.dev/@shadcn/components/sidebar",
+      "https://21st.dev/@arunjdass/components/dashboard-sidebar",
+      "https://21st.dev/community/components/s/card"
+    ],
+    "cases": {
+      "scale150": {
+        "columns": 4,
+        "friends": 0,
+        "matched": 12,
+        "offset": 0,
+        "physicalSize": {
+          "height": 940,
+          "width": 1440
+        },
+        "ready": true,
+        "rooms": 0,
+        "rowCount": 3,
+        "scaleFactor": 1.5,
+        "section": 0
+      },
+      "detail-final": {
+        "columns": 5,
+        "friends": 0,
+        "matched": 12,
+        "offset": 0,
+        "physicalSize": {
+          "height": 840,
+          "width": 1360
+        },
+        "ready": true,
+        "rooms": 0,
+        "rowCount": 3,
+        "scaleFactor": 1.0,
+        "section": 9
+      },
+      "settings": {
+        "columns": 5,
+        "friends": 0,
+        "matched": 12,
+        "offset": 0,
+        "physicalSize": {
+          "height": 840,
+          "width": 1360
+        },
+        "ready": true,
+        "rooms": 0,
+        "rowCount": 3,
+        "scaleFactor": 1.0,
+        "section": 8
+      },
+      "empty": {
+        "columns": 5,
+        "friends": 0,
+        "matched": 0,
+        "offset": 0,
+        "physicalSize": {
+          "height": 840,
+          "width": 1360
+        },
+        "ready": true,
+        "rooms": 0,
+        "rowCount": 0,
+        "scaleFactor": 1.0,
+        "section": 0
+      },
+      "library-final": {
+        "columns": 5,
+        "friends": 0,
+        "matched": 12,
+        "offset": 0,
+        "physicalSize": {
+          "height": 840,
+          "width": 1360
+        },
+        "ready": true,
+        "rooms": 0,
+        "rowCount": 3,
+        "scaleFactor": 1.0,
+        "section": 0
+      },
+      "narrow": {
+        "columns": 4,
+        "friends": 0,
+        "matched": 12,
+        "offset": 0,
+        "physicalSize": {
+          "height": 620,
+          "width": 960
+        },
+        "ready": true,
+        "rooms": 0,
+        "rowCount": 3,
+        "scaleFactor": 1.0,
+        "section": 0
+      },
+      "discord-offline": {
+        "columns": 5,
+        "friends": 0,
+        "matched": 12,
+        "offset": 0,
+        "physicalSize": {
+          "height": 840,
+          "width": 1360
+        },
+        "ready": true,
+        "rooms": 0,
+        "rowCount": 3,
+        "scaleFactor": 1.0,
+        "section": 7
+      },
+      "10000": {
+        "columns": 5,
+        "friends": 0,
+        "matched": 10000,
+        "offset": 0,
+        "physicalSize": {
+          "height": 840,
+          "width": 1360
+        },
+        "ready": true,
+        "rooms": 0,
+        "rowCount": 20,
+        "scaleFactor": 1.0,
+        "section": 0
+      }
+    },
+    "screenshots": "Local artifacts; user account and contact data not committed"
+  },
+  "discord": {
+    "stateChangingVoiceOrDmActionsTested": false,
+    "connected": true,
+    "roomsAtSnapshot": 0,
+    "canMute": true,
+    "canStopStream": false,
+    "canDeafen": true,
+    "friends": 32
+  },
+  "verification": {
+    "snykCodeScan": "Unavailable: tool and CLI absent; not replaced by tests",
+    "releaseBuild": true,
+    "clippyWarningsDenied": true,
+    "workspaceTests": 42
+  },
+  "limits": [
+    "Prior eight-hour report incomplete near 59 minutes; original process absent",
+    "New UI RAM/CPU benchmark and long stability acceptance pending",
+    "Keyboard, screen reader and live Windows DPI transition acceptance pending",
+    "Signed public app release chain pending",
+    "Steam/Epic account connection deferred"
+  ]
+}
