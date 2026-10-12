@@ -124,7 +124,7 @@ impl Store {
             }
             let mut insert = transaction.prepare_cached("INSERT INTO games (id,app_id,name,search_name,library_path,install_path,installed,size_bytes,artwork_path,source,source_id,launch_json)
                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12) ON CONFLICT(id) DO UPDATE SET
-                name=excluded.name,search_name=excluded.search_name,install_path=excluded.install_path,
+                name=excluded.name,search_name=excluded.search_name,install_path=excluded.install_path,library_path=excluded.library_path,
                 installed=excluded.installed,size_bytes=excluded.size_bytes,artwork_path=excluded.artwork_path,source=excluded.source,source_id=excluded.source_id,launch_json=excluded.launch_json")?;
             for game in &root.games {
                 if game.source != root.source {

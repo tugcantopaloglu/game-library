@@ -1,0 +1,15 @@
+{
+  "AppName": "FixtureEpic",
+  "CatalogNamespace": "fixture-namespace",
+  "CatalogItemId": "fixture-catalog",
+  "DisplayName": "Epic Fixture Game",
+  "InstallLocation": "__INSTALL__",
+  "LaunchExecutable": "Game.exe",
+  "LaunchCommand": "--language=tr",
+  "MainGameAppName": "FixtureEpic",
+  "bIsApplication": true,
+  "bIsExecutable": true,
+  "bIsIncompleteInstall": false,
+  "InstallSize": "1073741824",
+  "AppCategories": ["games"]
+}

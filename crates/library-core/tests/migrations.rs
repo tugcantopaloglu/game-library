@@ -38,11 +38,9 @@ fn schema_one_is_backed_up_and_preserves_steam_identity_and_favorites() {
             .unwrap(),
         1
     );
-    assert!(
-        backup
-            .query_row::<bool, _, _>("SELECT favorite FROM games", [], |row| row.get(0))
-            .unwrap()
-    );
+    assert!(backup
+        .query_row::<bool, _, _>("SELECT favorite FROM games", [], |row| row.get(0))
+        .unwrap());
     drop(store);
     assert!(
         Store::open(&path)

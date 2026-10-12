@@ -1,0 +1,5 @@
+product_install_full_path: '__INSTALL__'
+product_install_root: '__ROOT__'
+product_install_enabled: true
+locale_data:
+  default_locale: tr_TR

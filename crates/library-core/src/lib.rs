@@ -1,4 +1,9 @@
+pub mod discovery;
+pub mod epic;
+pub mod launcher;
 pub mod models;
+pub mod riot;
+pub mod sources;
 pub mod steam;
 pub mod storage;
 
