@@ -16,4 +16,4 @@ export type ProcessSample = { pid: number, name: string, workingSetMib: number, 
 
 export type ResourceSample = { elapsedMs: number, workingSetMib: number, privateWorkingSetMib: number | null, privateBytesMib: number, cpuPercent: number | null, processCount: number, partial: boolean, processes: Array<ProcessSample>, };
 
-export type MeasurementReport = { durationSeconds: number, sampleCount: number, averageCpuPercent: number | null, averagePrivateWorkingSetMib: number | null, peakPrivateWorkingSetMib: number | null, averageWorkingSetMib: number, averagePrivateBytesMib: number, partial: boolean, logicalProcessors: number, build: string, savedPath: string, samples: Array<ResourceSample>, };
+export type MeasurementReport = { durationSeconds: number, measuredDurationSeconds: number, maxSampleGapMs: number, interrupted: boolean, sampleCount: number, averageCpuPercent: number | null, averagePrivateWorkingSetMib: number | null, peakPrivateWorkingSetMib: number | null, averageWorkingSetMib: number, averagePrivateBytesMib: number, partial: boolean, logicalProcessors: number, build: string, savedPath: string, samples: Array<ResourceSample>, };

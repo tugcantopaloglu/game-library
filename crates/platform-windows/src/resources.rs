@@ -43,6 +43,9 @@ pub struct ResourceSample {
 #[serde(rename_all = "camelCase")]
 pub struct MeasurementReport {
     pub duration_seconds: u32,
+    pub measured_duration_seconds: f64,
+    pub max_sample_gap_ms: f64,
+    pub interrupted: bool,
     pub sample_count: u32,
     pub average_cpu_percent: Option<f64>,
     pub average_private_working_set_mib: Option<f64>,
@@ -284,19 +287,37 @@ pub fn report(
     saved_path: String,
 ) -> MeasurementReport {
     let count = samples.len().max(1) as f64;
-    let cpus: Vec<f64> = samples
-        .iter()
-        .filter_map(|sample| sample.cpu_percent)
-        .collect();
+    let mut cpu_weight = 0.0;
+    let mut cpu_elapsed = 0.0;
+    let mut max_sample_gap_ms = 0.0_f64;
+    for pair in samples.windows(2) {
+        let gap = (pair[1].elapsed_ms - pair[0].elapsed_ms).max(0.0);
+        max_sample_gap_ms = max_sample_gap_ms.max(gap);
+        if let Some(cpu) = pair[1].cpu_percent {
+            cpu_weight += cpu * gap;
+            cpu_elapsed += gap;
+        }
+    }
+    let measured_duration_seconds = samples
+        .first()
+        .zip(samples.last())
+        .map(|(first, last)| (last.elapsed_ms - first.elapsed_ms).max(0.0) / 1000.0)
+        .unwrap_or(0.0);
+    let interrupted = samples.len() < 2
+        || max_sample_gap_ms > 2500.0
+        || measured_duration_seconds > f64::from(duration_seconds) * 1.15 + 1.0
+        || measured_duration_seconds < f64::from(duration_seconds) * 0.85;
     let private: Option<Vec<f64>> = samples
         .iter()
         .map(|sample| sample.private_working_set_mib)
         .collect();
     MeasurementReport {
         duration_seconds,
+        measured_duration_seconds,
+        max_sample_gap_ms,
+        interrupted,
         sample_count: samples.len() as u32,
-        average_cpu_percent: (!cpus.is_empty())
-            .then(|| cpus.iter().sum::<f64>() / cpus.len() as f64),
+        average_cpu_percent: (cpu_elapsed > 0.0).then(|| cpu_weight / cpu_elapsed),
         average_private_working_set_mib: private
             .as_ref()
             .filter(|values| !values.is_empty())
@@ -330,6 +351,32 @@ pub fn report(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn interrupted_measurements_are_flagged_and_cpu_uses_elapsed_time() {
+        let sample = |elapsed_ms, cpu_percent| super::ResourceSample {
+            elapsed_ms,
+            cpu_percent,
+            working_set_mib: 1.0,
+            private_working_set_mib: Some(1.0),
+            private_bytes_mib: 1.0,
+            process_count: 1,
+            partial: false,
+            processes: Vec::new(),
+        };
+        let report = super::report(
+            vec![
+                sample(0.0, None),
+                sample(1000.0, Some(10.0)),
+                sample(10000.0, Some(0.0)),
+            ],
+            10,
+            "unused.json".into(),
+        );
+        assert!(report.interrupted);
+        assert_eq!(report.max_sample_gap_ms, 9000.0);
+        assert_eq!(report.measured_duration_seconds, 10.0);
+        assert_eq!(report.average_cpu_percent, Some(1.0));
+    }
     #[test]
     fn empty_measurement_is_incomplete_and_ram_is_unknown() {
         let report = super::report(Vec::new(), 60, "unused.json".into());

@@ -152,9 +152,13 @@ pub fn start(
                 std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
             }
             let measured = report(samples, seconds, path.to_string_lossy().into_owned());
+            let interrupted = measured.interrupted;
             let bytes = serde_json::to_vec_pretty(&measured).map_err(|error| error.to_string())?;
             std::fs::write(&path, bytes).map_err(|error| error.to_string())?;
             if !automatic {
+                if interrupted {
+                    let _=ui.upgrade_in_event_loop(|ui|ui.set_notice("Ölçüm kesintiye uğradı. Rapor kaydedildi; karşılaştırma için yeniden ölç.".into()));
+                }
                 let summary = format!(
                     "Ölçüm kaydedildi · RAM {} · CPU {}\n{}",
                     measured

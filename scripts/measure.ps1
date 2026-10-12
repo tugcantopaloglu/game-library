@@ -27,6 +27,7 @@ $taskProcess.WaitForExit()
 if ($taskProcess.ExitCode -ne 0) { throw ('Ölçüm uygulaması hata koduyla çıktı: {0}' -f $taskProcess.ExitCode) }
 if (-not (Test-Path -LiteralPath $taskReportPath)) { throw 'Ölçüm raporu oluşturulmadı.' }
 $taskReport = Get-Content -Raw -LiteralPath $taskReportPath | ConvertFrom-Json
+if ($taskReport.interrupted) { throw ('Ölçüm kesintiye uğradı; karşılaştırma için yeniden çalıştır. Rapor: {0}' -f $taskReportPath) }
 $taskComputer = Get-CimInstance Win32_ComputerSystem
 $taskSystem = Get-CimInstance Win32_OperatingSystem
 $taskCpu = Get-CimInstance Win32_Processor | Select-Object -First 1
@@ -41,6 +42,8 @@ $taskReport | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $taskReportPat
 [pscustomobject]@{
     Mode = $Mode
     Seconds = $taskReport.durationSeconds
+    MeasuredSeconds = $taskReport.measuredDurationSeconds
+    MaxSampleGapMs = $taskReport.maxSampleGapMs
     PrivateRamMiB = $(if ($null -ne $taskReport.averagePrivateWorkingSetMib) { [math]::Round($taskReport.averagePrivateWorkingSetMib, 2) } else { 'Unavailable' })
     PeakPrivateRamMiB = $(if ($null -ne $taskReport.peakPrivateWorkingSetMib) { [math]::Round($taskReport.peakPrivateWorkingSetMib, 2) } else { 'Unavailable' })
     PrivateBytesMiB = [math]::Round($taskReport.averagePrivateBytesMib, 2)
