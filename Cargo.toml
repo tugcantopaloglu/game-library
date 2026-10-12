@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/library-core", "crates/platform-windows", "apps/desktop/src-tauri"]
+members = ["crates/library-core", "crates/platform-windows", "apps/desktop/src-tauri", "apps/native-probe"]
 resolver = "2"
 
 [profile.release]

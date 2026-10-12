@@ -66,8 +66,11 @@ Windows 11 Enterprise build 26300, Intel Core i5-1235U, 12 mantıksal işlemci v
 | --- | --- | --- | --- | --- |
 | Açık Tauri penceresi | 119,37 MiB | 122,51 MiB | 177,92 MiB | %0,593 |
 | Doğrudan tepsi açılışı | 2,74 MiB | 2,76 MiB | 3,48 MiB | %0,013 |
+| Native Slint denemesi | 10,84 MiB | 10,93 MiB | 11,70 MiB | %0,123 |
 
-RAM ve tepsi bütçesi karşılandı; açık pencere CPU hedefi karşılanmadı. Native arayüz karşılaştırması devam ediyor. Tauri seçimi henüz performans karar kapısından geçmiş sayılmayacak.
+Tauri RAM ve tepsi bütçesini karşıladı; açık pencere CPU hedefini karşılamadı. Native Slint denemesi açık pencere RAM/CPU bütçesini karşıladı. Ana arayüz Rust/Slint'e taşınacak. `apps/native-probe` aynı SQLite verisini ve kaynak ölçüm modülünü kullanır; software renderer, sanallaştırılmış satırlar ve boşta arama alanına odak vermeyen pencere içerir. Steam tarama/başlatma ve tepsi işlevleri bu karşılaştırma uygulamasında yoktur; tam sürüme taşındıktan sonra ölçümler tekrarlanacak.
+
+Native sonucu `window-20261012-114743.json` raporundan, 61 örnek ve tek süreçten alındı; kısmi ölçüm yok. Önceki native deneme derleme sırasında çalıştırıldığı ve arama alanı odaklandığı için karar ölçümü olarak kullanılmadı. Bu karşılaştırma kapaksız ve boşta pencereyi kapsıyor; görseller, etkileşim ve GPU etkisi için ek ölçüm gerekiyor.
 
 Beş pencere/tepsi döngüsünde WebView2 süreçleri sona erdi, tepside bir Rust süreç kaldı ve özel RAM 5,47–6,43 MiB aralığındaydı. Doğrudan tepsi açılışı ile pencereyi kullanıp kapatma senaryosu aynı değildir. Windows arayüzünde favori ekleme, 1.000. kaydı arama, ölçüm başlatma/iptal ve tek uygulama örneği kontrolleri yapıldı. Parser/veri testleri ve kaynak ölçümü testleri geçti.
 

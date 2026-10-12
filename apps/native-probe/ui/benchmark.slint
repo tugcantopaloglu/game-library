@@ -1,0 +1,91 @@
+import { LineEdit, ListView } from "std-widgets.slint";
+
+component GameCard inherits Rectangle {
+    in property <string> game-name;
+    height: 294px;
+    background: #101214;
+    VerticalLayout {
+        spacing: 11px;
+        Rectangle {
+            height: 240px;
+            border-radius: 11px;
+            background: #202a2f;
+            VerticalLayout {
+                padding: 20px;
+                spacing: 16px;
+                Rectangle { vertical-stretch: 1; background: transparent; }
+                Text { text: game-name; color: #d4e3dc; font-size: 21px; font-weight: 600; wrap: word-wrap; }
+                Text { text: "STEAM"; color: #799486; font-size: 9px; }
+                Text { text: "Kurulu"; color: #c2dda9; font-size: 10px; }
+                Rectangle { vertical-stretch: 1; background: transparent; }
+            }
+        }
+        Text { text: game-name; color: #f1f3f5; font-size: 13px; overflow: elide; }
+        Text { text: "1 GB"; color: #83909e; font-size: 10px; }
+    }
+}
+
+export component BenchmarkWindow inherits Window {
+    title: "Game Library — Native Performans Denemesi";
+    preferred-width: 1280px;
+    preferred-height: 820px;
+    min-width: 940px;
+    min-height: 620px;
+    background: #101214;
+    default-font-family: "Segoe UI";
+    in property <int> game-count;
+    in property <[[string]]> game-rows;
+    callback search(string);
+    forward-focus: idle-focus;
+
+    idle-focus := FocusScope { width: 1px; height: 1px; }
+
+    HorizontalLayout {
+        spacing: 0px;
+        Rectangle {
+            width: 208px;
+            background: #14171a;
+            VerticalLayout {
+                padding: 24px;
+                spacing: 24px;
+                Text { text: "Game Library"; color: #f1f3f5; font-size: 17px; font-weight: 600; }
+                Text { text: "KİŞİSEL ALAN"; color: #7d8994; font-size: 10px; }
+                Rectangle { height: 40px; background: #253025; border-radius: 7px; Text { text: "Kütüphane"; color: #c5e6b1; vertical-alignment: center; x: 12px; } }
+                Text { text: "Favoriler"; color: #a8b1bc; font-size: 13px; }
+                Text { text: "Performans"; color: #a8b1bc; font-size: 13px; }
+                Text { text: "KAYNAKLAR"; color: #7d8994; font-size: 10px; }
+                Text { text: "Steam"; color: #a8b1bc; font-size: 13px; }
+                Rectangle { vertical-stretch: 1; background: transparent; }
+                Text { text: "Built with Slint"; color: #7d8994; font-size: 10px; }
+            }
+        }
+        VerticalLayout {
+            spacing: 0px;
+            Rectangle {
+                height: 62px;
+                border-width: 1px;
+                border-color: #282e34;
+                background: #101214;
+                Text { text: "Kişisel alan  /  Kütüphanen"; color: #a7b3be; font-size: 12px; x: 32px; vertical-alignment: center; }
+            }
+            VerticalLayout {
+                padding: 32px;
+                spacing: 20px;
+                Text { text: "NATIVE PERFORMANS DENEMESİ"; color: #87979d; font-size: 10px; }
+                Text { text: "Kütüphanen"; color: #f1f3f5; font-size: 30px; font-weight: 600; }
+                Text { text: "Aynı Steam verisi ve aynı RAM/CPU ölçüm yöntemi · " + game-count + " kayıt"; color: #929ca8; font-size: 12px; }
+                search-field := LineEdit {
+                    placeholder-text: "Oyun ara";
+                    edited => { root.search(self.text); }
+                }
+                ListView {
+                    for row-data in game-rows: HorizontalLayout {
+                        height: 316px;
+                        spacing: 19px;
+                        for entry in row-data: GameCard { game-name: entry; }
+                    }
+                }
+            }
+        }
+    }
+}
