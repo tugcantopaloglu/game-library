@@ -1,0 +1,88 @@
+{
+  "date": "2026-10-12",
+  "commit": "c3cd01a",
+  "executableSha256": "B2E09037B3ED31960FFC87C55163C35348E234B0735B98FBDAA3F5DBBD3C74DE",
+  "machine": {
+    "os": "Microsoft Windows 11 Enterprise",
+    "osBuild": "26300",
+    "cpu": "12th Gen Intel(R) Core(TM) i5-1235U",
+    "totalRamGiB": 31.64
+  },
+  "logicalProcessors": 12,
+  "build": "release",
+  "warmupSeconds": 8,
+  "dataset": {
+    "type": "synthetic Steam manifests",
+    "games": 1000,
+    "pageSize": 100,
+    "covers": 1000,
+    "sourceCoverSize": "600x900",
+    "maximumThumbnailSize": "180x270"
+  },
+  "measurements": [
+    {
+      "scenario": "NativeWindow",
+      "sourceReport": "window-20261012-121935.json",
+      "durationSeconds": 60,
+      "sampleCount": 61,
+      "privateWorkingSetMiB": 12.151639344262295,
+      "peakPrivateWorkingSetMiB": 12.33203125,
+      "privateBytesMiB": 13.342533299180328,
+      "workingSetMiB": 36.87839395491803,
+      "cpuPercent": 0.14083855602236184,
+      "processCounts": [
+        1
+      ],
+      "partial": false
+    },
+    {
+      "scenario": "NativeWindowWithCovers",
+      "sourceReport": "window-20261012-122046.json",
+      "durationSeconds": 60,
+      "sampleCount": 61,
+      "privateWorkingSetMiB": 30.8046875,
+      "peakPrivateWorkingSetMiB": 30.86328125,
+      "privateBytesMiB": 32.01965932377049,
+      "workingSetMiB": 54.98834528688525,
+      "cpuPercent": 0.11036858758765176,
+      "processCounts": [
+        1
+      ],
+      "partial": false
+    },
+    {
+      "scenario": "NativeTrayWithCovers",
+      "sourceReport": "tray-20261012-122156.json",
+      "durationSeconds": 60,
+      "sampleCount": 61,
+      "privateWorkingSetMiB": 23.294121413934427,
+      "peakPrivateWorkingSetMiB": 23.30859375,
+      "privateBytesMiB": 24.552702356557376,
+      "workingSetMiB": 46.20876024590164,
+      "cpuPercent": 0.013014262656176615,
+      "processCounts": [
+        1
+      ],
+      "partial": false
+    }
+  ],
+  "lifecycle": {
+    "cycles": 50,
+    "sourceReport": "native-lifecycle-covers.json",
+    "firstTrayPrivateWorkingSetMiB": 30.8671875,
+    "lastTrayPrivateWorkingSetMiB": 31.33203125,
+    "peakTrayPrivateWorkingSetMiB": 31.33203125,
+    "processCounts": [
+      1
+    ],
+    "partialSamples": 0
+  },
+  "validation": {
+    "rustTests": 15,
+    "clippy": "passed",
+    "realSteamLaunchTested": false,
+    "gpuMeasured": false,
+    "eightHourStabilityTested": false,
+    "startupLatencyMeasured": false
+  }
+}

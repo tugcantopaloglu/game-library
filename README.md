@@ -23,7 +23,7 @@ Discord yayın kapsamı: başlatma/durdurma, paylaşılan oyun veya pencereyi de
 | Discord | Yeteneğe göre Social SDK, onaylı RPC veya sunucu botu |
 | Gelecekteki eklentiler | Sürümlü protokol üzerinden ayrı süreçler |
 
-Pencere açıkken 180 MiB, tepsi açıkken 40 MiB özel çalışma kümesi ve boşta %0,25 altında CPU başlangıç hedefidir. Native karşılaştırma denemesi 1.000 kapaksız kayıtta 10,84 MiB özel RAM ve %0,123 CPU ölçüldü. Ana sürümün sonuçları [ilk sürüm belgesinde](docs/ilk-surum.md) takip edilir. Önceki Tauri/React uygulaması `apps/desktop` altında karşılaştırma amacıyla korunur; ana uygulama WebView içermez.
+Pencere açıkken 180 MiB, tepsi açıkken 40 MiB özel çalışma kümesi ve boşta %0,25 altında CPU başlangıç hedefidir. Native tam sürüm 1.000 kayıtta kapaksız 12,15 MiB / %0,141; kapaklı 30,80 MiB / %0,110 ölçüldü. Kapaklı doğrudan tepsi açılışı 23,29 MiB / %0,013. 50 pencere döngüsü ve 15 Rust testi tamamlandı. Ayrıntılar ve ölçüm sınırları [ilk sürüm belgesinde](docs/ilk-surum.md). Önceki Tauri/React uygulaması `apps/desktop` altında karşılaştırma amacıyla korunur; ana uygulama WebView içermez.
 
 ## Çalıştırma
 

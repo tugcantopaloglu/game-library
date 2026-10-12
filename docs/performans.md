@@ -7,7 +7,7 @@ Bu rakamlar tasarım ve kabul hedefleridir; bütün bilgisayarlarda garanti değ
 | Senaryo / ölçüt | Hedef |
 | --- | --- |
 | Kütüphane açık, veri yüklenmiş, boşta | Tüm uygulama süreçlerinde toplam özel çalışma kümesi ≤ 180 MiB |
-| WebView kapalı, tepsi açık, sosyal bağlantı kapalı | ≤ 40 MiB |
+| Pencere kapalı, tepsi açık, sosyal bağlantı kapalı | ≤ 40 MiB |
 | Tepsi açık, Discord yardımcısı bağlı | Toplam ≤ 70 MiB; SDK etkisi ayrıca raporlanır |
 | Boşta CPU | 60 saniyede makine toplamına göre ortalama < %0,25 |
 | Boşta disk/ağ | Uygulamadan periyodik tarama/metadata isteği yok; gerekli bağlantı heartbeat'i hariç |
@@ -17,9 +17,9 @@ Bu rakamlar tasarım ve kabul hedefleridir; bütün bilgisayarlarda garanti değ
 | Kaydırma | 60 Hz ekranda p95 frame aralığı ≤ 16,7 ms; > 50 ms uzun görev yok |
 | Görsel indirme | En fazla 2 eşzamanlı iş |
 | Görsel disk önbelleği | Varsayılan 512 MiB |
-| UI görsel çalışma kümesi | İlk denemede görünür kapaklar için 32 MiB hedef; WebView ile doğrulanır |
+| UI görsel çalışma kümesi | Native sayfa görselleri için 32 MiB hedef |
 
-Sadece Rust PID'si ölçülmeyecek. Uygulamaya ait WebView renderer, utility/GPU ve yardımcı süreçler dahil edilecek. Paylaşılan WebView2 süreçleri varsa ilişkilendirme ve ölçüm sınırlaması rapora yazılacak. Özel çalışma kümesi, private bytes/commit ve toplam çalışma kümesi birlikte kaydedilecek; tek metriğin düşmesi bellek kullanımının azaldığı kabul edilmeyecek.
+Ana native uygulama şu anda tek süreçtir. Discord veya eklenti yardımcısı eklendiğinde bunlar da toplam bütçeye alınacak ve süreç üyeliği sayacı genişletilecek. Önceki Tauri karşılaştırmasında uygulamaya ait WebView renderer/utility/GPU süreçleri de toplandı. Özel çalışma kümesi, private bytes/commit ve toplam çalışma kümesi birlikte kaydedilir.
 
 GPU motor kullanımı ve dedicated/shared GPU belleği ayrıca izlenecek. Boşta sürekli render olmaması hedef; WebView/GPU sürücüsünün taban tüketimi deneyde ölçülecek. RAM bütçesi düşük tutulurken VRAM'e kontrolsüz yük aktarılmayacak.
 
@@ -27,13 +27,13 @@ GPU motor kullanımı ve dedicated/shared GPU belleği ayrıca izlenecek. Boşta
 
 - Dosya olayları yalnızca manifest köklerinde; olaylar birleştirilip kaynak bazında yeniden işlenir.
 - Açılışta önce SQLite snapshot'ı gösterilir; keşif ve ağ işleri sonradan başlar.
-- UI sadece görünür satırları render eder; kapaklar iki ekranı aşan ön yükleme yapmaz.
+- UI sadece görünür satırları render eder. İlk native sürüm 100 kayıtlık sayfanın JPEG/PNG kapaklarını en fazla 180×270 piksele indirir; tam sayfanın RGBA verisi en fazla 18,54 MiB'dir. Decode işçi thread'inde, tek görsel üzerinde yapılır. Daha büyük kütüphanelerde görünür kapaklara göre yükleme sonraki optimizasyondur.
 - Tam boy artwork, blur ve arka plan video kullanılmaz. Hareketler kısa, etkileşime bağlı ve durabilir.
 - Kişi ve oda durumları olaylarla güncellenir; bağlantı heartbeat'i dışında sürekli sorgulama yok.
 - SQLite bağlantı/cache boyutları sınırlı; iş kuyrukları sınırlı ve iptal edilebilir.
 - Oyun başladığında ağır keşif ve metadata kuyruğu duraklatılır. Kullanıcı açıkça devam ettirebilir.
 - Başlatılan oyun süreçleri öncelikle OS olaylarıyla izlenir. Kaçırılan olayları düzeltmek için yalnızca ilgili süreçlerde seyrek ve sınırlı kontrol uygulanabilir.
-- Pencere kapatılıp tepsiye geçildiğinde WebView gerçekten yok edilir; tekrar açılmada tercih ve kütüphane SQLite'dan yüklenir.
+- Native pencere kapatılıp tepsiye geçildiğinde çizim durur; görünüm modeli korunur. Hem doğrudan tepsi açılışı hem kullanılmış pencerenin kapanması ayrı ölçülür.
 
 ## Ölçüm protokolü
 
@@ -46,6 +46,8 @@ GPU motor kullanımı ve dedicated/shared GPU belleği ayrıca izlenecek. Boşta
 7. Oyun kapalı/açık halde kontrollü A/B ölçüm yap; arka plan işlerinin frame-time üzerindeki etkisini kaydet.
 
 İlk benchmark arayüz + SQLite + bir Steam adaptörüyle yapılacak. Kaynak bütçesi geçilirse önce görünür kapaklar, WebView yaşam döngüsü, sorgular ve arka plan işleri incelenir. Buna rağmen geçilemiyorsa daha fazla özellik eklenmeden aynı iş yüküyle Rust/Slint karşılaştırılır. Hedef sessizce yükseltilmez.
+
+Native tam sürümün 1.000 kayıtlı kapaksız/kapaklı/tepsi ölçümleri ve 50 pencere döngüsü tamamlandı; RAM/CPU bütçeleri karşılandı. Ölçüm özeti ve doğrulanmayan alanlar [benchmark kaydında](../benchmarks/windows-native-20261012.json) yer alır. Diğer oyun kaynakları bu aşamadan sonra eklenir; her yeni modülün etkisi aynı yöntemle tekrar ölçülür.
 
 ## Kararlılık senaryoları
 

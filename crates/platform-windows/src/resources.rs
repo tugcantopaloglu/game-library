@@ -327,3 +327,15 @@ pub fn report(
         samples,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn empty_measurement_is_incomplete_and_ram_is_unknown() {
+        let report = super::report(Vec::new(), 60, "unused.json".into());
+        assert!(report.partial);
+        assert!(report.average_private_working_set_mib.is_none());
+        assert!(report.peak_private_working_set_mib.is_none());
+        assert!(report.average_cpu_percent.is_none());
+    }
+}
