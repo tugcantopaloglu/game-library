@@ -299,9 +299,11 @@ pub fn report(
             .then(|| cpus.iter().sum::<f64>() / cpus.len() as f64),
         average_private_working_set_mib: private
             .as_ref()
+            .filter(|values| !values.is_empty())
             .map(|values| values.iter().sum::<f64>() / count),
         peak_private_working_set_mib: private
             .as_ref()
+            .filter(|values| !values.is_empty())
             .map(|values| values.iter().copied().fold(0.0, f64::max)),
         average_working_set_mib: samples
             .iter()
@@ -313,7 +315,7 @@ pub fn report(
             .map(|sample| sample.private_bytes_mib)
             .sum::<f64>()
             / count,
-        partial: samples.iter().any(|sample| sample.partial),
+        partial: samples.is_empty() || samples.iter().any(|sample| sample.partial),
         logical_processors: logical_processors(),
         build: if cfg!(debug_assertions) {
             "debug"
