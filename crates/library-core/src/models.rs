@@ -1,11 +1,88 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "lowercase")]
+pub enum Source {
+    Steam,
+    Epic,
+    Riot,
+}
+
+impl Source {
+    pub const ALL: [Self; 3] = [Self::Steam, Self::Epic, Self::Riot];
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Steam => "steam",
+            Self::Epic => "epic",
+            Self::Riot => "riot",
+        }
+    }
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Steam => "Steam",
+            Self::Epic => "Epic Games",
+            Self::Riot => "Riot Games",
+        }
+    }
+    pub fn parse(value: &str) -> crate::Result<Self> {
+        match value {
+            "steam" => Ok(Self::Steam),
+            "epic" => Ok(Self::Epic),
+            "riot" => Ok(Self::Riot),
+            _ => Err(crate::LibraryError::Invalid("Geçersiz oyun kaynağı".into())),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub enum LaunchTarget {
+    Steam {
+        app_id: u32,
+    },
+    Epic {
+        namespace_id: String,
+        catalog_id: String,
+        app_name: String,
+        executable: String,
+    },
+    Riot {
+        client_path: String,
+        product: String,
+        patchline: String,
+        executable: String,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct SourceRoot {
+    pub source: Source,
+    pub path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct SourceStatus {
+    pub source: Source,
+    pub total: u32,
+    pub installed: u32,
+    pub roots: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct Game {
     pub id: String,
     pub app_id: u32,
+    pub source: Source,
+    pub source_id: String,
+    pub launch: LaunchTarget,
     pub name: String,
     pub library_path: String,
     pub install_path: String,
@@ -25,6 +102,7 @@ pub struct GamePage {
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct LibraryStatus {
+    pub sources: Vec<SourceStatus>,
     pub total: u32,
     pub installed: u32,
     pub favorites: u32,
@@ -46,6 +124,7 @@ pub struct ScanReport {
 
 #[derive(Debug, Clone)]
 pub struct RootScan {
+    pub source: Source,
     pub path: String,
     pub games: Vec<Game>,
     pub complete: bool,

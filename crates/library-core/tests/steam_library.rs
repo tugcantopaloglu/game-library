@@ -188,6 +188,7 @@ fn search_escapes_sql_wildcards_and_limits_pages() {
             cancelled: false,
         },
         libraries: vec![RootScan {
+            source: library_core::models::Source::Steam,
             path: root.to_string_lossy().into_owned(),
             games,
             complete: true,

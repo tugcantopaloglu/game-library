@@ -380,6 +380,9 @@ mod tests {
     #[test]
     fn export_types() {
         let declarations = [
+            library_core::models::Source::decl(),
+            library_core::models::LaunchTarget::decl(),
+            library_core::models::SourceStatus::decl(),
             library_core::models::Game::decl(),
             library_core::models::GamePage::decl(),
             library_core::models::LibraryStatus::decl(),

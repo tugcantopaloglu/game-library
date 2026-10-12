@@ -1,4 +1,4 @@
-use crate::models::{Game, RootScan, ScanReport, ScanResult};
+use crate::models::{Game, LaunchTarget, RootScan, ScanReport, ScanResult, Source};
 use crate::{LibraryError, Result};
 use keyvalues_parser::Obj;
 use std::collections::BTreeMap;
@@ -204,6 +204,9 @@ pub fn parse_manifest(text: &str, root: &Path, expected_app_id: u32) -> Result<G
     Ok(Game {
         id: format!("steam:{app_id}:{}", library.to_lowercase()),
         app_id,
+        source: Source::Steam,
+        source_id: app_id.to_string(),
+        launch: LaunchTarget::Steam { app_id },
         name: name.to_owned(),
         library_path: library,
         install_path: install.to_string_lossy().into_owned(),
@@ -239,6 +242,7 @@ pub fn scan(extra: &[String], cancel: &AtomicBool) -> ScanResult {
             break;
         }
         let mut library = RootScan {
+            source: Source::Steam,
             path: root.to_string_lossy().into_owned(),
             games: Vec::new(),
             complete: true,
