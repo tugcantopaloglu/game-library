@@ -412,6 +412,19 @@ fn detail_impl(
         if only_current && (ui.get_detail_id() != detail.game.id || ui.get_section() != 9) {
             return;
         }
+        if only_current {
+            ui.set_detail_has_artwork(pixels.is_some());
+            ui.set_detail_artwork(
+                pixels
+                    .map(|(width, height, bytes)| {
+                        slint::Image::from_rgba8(SharedPixelBuffer::clone_from_slice(
+                            &bytes, width, height,
+                        ))
+                    })
+                    .unwrap_or_default(),
+            );
+            return;
+        }
         if ui.get_detail_id() != detail.game.id {
             ui.set_cover_candidates(Rc::new(VecModel::<CoverTile>::default()).into());
             ui.set_cover_names(Rc::new(VecModel::<slint::SharedString>::default()).into());
@@ -845,8 +858,7 @@ pub fn start(
                             ui.upgrade_in_event_loop(move |ui|{if ui.get_detail_id() != id || ui.get_section() != 9 {return;} ui.set_cover_candidates(Rc::new(VecModel::from(tiles)).into());ui.set_cover_names(Rc::new(VecModel::from(names)).into());ui.set_cover_index(0);}).map_err(|error|error.to_string())
                         }),
                         NetworkResult::Cover(id,result) => result.and_then(|cover| {
-                            let current = store.detail(&id).map_err(|error|error.to_string())?;
-                            store.set_override(&id,Some(&current.game.name),&current.notes,Some(&cover.to_string_lossy())).map_err(|error|error.to_string())?;
+                            store.set_artwork_override(&id,Some(&cover.to_string_lossy())).map_err(|error|error.to_string())?;
                             publish(&store,&query,&state,&ui)?; detail_impl(&store,&id,&ui,true)
                         }),
                         NetworkResult::Check(result) => result.and_then(|manifest| {
@@ -919,19 +931,14 @@ pub fn start(
                     Ok(())
                 })(),
                 Command::SaveDetail(id, title, notes) => (|| {
-                    let artwork = store
-                        .game(&id)
-                        .map_err(|error| error.to_string())?
-                        .artwork_path;
                     store
-                        .set_override(&id, Some(&title), &notes, artwork.as_deref())
+                        .set_details(&id, &title, &notes)
                         .map_err(|error| error.to_string())?;
                     set_notice(&ui, "Oyun bilgileri kaydedildi.".into());
                     publish(&store, &query, &state, &ui)?;
                     detail(&store, &id, &ui)
                 })(),
                 Command::Cover(id, reset) => (|| {
-                    let current = store.detail(&id).map_err(|error| error.to_string())?;
                     let artwork = if reset {
                         None
                     } else {
@@ -949,15 +956,10 @@ pub fn start(
                         )
                     };
                     store
-                        .set_override(
-                            &id,
-                            Some(&current.game.name),
-                            &current.notes,
-                            artwork.as_deref(),
-                        )
+                        .set_artwork_override(&id, artwork.as_deref())
                         .map_err(|error| error.to_string())?;
                     publish(&store, &query, &state, &ui)?;
-                    detail(&store, &id, &ui)
+                    detail_impl(&store, &id, &ui, true)
                 })(),
                 Command::RemoteCover(id, url) => submit(&network, &ui, NetworkTask::Cover(id, url)),
                 Command::CollectionCreate(name) => store

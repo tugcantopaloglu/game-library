@@ -130,3 +130,54 @@ fn schema_two_is_backed_up_before_user_library_migration() {
         2
     );
 }
+
+#[test]
+fn editing_details_and_covers_preserves_independent_overrides() {
+    let directory = tempfile::tempdir().unwrap();
+    let executable = directory.path().join("Sample.exe");
+    std::fs::write(&executable, b"fixture; never run").unwrap();
+    let database = directory.path().join("library.db");
+    let mut store = Store::open(&database).unwrap();
+    let id = store
+        .add_manual(&executable, "Original title", vec![])
+        .unwrap();
+    store.set_source_artwork(&id, "source-first.png").unwrap();
+    store.set_details(&id, "Original title", "My note").unwrap();
+    store.set_source_artwork(&id, "source-second.png").unwrap();
+    assert_eq!(
+        store.game(&id).unwrap().artwork_path.as_deref(),
+        Some("source-second.png")
+    );
+    store
+        .set_artwork_override(&id, Some("my-cover.png"))
+        .unwrap();
+    store
+        .add_manual(&executable, "Updated source title", vec![])
+        .unwrap();
+    assert_eq!(store.game(&id).unwrap().name, "Updated source title");
+    store.set_details(&id, "My title", "Revised note").unwrap();
+    store.set_source_artwork(&id, "source-third.png").unwrap();
+    let detail = store.detail(&id).unwrap();
+    assert_eq!(detail.game.artwork_path.as_deref(), Some("my-cover.png"));
+    assert_eq!(detail.notes, "Revised note");
+    store.set_artwork_override(&id, None).unwrap();
+    assert_eq!(store.game(&id).unwrap().name, "My title");
+    assert_eq!(
+        store.game(&id).unwrap().artwork_path.as_deref(),
+        Some("source-third.png")
+    );
+    store
+        .set_details(&id, "Updated source title", "Revised note")
+        .unwrap();
+    store
+        .add_manual(&executable, "Newest source title", vec![])
+        .unwrap();
+    drop(store);
+    let store = Store::open(&database).unwrap();
+    assert_eq!(store.game(&id).unwrap().name, "Newest source title");
+    assert_eq!(store.detail(&id).unwrap().notes, "Revised note");
+    assert!(store.set_details(&id, "", "My note").is_err());
+    assert!(store
+        .set_artwork_override(&id, Some("bad\0cover.png"))
+        .is_err());
+}

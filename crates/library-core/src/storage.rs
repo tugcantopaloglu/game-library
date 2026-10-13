@@ -418,6 +418,37 @@ impl Store {
         Ok(())
     }
 
+    pub fn set_details(&self, id: &str, title: &str, notes: &str) -> Result<()> {
+        if title.trim().is_empty()
+            || title.len() > 512
+            || title.contains('\0')
+            || notes.len() > 16_384
+            || notes.contains('\0')
+        {
+            return Err(LibraryError::Invalid(
+                "Oyun düzeltmesi boyut veya karakter sınırını aşıyor".into(),
+            ));
+        }
+        let original: String =
+            self.connection
+                .query_row("SELECT name FROM games WHERE id=?1", [id], |row| row.get(0))?;
+        let title = (title.trim() != original).then(|| title.trim());
+        let search = title.map(str::to_lowercase);
+        self.connection.execute("INSERT INTO game_overrides(game_id,title,search_title,notes) VALUES(?1,?2,?3,?4) ON CONFLICT(game_id) DO UPDATE SET title=excluded.title,search_title=excluded.search_title,notes=excluded.notes",
+            params![id,title,search,notes])?;
+        Ok(())
+    }
+
+    pub fn set_artwork_override(&self, id: &str, artwork: Option<&str>) -> Result<()> {
+        self.game(id)?;
+        if artwork.is_some_and(|path| path.len() > 4096 || path.contains('\0')) {
+            return Err(LibraryError::Invalid("Kapak yolu geçersiz".into()));
+        }
+        self.connection.execute("INSERT INTO game_overrides(game_id,artwork_path) VALUES(?1,?2) ON CONFLICT(game_id) DO UPDATE SET artwork_path=excluded.artwork_path",
+            params![id,artwork])?;
+        Ok(())
+    }
+
     pub fn collections(&self) -> Result<Vec<Collection>> {
         let mut statement = self.connection.prepare("SELECT c.id,c.name,count(cg.game_id) FROM collections c LEFT JOIN collection_games cg ON c.id=cg.collection_id GROUP BY c.id ORDER BY c.name,c.id")?;
         let collections = statement
