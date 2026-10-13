@@ -48,7 +48,7 @@ Kullanıcının isteğiyle bundan sonraki doğrulama değişen işlevlere odakla
 
 - [x] `fe7da99`: Store olaylarıyla ayrı arkadaş/oda/kontrol önbellekleri, değişmeyen durum onayı ve native model yenilemesini atlama.
 - [x] `043d41f`: Hesap bazında 50 favori oda, native oda araması/seçimi, boş ve erişilemeyen oda durumları.
-- [x] Native yayın paneli, yeteneğe bağlı durdurma ve mevcut yayın için kalite/FPS istekleri; gerçek durum geri okunmadan başarı gösterilmez.
+- [x] `3fce705`: Native yayın paneli, yeteneğe bağlı durdurma ve mevcut yayın için kalite/FPS istekleri; gerçek durum geri okunmadan başarı gösterilmez.
 - [ ] Güncel Discord ortamında bu yeni akışların canlı uyumu.
 - [ ] Yayın başlatma, yeni kaynak seçimi ve yayın sesi değişimi için istemci adapter'ı. Bu ortamda kullanılabilir canlı Discord/Vencord oturumu bulunmadığından çağrı sözleşmeleri doğrulanamadı; yetenekler kapalı.
 
