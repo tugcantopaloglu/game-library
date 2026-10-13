@@ -1,7 +1,9 @@
 import { TextEdit, CheckBox, ListView, ScrollView, ComboBox, AboutSlint, Palette } from "std-widgets.slint";
-import { Theme, Glyph, Action, Navigation, Field, Panel, Heading, Caption, Eyebrow, Metric, Tab, PersonRow, FriendRow } from "design.slint";
+import { Theme, Brand, Glyph, Action, Navigation, Field, Panel, Heading, Caption, Eyebrow, Metric, Tab, PersonRow, FriendRow } from "design.slint";
+import { Conversation, ChatMessageTile } from "chat.slint";
 export struct CollectionTile { id: int, name: string, count: int }
 export struct CoverTile { title: string, url: string }
+export struct MusicTile { user-id: string, name: string, title: string, artist: string, track-id: string, can-profile: bool, can-join: bool }
 export struct SocialTile { id: string, name: string, subtitle: string, initial: string, online: bool, favorite: bool, recent: string }
 export struct RoomTile { id: string, name: string, subtitle: string, online: bool, favorite: bool, can-join: bool }
 export struct GameTile { id: string, name: string, size: string, installed: bool, favorite: bool, artwork: image, has-artwork: bool, source: string, status-label: string }
@@ -69,7 +71,7 @@ export component AboutWindow inherits Window {
 }
 
 export component LibraryTray inherits SystemTrayIcon {
-    icon: @image-url("../../desktop/src-tauri/icons/icon.png");
+    icon: @image-url("logos/game-library.png");
     tooltip: "Game Library";
     callback open;
     callback exit;
@@ -83,7 +85,7 @@ export component LibraryTray inherits SystemTrayIcon {
 
 export component LibraryWindow inherits Window {
     title: "Game Library";
-    icon: @image-url("../../desktop/src-tauri/icons/icon.png");
+    icon: @image-url("logos/game-library.png");
     preferred-width: 1280px; preferred-height: 720px;
     min-width: 960px; min-height: 640px;
     max-width: 4096px; max-height: 2160px;
@@ -116,6 +118,61 @@ export component LibraryWindow inherits Window {
     in-out property <string> steam-api-key;
     in property <string> steam-account-status;
     in property <string> epic-account-status;
+    in-out property <string> obs-port: "4455";
+    in-out property <string> obs-password;
+    in property <string> obs-status: "OBS'ta Araçlar → WebSocket Sunucusu Ayarları bölümünden sunucuyu etkinleştir.";
+    in property <bool> obs-connected;
+    in property <bool> obs-streaming;
+    in property <bool> obs-recording;
+    in property <[string]> obs-scenes;
+    in-out property <int> obs-scene-index;
+    in property <string> broadcast-status: "RTX ve Broadcast sanal cihazlarını kontrol etmek için Yenile'yi seç.";
+    in property <bool> broadcast-installed;
+    in property <bool> broadcast-rtx;
+    in property <bool> broadcast-audio-available;
+    in property <string> broadcast-requirements;
+    in property <bool> can-broadcast-audio;
+    in property <string> broadcast-discord-status;
+    in property <string> spotify-status: "Spotify etkinliği için Discord bağlantısını aç.";
+    in property <string> spotify-track;
+    in property <string> spotify-track-id;
+    in property <[MusicTile]> music-friends;
+    in-out property <bool> chat-active;
+    in-out property <string> chat-user-id;
+    in-out property <string> chat-channel-id;
+    in-out property <string> chat-name;
+    in-out property <string> chat-draft;
+    in property <[ChatMessageTile]> chat-messages;
+    in property <string> chat-status: "Sohbet için bir arkadaş seç.";
+    in property <bool> chat-loading;
+    in property <bool> chat-pending;
+    in property <bool> chat-can-send;
+    in property <bool> chat-can-open-discord;
+    in-out property <string> chat-sent-nonce;
+    callback chat-action(string,string,string,string);
+    callback obs-connect(string,string);
+    callback obs-action(int,string);
+    callback broadcast-inspect;
+    callback broadcast-open(int);
+    callback broadcast-select;
+    callback spotify-open;
+    callback spotify-action(string,string,string);
+    in property <string> network-status: "Ağ durumunu görmek için Yenile'yi seç. DNS ve GoodbyeDPI yalnızca sen etkinleştirdiğinde açılır.";
+    in property <bool> network-supported;
+    in property <bool> network-dns-enabled;
+    in property <bool> network-rollback-available;
+    in property <bool> network-running;
+    in property <bool> network-stop-available;
+    in property <bool> network-doh-supported;
+    in-out property <bool> network-encrypted-dns: true;
+    in-out property <bool> network-auto-update;
+    in property <string> network-version;
+    in property <bool> network-digest-verified;
+    in property <string> network-dns-details;
+    in property <[string]> network-interfaces;
+    in-out property <int> network-interface-index;
+    callback network-action(int,int,bool);
+    callback network-update-preference(bool);
     in-out property <string> remote-cover-url;
     in-out property <bool> bridge-enabled;
     in property <bool> bridge-connected;
@@ -171,7 +228,6 @@ export component LibraryWindow inherits Window {
     in-out property <string> discord-target-id;
     in-out property <int> discord-branch;
     in-out property <bool> auto-update-app;
-    in-out property <bool> auto-update-vencord: true;
     in property <bool> update-available;
     in property <bool> update-staged;
     in property <bool> integration-busy;
@@ -195,7 +251,7 @@ export component LibraryWindow inherits Window {
     in property <string> measurement-summary;
     in property <int> measurement-progress;
     in-out property <int> section;
-    changed section => { if section != 7 { if room-mode == 2 { room-mode = 1; root.room-filter(1,room-query); } if stream-source-picker { stream-source-picker = false; root.stream-catalog(false); } } }
+    changed section => { if section != 7 { if room-mode == 2 { room-mode = 1; root.room-filter(1,room-query); } if stream-source-picker { stream-source-picker = false; root.stream-catalog(false); } } if section == 12 && !integration-busy { root.network-action(0,network-interface-index,network-encrypted-dns); } if section == 11 && !integration-busy { root.broadcast-inspect(); } }
     changed stream-panel => { if !stream-panel && stream-source-picker { stream-source-picker = false; root.stream-catalog(false); } }
     in-out property <bool> installed-only;
     in-out property <string> query;
@@ -245,14 +301,15 @@ export component LibraryWindow inherits Window {
     callback search-covers(string);
     callback steam-credentials(string,string);
     callback steam-key-page;
-    callback sync-account(int);
+    callback steam-login;
+    callback sync-account(int,string,string);
     callback epic-login;
     callback completion-lookup(string,string);
     callback completion-open(string,bool);
     callback update-check;
     callback update-stage;
     callback update-apply;
-    callback update-preferences(bool,bool);
+    callback update-preferences(bool);
     focus-idle => { idle-focus.focus(); }
     forward-focus: idle-focus;
     idle-focus := FocusScope { width: 1px; height: 1px; key-pressed(event) => { if event.modifiers.control && event.text == "f" { if section >= 2 { section = 0; root.refresh(query,false,installed-only,0,source-index); } library-search.focus-input(); return accept; } if event.text == Key.Escape && section == 9 { root.return-to-library(); return accept; } return reject; } }
@@ -271,6 +328,7 @@ export component LibraryWindow inherits Window {
     in-out property <int> detail-origin;
     function return-to-library() { section = detail-origin; root.refresh(query,section == 1,installed-only,offset,source-index); }
     in-out property <bool> source-details;
+    in-out property <bool> steam-advanced;
     in-out property <bool> discord-settings;
     out property <int> grid-columns: root.width < 1100px ? 4 : root.width < 1280px ? 5 : 6;
     property <length> card-width: (root.width - 184px - 48px - 16px - (grid-columns - 1) * 16px) / grid-columns;
@@ -284,7 +342,7 @@ export component LibraryWindow inherits Window {
             Rectangle { x: parent.width - 1px; width: 1px; height: parent.height; background: Theme.line; }
             VerticalLayout { padding: 12px; spacing: 12px;
                 HorizontalLayout { height: 46px; spacing: 9px; padding-left: 8px;
-                    Glyph { kind: 0; ink: Theme.accent; }
+                    Brand { kind: 0; width: 30px; height: 30px; }
                     VerticalLayout { spacing: 3px;
                         Text { text: "Game Library"; color: Theme.text; font-size: 14px; font-weight: 600; vertical-stretch: 0; }
                     }
@@ -300,7 +358,7 @@ export component LibraryWindow inherits Window {
                 }
                 VerticalLayout { spacing: 4px;
                     Navigation { text: "Discord"; icon: 3; active: section == 7; clicked => { section = 7; } }
-                    Navigation { text: "Ayarlar"; icon: 4; active: section == 8 || section == 2 || (section >= 3 && section <= 5) || section == 10; clicked => { section = 8; } }
+                    Navigation { text: "Ayarlar"; icon: 4; active: section == 8 || section == 2 || (section >= 3 && section <= 5) || section == 10 || section == 11 || section == 12; clicked => { section = 8; } }
                     Rectangle { height: 1px; background: Theme.line; }
                     HorizontalLayout { height: 38px; padding-left: 12px; spacing: 9px;
                         Rectangle { width: 6px; height: 6px; border-radius: 3px; background: bridge-connected ? Theme.positive : Theme.subtle; }
@@ -341,10 +399,12 @@ export component LibraryWindow inherits Window {
                     Text { text: section == 0 ? (collection-id > 0 ? "Koleksiyon" : "Kütüphane") : section == 1 ? "Favoriler" : section == 6 ? "Koleksiyonlar" : section == 7 ? "Discord" : "Ayarlar"; color: Theme.text; font-size: 22px; font-weight: 600; vertical-stretch: 0; }
                     if section < 2: Caption { text: matched + " oyun"; font-size: 11px; }
                 }
-                if section == 8 || section == 2 || (section >= 3 && section <= 5) || section == 10: HorizontalLayout { spacing: 8px;
+                if section == 8 || section == 2 || (section >= 3 && section <= 5) || section == 10 || section == 11 || section == 12: HorizontalLayout { spacing: 8px;
                     Tab { text: "Genel"; active: section == 8; clicked => { section = 8; } }
                     Tab { text: "Kaynaklar"; active: section >= 3 && section <= 5; clicked => { section = 3; } }
                     Tab { text: "Discord bağlantısı"; active: section == 10; clicked => { section = 10; } }
+                    Tab { text: "Entegrasyonlar"; active: section == 11; clicked => { section = 11; } }
+                    Tab { text: "Ağ erişimi"; active: section == 12; clicked => { section = 12; } }
                     Tab { text: "Performans"; active: section == 2; clicked => { section = 2; root.sample(); } }
                     Rectangle { horizontal-stretch: 1; background: transparent; }
                 }
@@ -452,23 +512,27 @@ export component LibraryWindow inherits Window {
                         Tab { text: "Riot · " + riot-count; active: section == 5; clicked => { section = 5; } }
                         Rectangle { horizontal-stretch: 1; background: transparent; }
                     }
-                    Panel { VerticalLayout { padding: 22px; spacing: 14px;
-                        Heading { text: "Yerel oyunlar"; }
+                    Panel { vertical-stretch: 0; VerticalLayout { padding: 22px; spacing: 14px;
+                        HorizontalLayout { spacing: 10px; Brand { kind: section - 2; } Heading { text: section == 3 ? "Steam" : section == 4 ? "Epic Games" : "Riot Games"; } Rectangle { horizontal-stretch: 1; background: transparent; } }
                         Caption { text: "Kurulu oyunlar launcher verilerinden otomatik bulunur. Başka bir diskteki klasörü de ekleyebilirsin."; }
                         HorizontalLayout { spacing: 8px; Action { text: "Klasör ekle"; icon: 2; enabled: !scanning; clicked => { root.add-folder(section - 3); } } Action { text: "Oyunları göster"; ghost: true; clicked => { source-index = section - 2; section = 0; root.refresh(query,false,installed-only,0,source-index); } } Rectangle { horizontal-stretch: 1; background: transparent; } }
                         Action { text: source-details ? "Tarama ayrıntılarını gizle" : "Tarama ayrıntıları"; ghost: true; clicked => { source-details = !source-details; } }
                         if source-details: Caption { text: source-summaries[section - 3]; font-size: 12px; }
                     } }
-                    if section == 3: Panel { VerticalLayout { padding: 22px; spacing: 12px;
-                        Heading { text: "Steam hesabı"; } Caption { text: "Kurulu olmayan oyunlarını da eklemek için hesabını eşitle. Anahtar Windows'ta güvenli olarak saklanır."; }
-                        Caption { text: "SteamID64"; } Field { text <=> steam-account-id; placeholder: "SteamID64"; }
-                        Caption { text: "Kişisel Web API anahtarı"; } Field { text <=> steam-api-key; placeholder: "API anahtarı"; secret: true; }
-                        HorizontalLayout { spacing: 8px; Action { text: "Kaydet"; clicked => { root.steam-credentials(steam-account-id,steam-api-key); steam-api-key = ""; } } Action { text: "Hesap oyunlarını eşitle"; accent: true; enabled: !integration-busy; clicked => { root.sync-account(0); } } Action { text: "Anahtar oluştur ↗"; ghost: true; clicked => { root.steam-key-page(); } } Rectangle { horizontal-stretch: 1; background: transparent; } }
+                    if section == 3: Panel { vertical-stretch: 0; VerticalLayout { padding: 22px; spacing: 12px;
+                        Heading { text: "Steam hesabı"; } Caption { text: "Steam'e giriş yap; kurulu olmayan oyunların da otomatik gelsin. Şifren Steam'in kendi giriş ekranında kalır."; }
+                        HorizontalLayout { spacing: 8px; Action { text: "Steam'e bağlan"; accent: true; enabled: !integration-busy; clicked => { root.steam-login(); } } Action { text: "Kütüphaneyi eşitle"; enabled: !integration-busy; clicked => { root.sync-account(0,"",""); } } Rectangle { horizontal-stretch: 1; background: transparent; } }
                         Caption { text: steam-account-status; font-size: 12px; }
+                        Action { text: steam-advanced ? "Gelişmiş seçenekleri gizle" : "Gelişmiş bağlantı seçenekleri"; ghost: true; clicked => { steam-advanced = !steam-advanced; } }
+                        if steam-advanced: VerticalLayout { spacing: 8px;
+                            Field { text <=> steam-account-id; placeholder: "SteamID64"; }
+                            Field { text <=> steam-api-key; placeholder: "Kişisel Web API anahtarı"; secret: true; }
+                            HorizontalLayout { spacing: 8px; Action { text: "Anahtarla eşitle"; enabled: !integration-busy; clicked => { root.sync-account(0,steam-account-id,steam-api-key); steam-api-key = ""; } } Action { text: "Anahtar oluştur ↗"; ghost: true; clicked => { root.steam-key-page(); } } Rectangle { horizontal-stretch: 1; background: transparent; } }
+                        }
                     } }
-                    if section == 4: Panel { VerticalLayout { padding: 22px; spacing: 14px;
-                        Heading { text: "Epic Games hesabı"; } Caption { text: "Hesabındaki kurulu olmayan oyunları da kütüphanene ekle."; }
-                        HorizontalLayout { spacing: 8px; Action { text: "Hesabı bağla"; accent: true; enabled: !integration-busy; clicked => { root.epic-login(); } } Action { text: "Hesap oyunlarını eşitle"; enabled: !integration-busy; clicked => { root.sync-account(1); } } Rectangle { horizontal-stretch: 1; background: transparent; } }
+                    if section == 4: Panel { vertical-stretch: 0; VerticalLayout { padding: 22px; spacing: 14px;
+                        Heading { text: "Epic Games hesabı"; } Caption { text: "Epic'e kendi giriş penceresinde bağlan; kurulu olmayan oyunların da otomatik gelsin."; }
+                        HorizontalLayout { spacing: 8px; Action { text: "Hesabı bağla"; accent: true; enabled: !integration-busy; clicked => { root.epic-login(); } } Action { text: "Hesap oyunlarını eşitle"; enabled: !integration-busy; clicked => { root.sync-account(1,"",""); } } Rectangle { horizontal-stretch: 1; background: transparent; } }
                         Caption { text: epic-account-status; font-size: 12px; }
                     } }
                     Rectangle { vertical-stretch: 1; background: transparent; }
@@ -522,7 +586,7 @@ export component LibraryWindow inherits Window {
                         Caption { text: !bridge-connected ? "Discord bağlantısı bekleniyor." : !stream-known ? "Discord yayın verisi okunamadı." : stream-pending ? "Discord'dan sonuç bekleniyor…" : stream-result != "" ? stream-result : stream-source-picker && stream-source-names.length == 0 ? "Paylaşılabilecek kaynak yok. Listeyi yenileyebilirsin." : stream-active ? "Yayın ayarları Discord'dan okunuyor." : can-stream-start ? "Paylaşılacak pencereyi veya ekranı seç." : "Yayın için Discord'da bir ses odasına bağlan."; font-size: 11px; }
                     } }
                     HorizontalLayout { spacing: 24px;
-                        VerticalLayout { min-width: 0px; horizontal-stretch: 2; spacing: 10px;
+                        VerticalLayout { min-width: chat-active ? 240px : 0px; max-width: chat-active ? 330px : 4096px; horizontal-stretch: chat-active ? 1 : 2; spacing: 10px;
                             HorizontalLayout { spacing: 6px;
                                 Tab { text: "Arkadaşlar · " + friend-count; active: !friend-favorites-only; clicked => { friend-favorites-only = false; root.social-filter(friend-query,false); } }
                                 Tab { text: "Favoriler · " + favorite-friend-count; active: friend-favorites-only; clicked => { friend-favorites-only = true; root.social-filter(friend-query,true); } }
@@ -531,12 +595,12 @@ export component LibraryWindow inherits Window {
                             }
                             if friends.length == 0: Caption { text: !bridge-connected ? "Discord bağlantısı kurulduğunda arkadaşların burada görünür." : friend-favorites-only ? "Bir arkadaşını yıldızla favorilere ekle." : "Aramana uygun arkadaş bulunamadı."; }
                             ListView { for friend in friends: FriendRow { name: friend.name; subtitle: friend.subtitle; initial: friend.initial; online: friend.online; recent: friend.recent; favorite: friend.favorite; can-favorite: can-favorite-friends; enabled: bridge-connected;
-                                clicked => { root.bridge-action("open_dm",friend.id); }
+                                clicked => { if chat-user-id != friend.id { chat-draft = ""; chat-sent-nonce = ""; } chat-active = true; chat-user-id = friend.id; chat-name = friend.name; chat-channel-id = ""; root.chat-action("chat_open",friend.id,"",""); }
                                 favorite-clicked => { root.friend-favorite(friend.id,!friend.favorite); }
                             } }
                         }
                         Rectangle { width: 1px; background: Theme.line; }
-                        VerticalLayout { min-width: 0px; horizontal-stretch: 1; spacing: 10px;
+                        if !chat-active: VerticalLayout { min-width: 0px; horizontal-stretch: 1; spacing: 10px;
                             Heading { text: room-mode == 2 ? "Oda seç" : "Ses odaları"; height: 30px; }
                             if room-mode != 2: HorizontalLayout { spacing: 4px;
                                 Tab { text: "Dolu"; active: room-mode == 0; clicked => { room-mode = 0; root.room-filter(0,room-query); } }
@@ -554,6 +618,15 @@ export component LibraryWindow inherits Window {
                                 favorite-clicked => { root.room-favorite(room.id,!room.favorite); }
                             } }
                             if room-mode == 2 && room-catalog-more: Caption { text: "İlk " + rooms.length + " oda gösteriliyor. Aramanı daralt."; font-size: 11px; }
+                        }
+                        if chat-active: Conversation {
+                            horizontal-stretch: 3;
+                            friend-name: chat-name; messages: chat-messages; status: chat-status; loading: chat-loading; pending: chat-pending; can-send: bridge-connected && chat-can-send; can-open-discord: bridge-connected && chat-can-open-discord;
+                            draft <=> chat-draft;
+                            send(content) => { root.chat-action("chat_send",chat-user-id,chat-channel-id,content); }
+                            refresh => { root.chat-action("chat_refresh",chat-user-id,chat-channel-id,""); }
+                            close => { if bridge-connected { root.chat-action("chat_close",chat-user-id,chat-channel-id,""); } chat-active = false; }
+                            open-discord => { root.bridge-action("open_dm",chat-user-id); }
                         }
                     }
                     if bridge-connected && !recent-conversations: Caption { text: "Son konuşma sıralaması için GameLibraryBridge köprüsünü güncelle."; font-size: 11px; }
@@ -589,18 +662,74 @@ export component LibraryWindow inherits Window {
                     } }
                     Rectangle { vertical-stretch: 1; background: transparent; }
                 } }
+                if section == 11: ScrollView { VerticalLayout { spacing: 16px;
+                    Panel { vertical-stretch: 0; VerticalLayout { padding: 20px; spacing: 12px;
+                        HorizontalLayout { spacing: 10px; Brand { kind: 7; } Heading { text: "OBS Studio"; } Rectangle { horizontal-stretch: 1; background: transparent; } Caption { text: obs-connected ? "Bağlı" : "Bağlantı bekleniyor"; horizontal-stretch: 0; } }
+                        Caption { text: obs-status; font-size: 12px; }
+                        HorizontalLayout { spacing: 8px; Field { text <=> obs-port; placeholder: "Port · 4455"; max-width: 110px; } Field { text <=> obs-password; placeholder: "WebSocket parolası · Windows'ta saklanır"; secret: true; } Action { text: obs-connected ? "Yenile" : "Bağlan"; enabled: !integration-busy; clicked => { root.obs-connect(obs-port,obs-password); obs-password = ""; } } }
+                        if obs-connected: HorizontalLayout { spacing: 8px; ComboBox { model: obs-scenes; current-index <=> obs-scene-index; } Action { text: "Sahneyi uygula"; enabled: !integration-busy && obs-scene-index >= 0 && obs-scene-index < obs-scenes.length; clicked => { root.obs-action(0,obs-scenes[obs-scene-index]); } } }
+                        if obs-connected: HorizontalLayout { spacing: 8px; Action { text: obs-streaming ? "Yayını durdur" : "Yayın başlat"; danger: obs-streaming; enabled: !integration-busy; clicked => { root.obs-action(obs-streaming ? 2 : 1,""); } } Action { text: obs-recording ? "Kaydı durdur" : "Kayıt başlat"; danger: obs-recording; enabled: !integration-busy; clicked => { root.obs-action(obs-recording ? 4 : 3,""); } } Rectangle { horizontal-stretch: 1; background: transparent; } }
+                    } }
+                    Panel { vertical-stretch: 0; VerticalLayout { padding: 20px; spacing: 12px;
+                        HorizontalLayout { spacing: 10px; Brand { kind: 6; } Heading { text: "NVIDIA Broadcast"; } Rectangle { horizontal-stretch: 1; background: transparent; } }
+                        Caption { text: broadcast-status; font-size: 12px; }
+                        if !broadcast-rtx: Caption { text: broadcast-requirements; font-size: 11px; }
+                        Caption { text: "Broadcast sanal mikrofon, hoparlör veya kameranı Discord ve OBS cihaz ayarlarından seç."; font-size: 12px; }
+                        if bridge-connected: Caption { text: broadcast-discord-status; font-size: 12px; }
+                        if bridge-connected: Action { text: "Discord sesini Broadcast'a bağla"; enabled: can-broadcast-audio; clicked => { root.broadcast-select(); } }
+                        HorizontalLayout { spacing: 8px; Action { text: "Cihazları yenile"; enabled: !integration-busy; clicked => { root.broadcast-inspect(); } } Action { text: broadcast-installed ? "Broadcast'u aç" : "İndir ↗"; clicked => { root.broadcast-open(broadcast-installed ? 0 : 1); } } Action { text: "Kurulum rehberi ↗"; ghost: true; clicked => { root.broadcast-open(2); } } Rectangle { horizontal-stretch: 1; background: transparent; } }
+                    } }
+                    Panel { vertical-stretch: 0; VerticalLayout { padding: 20px; spacing: 12px;
+                        HorizontalLayout { spacing: 10px; Brand { kind: 5; } Heading { text: "Spotify · Birlikte dinle"; } Rectangle { horizontal-stretch: 1; background: transparent; } Action { text: "Spotify'ı aç"; clicked => { root.spotify-open(); } } }
+                        Caption { text: spotify-status; font-size: 12px; }
+                        if spotify-track != "": HorizontalLayout { spacing: 8px; Caption { text: spotify-track; } Action { text: "Parçayı aç"; enabled: bridge-connected; clicked => { root.spotify-action("spotify_track","",spotify-track-id); } } }
+                        Caption { text: "Discord → Bağlantılar bölümünde Spotify'ı bağla. Birlikte dinleme için Spotify Premium gerekir."; font-size: 12px; }
+                        for friend in music-friends: HorizontalLayout { spacing: 8px;
+                            VerticalLayout { spacing: 3px; Text { text: friend.name; color: Theme.text; font-size: 12px; overflow: elide; } Caption { text: friend.title + " · " + friend.artist; font-size: 11px; } }
+                            Action { text: "Parçayı aç"; enabled: bridge-connected; clicked => { root.spotify-action("spotify_track",friend.user-id,friend.track-id); } }
+                            Action { text: friend.can-join ? "Birlikte dinle" : "Discord'da birlikte dinle"; enabled: bridge-connected && friend.can-profile; clicked => { root.spotify-action(friend.can-join ? "spotify_join" : "spotify_profile",friend.user-id,friend.track-id); } }
+                        }
+                        if music-friends.length == 0: Caption { text: "Şu an Spotify etkinliği paylaşan arkadaş görünmüyor."; font-size: 11px; }
+                    } }
+                    Rectangle { vertical-stretch: 1; background: transparent; }
+                } }
+                if section == 12: ScrollView { VerticalLayout { spacing: 16px;
+                    Panel { VerticalLayout { padding: 20px; spacing: 12px;
+                        HorizontalLayout { spacing: 10px; Heading { text: "Ağ erişimi"; } Rectangle { horizontal-stretch: 1; background: transparent; } Action { text: "Yenile"; enabled: !integration-busy; clicked => { root.network-action(0,network-interface-index,network-encrypted-dns); } } }
+                        Caption { text: network-status; font-size: 12px; }
+                        Caption { text: "Etkinleştirme ve geri alma sırasında Windows yönetici izni istenir. DNS ayarları geri alınana kadar kalır; GoodbyeDPI uygulamadan çıkınca durur."; font-size: 12px; }
+                    } }
+                    Panel { VerticalLayout { padding: 20px; spacing: 12px;
+                        HorizontalLayout { spacing: 10px; Brand { kind: 8; } Heading { text: "Cloudflare DNS"; } Rectangle { horizontal-stretch: 1; background: transparent; } Caption { text: network-dns-enabled ? "Etkin" : "Kapalı"; horizontal-stretch: 0; } }
+                        Caption { text: "Bağlantını seç; Cloudflare DNS'i uygula veya önceki ayarlarını tek düğmeyle geri yükle."; font-size: 12px; }
+                        ComboBox { model: network-interfaces; current-index <=> network-interface-index; enabled: network-supported && !integration-busy; }
+                        CheckBox { text: "Şifreli DNS kullan (DoH)"; checked <=> network-encrypted-dns; enabled: network-doh-supported && !integration-busy; }
+                        if !network-doh-supported: Caption { text: "Bu Windows sürümünde yerleşik DoH bulunmuyor; standart DNS kullanılabilir."; font-size: 11px; }
+                        Caption { text: network-dns-details; font-size: 11px; }
+                        HorizontalLayout { spacing: 8px; Action { text: "DNS'i etkinleştir"; accent: true; enabled: network-supported && !integration-busy && network-interfaces.length > 0; clicked => { root.network-action(4,network-interface-index,network-encrypted-dns); } } Action { text: "Önceki DNS'i geri yükle"; enabled: network-supported && !integration-busy && network-rollback-available; clicked => { root.network-action(5,network-interface-index,network-encrypted-dns); } } Action { text: "Rehber ↗"; ghost: true; clicked => { root.network-action(6,0,false); } } Rectangle { horizontal-stretch: 1; background: transparent; } }
+                    } }
+                    Panel { VerticalLayout { padding: 20px; spacing: 12px;
+                        HorizontalLayout { spacing: 10px; Brand { kind: 9; } Heading { text: "GoodbyeDPI"; } Rectangle { horizontal-stretch: 1; background: transparent; } Caption { text: network-running ? "Çalışıyor" : network-stop-available ? "Oturum kaydı var" : network-version != "" ? "Hazır · " + network-version : "İlk başlatmada indirilir"; horizontal-stretch: 0; } }
+                        Caption { text: "Resmi ValdikSS/GoodbyeDPI GitHub sürümü kullanılır. İlk başlatmada paket hazırlanır; Windows izninle çalışır."; font-size: 12px; }
+                        HorizontalLayout { spacing: 8px; Action { text: network-running || network-stop-available ? "Durdur" : "Başlat"; accent: !network-running && !network-stop-available; danger: network-running || network-stop-available; enabled: network-supported && !integration-busy; clicked => { root.network-action(network-running || network-stop-available ? 3 : 2,0,false); } } Action { text: "Paketi hazırla / güncelle"; enabled: network-supported && !integration-busy; clicked => { root.network-action(1,0,false); } } Action { text: "Resmi kaynak ↗"; ghost: true; clicked => { root.network-action(7,0,false); } } Rectangle { horizontal-stretch: 1; background: transparent; } }
+                        CheckBox { text: "Resmi paket güncellemelerini otomatik indir"; checked <=> network-auto-update; enabled: network-supported && !integration-busy; toggled => { root.network-update-preference(network-auto-update); } }
+                        Caption { text: "Yeni paket sonraki Başlat işleminde kullanılır. Otomatik güncelleme DNS'i veya GoodbyeDPI'yi açmaz."; font-size: 11px; }
+                        if network-version != "": Caption { text: network-digest-verified ? "Paket GitHub'ın yayımladığı SHA-256 özetiyle doğrulandı." : "Resmi HTTPS kaynağı ve yerel dosya özeti kontrol edildi. Bu sürümde yayıncı SHA-256 özeti bulunmuyor."; font-size: 11px; }
+                    } }
+                    Rectangle { vertical-stretch: 1; background: transparent; }
+                } }
                 if section == 8: ScrollView { VerticalLayout { spacing: 18px;
                     Panel { VerticalLayout { padding: 22px; spacing: 14px;
                         HorizontalLayout { Heading { text: "Game Library"; } Rectangle { horizontal-stretch: 1; background: transparent; } Caption { text: "Sürüm 0.1.0 · Windows"; horizontal-stretch: 0; } }
                         Caption { text: update-status; }
-                        CheckBox { text: "Güncellemeleri otomatik kontrol et ve indir"; checked <=> auto-update-app; toggled => { root.update-preferences(auto-update-app,auto-update-vencord); } }
+                        CheckBox { text: "Güncellemeleri otomatik kontrol et ve indir"; checked <=> auto-update-app; toggled => { root.update-preferences(auto-update-app); } }
                         HorizontalLayout { spacing: 8px; Action { text: "Güncellemeleri kontrol et"; icon: 8; enabled: !integration-busy; clicked => { root.update-check(); } } if update-available: Action { text: "İndir ve doğrula"; accent: true; enabled: !integration-busy; clicked => { root.update-stage(); } } if update-staged: Action { text: "Yeniden başlat ve uygula"; accent: true; enabled: !integration-busy; clicked => { root.update-apply(); } } Rectangle { horizontal-stretch: 1; background: transparent; } }
                     } }
                     Panel { VerticalLayout { padding: 22px; spacing: 14px;
                         Heading { text: "Vencord güncellemeleri"; }
-                        CheckBox { text: "Vencord'un otomatik güncellemesini kullan"; checked <=> auto-update-vencord; toggled => { root.update-preferences(auto-update-app,auto-update-vencord); } }
+                        Caption { text: "Özel köprünün korunması için Vencord bu uygulama üzerinden güncellenir."; font-size: 12px; }
                         Caption { text: "Güncellemeler Discord yeniden açıldığında etkinleşir."; font-size: 12px; }
-                        Action { text: "Vencord'u güncelle"; enabled: bridge-connected; clicked => { root.bridge-action("vencord_update",""); } }
+                        Action { text: "Vencord ve köprüyü güncelle"; enabled: !integration-busy; clicked => { root.prepare-bridge(); } }
                     } }
                     Panel { VerticalLayout { padding: 22px; spacing: 14px;
                         Heading { text: "Kapak sağlayıcısı"; }

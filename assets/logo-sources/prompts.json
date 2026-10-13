@@ -1,0 +1,46 @@
+{
+  "generator": "ChatGPT built-in imagegen",
+  "transparent_background": true,
+  "assets": [
+    [
+      "game-library",
+      "Use case: logo-brand. Asset type: desktop application icon. Create one polished original Game Library mark: three upright game cases subtly forming a controller silhouette, simple geometric solid shape, ice blue and muted teal on a genuinely transparent background. Compact square composition, centered, generous 10 percent clear margin, readable at 24 pixels. Flat 2D precise edges, no gradients, no text, no border, no shadows, no mockup."
+    ],
+    [
+      "steam",
+      "Use case: logo-brand. Asset type: small launcher identity icon for a dark desktop app. Render the recognizable Steam mechanical connecting-arm logo as a clean accurate flat white symbol within a dark navy circle, centered on a genuinely transparent canvas, generous 10 percent transparent margin. Square, simple solid geometry, crisp edges, legible at 24 pixels. Only the single Steam logo; no text, no lighting, no mockup or shadow."
+    ],
+    [
+      "epic",
+      "Use case: logo-brand. Asset type: launcher identity icon for a dark desktop application. Render the recognizable EPIC GAMES shield badge: flat off-white shield, dark charcoal EPIC GAMES lettering stacked inside, correct compact bold letterforms and pointed bottom. Square centered badge on genuinely transparent canvas with 10 percent margin. Sharp clean 2D edges, strong contrast, readable at 32 pixels. No other elements, no shadows or gradients."
+    ],
+    [
+      "riot",
+      "Use case: logo-brand. Asset type: launcher identity icon for a dark desktop app. Render the recognizable Riot Games angular fist emblem as a clean accurate flat red mark, single strong silhouette, centered on genuinely transparent square canvas with 10 percent clear margin. No wording or typography. Precise 2D edges, readable at 24 pixels, no shadows, no mockup."
+    ],
+    [
+      "discord",
+      "Use case: logo-brand. Asset type: social integration identity icon for a dark desktop app. Render the recognizable Discord Clyde controller face logo as a clean accurate flat blurple #5865F2 emblem, two simple eyes and balanced curved silhouette, centered on genuinely transparent square canvas with 10 percent clear margin. No text, no container, no gradients, no shadows. Precise smooth edges, legible at 24 pixels."
+    ],
+    [
+      "spotify",
+      "Use case: logo-brand. Asset type: music integration identity icon. Render the recognizable Spotify logo: vivid green circle with three centered dark charcoal curved audio wave strokes, clean accurate flat geometry. Centered on genuinely transparent square canvas, 10 percent clear margin, simple crisp edges, legible at 24 pixels. No text, no gradient, no shadow or mockup."
+    ],
+    [
+      "nvidia",
+      "Use case: logo-brand. Asset type: NVIDIA Broadcast integration icon for dark desktop app. Render the recognizable NVIDIA eye symbol as a clean accurate flat bright green geometric mark, centered on a genuinely transparent square canvas with 10 percent clear margin. Single symbol only, no text, no extra outline or container, no shadows, no gradients. Clear precise edges, readable at 24 pixels."
+    ],
+    [
+      "obs",
+      "Use case: logo-brand. Asset type: OBS Studio integration identity icon for a dark desktop app. Render the recognizable OBS Studio emblem: three symmetric white curved blades forming its circular swirl inside a dark charcoal circle with a subtle off-white outer rim. Flat 2D accurate geometry, centered on genuinely transparent square canvas, 10 percent clear margin, clean edges, readable at 24 pixels. No text, no shadows, no mockup."
+    ],
+    [
+      "cloudflare",
+      "Use case: logo-brand. Asset type: Cloudflare DNS integration icon for a dark Windows desktop application. Create the recognizable Cloudflare orange cloud with small orange sun edge rising behind the right shoulder and a strong flat baseline. One simple solid flat orange mark centered on genuinely transparent square canvas. Clean smooth vector-like edges, no text, no gradients, no speckles, no shadow or mockup, 10 percent margin, legible at 24 pixels."
+    ],
+    [
+      "goodbyedpi",
+      "Use case: logo-brand. Asset type: GoodbyeDPI network utility identity icon for a dark desktop app. Create one minimal original mint-teal shield emblem with a simple broken chain inside representing an open connection. Solid flat geometry with thick readable silhouette and two bold chain links separated in center. Centered on genuinely transparent square canvas, 10 percent margin. No text, no thin details, no glow, no gradients, no texture or speckles. Readable at 24 pixels. This is an integration illustration, not a claimed official utility logo."
+    ]
+  ]
+}

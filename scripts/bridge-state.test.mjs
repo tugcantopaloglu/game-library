@@ -71,3 +71,15 @@ test("UTF-8 wire size remains bounded while favorite rows and valid Unicode surv
     assert.equal(value.result,"\ufffd");
     assert.equal(rooms.length,100);
 });
+
+test("chat and music cannot exceed the wire budget or mutate cached conversations", () => {
+    const messages=Array.from({length:30},(_,id)=>({id:String(id),content:"界".repeat(4000)}));
+    const friends=Array.from({length:200},(_,id)=>({id:String(id),title:"界".repeat(1000)}));
+    const encoded=encodeSnapshot({type:"snapshot",spotify:{friends},chat:{messages,sentNonce:"123456789012345678"}},text=>Buffer.byteLength(text));
+    assert.ok(encoded);
+    assert.ok(Buffer.byteLength(encoded)+1<=256*1024);
+    const packet=JSON.parse(encoded);
+    assert.equal(packet.chat.messages.at(-1).id,"29");
+    assert.equal(packet.chat.sentNonce,"123456789012345678");
+    assert.equal(messages.length,30);assert.equal(friends.length,200);
+});

@@ -15,18 +15,33 @@ pub fn save_steam_key(key: &str) -> Result<(), String> {
 pub fn steam_key() -> Result<Option<String>, String> {
     read_key("GameLibrary/SteamWebAPI")
 }
-fn save_key(target_name: &str, key: &str) -> Result<(), String> {
-    let target = HSTRING::from(target_name);
-    if key.is_empty() {
-        let _ = unsafe { CredDeleteW(&target, CRED_TYPE_GENERIC, None) };
-        return Ok(());
+pub fn save_obs_password(port: u16, password: &str) -> Result<(), String> {
+    if port == 0 || password.len() > 256 || password.contains('\0') {
+        return Err("OBS bağlantı bilgileri geçersiz".into());
     }
+    write_secret(&format!("GameLibrary/OBS/127.0.0.1:{port}"), password)
+}
+pub fn obs_password(port: u16) -> Result<Option<String>, String> {
+    if port == 0 {
+        return Err("OBS portu geçersiz".into());
+    }
+    read_key(&format!("GameLibrary/OBS/127.0.0.1:{port}"))
+}
+fn save_key(target_name: &str, key: &str) -> Result<(), String> {
     if key.len() > 256
         || !key
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
     {
         return Err("API anahtarı geçersiz".into());
+    }
+    write_secret(target_name, key)
+}
+fn write_secret(target_name: &str, key: &str) -> Result<(), String> {
+    let target = HSTRING::from(target_name);
+    if key.is_empty() {
+        let _ = unsafe { CredDeleteW(&target, CRED_TYPE_GENERIC, None) };
+        return Ok(());
     }
     let mut target_text: Vec<u16> = target_name.encode_utf16().chain(Some(0)).collect();
     let mut bytes = key.as_bytes().to_vec();

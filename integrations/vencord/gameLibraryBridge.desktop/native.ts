@@ -1,9 +1,9 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
-import { readFileSync } from "fs";
+import { readFileSync, statSync } from "fs";
 import { createConnection, Socket } from "net";
-import { join, resolve } from "path";
 import { StringDecoder } from "string_decoder";
 import { encodeSnapshot } from "./state";
+import { configurationPaths, parseConfiguration } from "./transport";
 
 let socket: Socket | undefined;
 let retry: ReturnType<typeof setTimeout> | undefined;
@@ -13,15 +13,16 @@ let connected = false;
 let directory = "";
 let enabled = false;
 let generation = 0;
+let attempt = 0;
 
 function reconnect() {
     if (!enabled || socket) return;
     try {
-        const path = resolve(directory || join(process.env.LOCALAPPDATA || "", "GameLibrary"), "integrations/vencord/bridge.json");
-        const text = readFileSync(path, "utf8");
-        if (text.length > 4096) throw new Error("Invalid configuration size");
-        const config = JSON.parse(text);
-        if (config.protocol !== 1 || !Number.isInteger(config.port) || config.port < 1 || config.port > 65535 || !/^[a-f0-9]{64}$/.test(config.token)) throw new Error("Invalid configuration");
+        const paths = configurationPaths(directory, process.env.LOCALAPPDATA);
+        if (!paths.length) throw new Error("Game Library data directory missing");
+        const path = paths[attempt++ % paths.length];
+        if (statSync(path).size > 4096) throw new Error("Invalid configuration size");
+        const config = parseConfiguration(readFileSync(path, "utf8"));
         let buffer = "";
         const decoder = new StringDecoder("utf8");
         const connection = createConnection({ host: "127.0.0.1", port: config.port });
@@ -53,7 +54,7 @@ function reconnect() {
 }
 
 export function start(_: unknown, dataDirectory: string) {
-    stop(); directory = dataDirectory; enabled = true; reconnect();
+    stop(); directory = dataDirectory; attempt = 0; enabled = true; reconnect();
     heartbeat = setInterval(() => { if (connected) socket?.write('{"type":"heartbeat"}\n'); }, 1000);
 }
 

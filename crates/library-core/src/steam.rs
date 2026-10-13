@@ -284,16 +284,28 @@ pub fn active_user_id_from(roots: &[PathBuf]) -> Option<String> {
         let Some(users) = users.value.get_obj() else {
             continue;
         };
+        let mut known = Vec::new();
+        let mut automatic = Vec::new();
         for (id, values) in users.iter() {
-            if id.len() == 17
-                && id.bytes().all(|byte| byte.is_ascii_digit())
-                && values
-                    .first()
-                    .and_then(|value| value.get_obj())
-                    .is_some_and(|user| field(user, "MostRecent") == Some("1"))
-            {
+            if id.len() != 17 || !id.bytes().all(|byte| byte.is_ascii_digit()) {
+                continue;
+            }
+            let Some(user) = values.first().and_then(|value| value.get_obj()) else {
+                continue;
+            };
+            if field(user, "MostRecent") == Some("1") {
                 return Some(id.to_string());
             }
+            known.push(id.to_string());
+            if field(user, "AutoLogin") == Some("1") {
+                automatic.push(id.to_string());
+            }
+        }
+        if automatic.len() == 1 {
+            return automatic.pop();
+        }
+        if known.len() == 1 {
+            return known.pop();
         }
     }
     None

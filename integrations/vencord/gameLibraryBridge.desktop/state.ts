@@ -72,6 +72,22 @@ export function encodeSnapshot(payload: any, byteLength: (text:string) => number
                 text = encode()!;
             }
         }
+        if (Array.isArray(value.spotify?.friends) && byteLength(text) + 1 > 256 * 1024) {
+            value.spotify = {...value.spotify};
+            while (byteLength(text) + 1 > 256 * 1024 && value.spotify.friends.length) {
+                value.spotify.friends = value.spotify.friends.slice(0,Math.floor(value.spotify.friends.length / 2));
+                value.spotify.friendsTruncated = true;
+                text = encode()!;
+            }
+        }
+        if (Array.isArray(value.chat?.messages) && byteLength(text) + 1 > 256 * 1024) {
+            value.chat = {...value.chat};
+            while (byteLength(text) + 1 > 256 * 1024 && value.chat.messages.length) {
+                value.chat.messages = value.chat.messages.slice(Math.ceil(value.chat.messages.length / 2));
+                value.chat.messagesTruncated = true;
+                text = encode()!;
+            }
+        }
     }
     return byteLength(text) + 1 <= 256 * 1024 ? text : null;
 }

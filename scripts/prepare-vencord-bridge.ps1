@@ -27,7 +27,7 @@ Get-ChildItem -LiteralPath $pluginDirectory -Filter '*.ts' -File | Copy-Item -De
 if ($LASTEXITCODE -ne 0) { throw 'Vencord dependency installation failed.' }
 & pnpm --dir $SourceDirectory testTsc
 if ($LASTEXITCODE -ne 0) { throw 'Bridge type check failed; Discord was not modified.' }
-& pnpm --dir $SourceDirectory build
+& pnpm --dir $SourceDirectory buildStandalone
 if ($LASTEXITCODE -ne 0) { throw 'Vencord build failed; Discord was not modified.' }
 $revision = & git -C $SourceDirectory rev-parse HEAD
 @{ source = $SourceDirectory; revision = $revision; bridgeProtocol = 1; preparedAt = (Get-Date).ToUniversalTime().ToString('o') } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $SourceDirectory 'game-library-bridge.json') -Encoding utf8

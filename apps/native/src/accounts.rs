@@ -5,7 +5,18 @@ use std::io::Read;
 use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
 
-pub fn steam(id: &str) -> Result<Vec<Game>, String> {
+pub fn steam(data: &Path, id: &str) -> Result<Vec<Game>, String> {
+    if crate::steam_web::account_id(data).is_some() {
+        return crate::steam_web::library(data, false);
+    }
+    if platform_windows::credentials::steam_key()?.is_none() {
+        return Err(
+            "Kurulu olmayan Steam oyunlarını getirmek için Steam'e bağlan düğmesini kullan.".into(),
+        );
+    }
+    steam_api(id)
+}
+pub fn steam_api(id: &str) -> Result<Vec<Game>, String> {
     if id.len() != 17 || !id.bytes().all(|byte| byte.is_ascii_digit()) {
         return Err("SteamID64 17 rakam olmalı".into());
     }
@@ -98,18 +109,45 @@ pub fn prepare_epic(data: &Path) -> Result<(), String> {
         .map_err(|error| error.to_string())?;
     std::fs::write(path, bytes).map_err(|error| error.to_string())
 }
-pub fn login_epic(data: &Path) -> Result<(), String> {
+pub fn login_epic(data: &Path) -> Result<EpicLibrary, String> {
     prepare_epic(data)?;
-    // Interactive console is intentional: credentials are entered in Epic's browser/helper.
-    command(data)
-        .args(["auth", "--disable-webview"])
-        .creation_flags(0x00000010)
+    // The official helper owns the Epic WebView and authentication callback.
+    let mut child = command(data)
+        .args(["auth"])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .creation_flags(0x08000000)
         .spawn()
         .map_err(|error| error.to_string())?;
-    Ok(())
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(600);
+    loop {
+        if let Some(status) = child.try_wait().map_err(|error| error.to_string())? {
+            if !status.success() {
+                return Err("Epic girişi tamamlanamadı. Giriş penceresini ve WebView2 kurulumunu kontrol et; önceki oyunlar korundu.".into());
+            }
+            break;
+        }
+        if std::time::Instant::now() >= deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(
+                "Epic girişi zaman aşımına uğradı; yeniden bağlan. Önceki oyunlar korundu.".into(),
+            );
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    // Legendary can exit successfully after cancellation: verify the library too.
+    epic(data).map_err(|_| "Epic oturumu doğrulanamadı. Girişi tamamla; pencere açılmıyorsa WebView2 kurulumunu kontrol et. Önceki oyunlar korundu.".into())
 }
 pub type EpicLibrary = (Vec<Game>, Vec<(String, String)>);
 pub fn epic(data: &Path) -> Result<EpicLibrary, String> {
+    if !data
+        .join("integrations/legendary/config/user.json")
+        .is_file()
+    {
+        return Err("Epic hesabı henüz bağlı değil. Hesabı bağla ile giriş yap; kurulu olmayan oyunlar hesabından alınır.".into());
+    }
     prepare_epic(data)?;
     let output = data.join("integrations/legendary/library-result.json");
     let file = std::fs::File::create(&output).map_err(|error| error.to_string())?;

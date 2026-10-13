@@ -6,6 +6,10 @@ Bilgisayardaki oyunları tek yerde toplayan, yerel verilerle çalışan masaüst
 
 ## Proje durumu
 
+13 Ekim 2026 entegrasyon düzeltmesi: Discord'un kurulu köprüsü onarıldı ve canlı olarak 32 arkadaş/1 ses odası okundu. Steam/Epic ana bağlantı akışında anahtar/kod kopyalamadan resmi giriş penceresi ve otomatik hesap eşitlemesi var. OBS, RTX/NVIDIA Broadcast ve Spotify panelleri, isteğe bağlı Cloudflare DNS/GoodbyeDPI ve resmi paket güncellemesi eklendi. On marka/uygulama simgesi ChatGPT resim üretimiyle yenilendi. Gerçek hesap listesi, yayın/kayıt ve ağ değişikliği kabul sınırları [güncel doğrulama kaydında](docs/entegrasyonlar-20261013.md).
+
+Arkadaş tıklamasının yanlış grup açma çağrısı düzeltildi; arkadaş listesi yanında native birebir sohbet paneli eklendi. Seçilen DM'nin son 30 metin mesajı gösterilir; Enter/Gönder işlemi aynı hesap/kişi/kanal kapsamında Discord'un kendi gönderim yoluna bağlıdır. Mesaj nonce'u geri okunmadan taslak temizlenmez. [Sohbet sözleşmesi ve doğrulama](docs/chat.md).
+
 12 Ekim 2026: native Windows sürümü Steam/Epic/Riot keşfi ve başlatma, elle oyun ekleme, koleksiyonlar, kullanıcı başlık/not/kapak düzeltmeleri, süreçle doğrulanan oturumlar ve yerel Vencord bağlantısı içeriyor. Modern Steam kapak önbelleği ve görünür sayfanın eksik kapakları desteklenir; oyun ayrıntısında HowLongToBeat süreleri kaydedilir. Steam/Epic hesap eşitleme akışı hazır; kullanıcı hesap bağlantısını ertelediği için tam hesap listesi canlı olarak doğrulanmadı. Beholder: Conductor gerçek Steam başlatma testi geçti; Discord Stable bağlantısında arkadaş ve ses odası verisi okundu. Yayın kontrolleri bu istemcide kullanılamıyor. [Hesaplar, kapaklar ve süreler](docs/hesaplar-kapaklar-hltb.md), [kütüphane, Vencord ve güncellemeler](docs/kutuphane-ve-guncellemeler.md).
 
 İlk sürüm Windows için geliştirilecek. Geliştirme ve performans referansı Windows 11 x64; Windows 10 desteği ayrıca doğrulanacak. Diğer işletim sistemleri sonraki aşamalara bırakıldı.
@@ -76,6 +80,6 @@ pwsh -File scripts/measure.ps1 -Mode Tray -Seconds 60
 
 Fixture testleri makinedeki kurulumlardan yalıtılır; gerçek launcher kabulü ayrıca yapılır. Yerel Steam kapaklarına ek olarak kullanıcı kapağı ve isteğe bağlı SteamGridDB araması desteklenir. API anahtarı Windows Credential Manager'da saklanır. Native arayüz kapak odaklı kartlar, pencereye göre 4–6 sütun, 100 kayıtlık sayfalar ve sanallaştırılmış satırlar kullanır. Oyun ayrıntısı Genel bakış/Düzenle olarak ayrılır; Discord arkadaş ve ses odalarını liste halinde gösterir. JPEG/PNG kapaklar işçi thread'inde en fazla 180×270 piksele indirilir; dosya, boyut ve decode bellek sınırları uygulanır.
 
-Uygulama güncelleyicisi Ed25519 imzalı release bildirimi ve SHA-256 doğrulaması kullanır. Bu geliştirme derlemesinde güven anahtarı ve yayımlanmış imzalı release yoktur; canlı otomatik güncelleme henüz etkin değildir. Vencord'un otomatik güncelleme tercihi yerel köprüden yönetilir.
+Uygulama güncelleyicisi Ed25519 imzalı release bildirimi ve SHA-256 doğrulaması kullanır. Bu geliştirme derlemesinde güven anahtarı ve yayımlanmış imzalı release yoktur; canlı otomatik güncelleme henüz etkin değildir. Özel GameLibraryBridge paketini korumak için standart Vencord otomatik güncellemesi kapalıdır; **Köprüyü hazırla / güncelle** resmi Vencord kaynağını günceller, köprüyü derler ve kurulu paketi yedekleyerek uygular.
 
 Slint atfı ⋯ → Hakkında ekranında `AboutSlint` bileşeniyle gösterilir. [Slint kullanım koşulları](https://slint.dev/terms-and-conditions).

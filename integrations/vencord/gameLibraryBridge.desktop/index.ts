@@ -1,9 +1,12 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 import { definePluginSettings, Settings, SettingsStore } from "@api/Settings";
-import { checkForUpdates, update } from "@utils/updater";
 import definePlugin, { OptionType, PluginNative } from "@utils/types";
+import { openUserProfile } from "@utils/discord";
+import { listenAlongAdapter, SpotifyControls, SpotifyProvider } from "./spotify";
+import { BroadcastControls, BroadcastProvider, broadcastAdapter } from "./broadcast";
+import { ChatControls, ChatProvider, chatMessageAdapters, directMessageAdapter, discordFocusAdapter } from "./directMessage";
 import { findByCode, findByProps } from "@webpack";
-import { ApplicationStreamingStore, ChannelActionCreators, ChannelStore, GuildStore, MediaEngineStore, PermissionStore, PermissionsBits, PresenceStore, ReadStateStore, RelationshipStore, SelectedChannelStore, UserStore, VoiceStateStore } from "@webpack/common";
+import { ApplicationStreamingStore, ChannelActionCreators, ChannelStore, GuildStore, MediaEngineStore, MessageActions, MessageStore, PermissionStore, PermissionsBits, PresenceStore, ReadStateStore, RelationshipStore, SelectedChannelStore, SpotifyStore, UserStore, VoiceStateStore } from "@webpack/common";
 import { favoriteIds, lastMessageAt, validId, visibleFriends } from "./social";
 import { SnapshotCache, StoreListeners, Section } from "./state";
 import { LiveStream, StreamControls, StreamProvider } from "./stream";
@@ -27,6 +30,18 @@ let lastFallback = 0;
 let catalogQuery: string | null = null;
 let catalogAccount: string | undefined;
 let streamControls = new StreamControls();
+let spotifyControls = new SpotifyControls();
+let broadcastControls = new BroadcastControls();
+let chatControls = new ChatControls();
+function chatProvider(): ChatProvider {
+    return {get account(){return UserStore.getCurrentUser()?.id;},friendIds:()=>RelationshipStore.getFriendIDs(),dmChannelId:id=>ChannelStore.getDMFromUserId(id),channel:id=>ChannelStore.getChannel(id),messages:id=>MessageStore.getMessages(id),openDm:directMessageAdapter(ChannelActionCreators),...chatMessageAdapters(MessageActions),selectedChannel:()=>SelectedChannelStore.getChannelId(),focus:actions().chatFocus};
+}
+function broadcastProvider(): BroadcastProvider {
+    return {get account(){return UserStore.getCurrentUser()?.id;},store:MediaEngineStore,selector:broadcastAdapter(actions().media)};
+}
+function spotifyProvider(): SpotifyProvider {
+    return {get account(){return UserStore.getCurrentUser()?.id;},store:SpotifyStore,friendIds:()=>RelationshipStore.getFriendIDs(),activities:id=>PresenceStore.getActivities(id),join:actions().listenAlong,openProfile:id=>{openUserProfile(id);},openExternal:async uri=>{await VencordNative.native.openExternal(uri);}};
+}
 let transportGeneration = -1;
 const invalidateSettings = () => cache.invalidate("friends", "rooms", "controls");
 
@@ -37,6 +52,8 @@ function resolveActions() {
         streaming: findByProps("stopStream") as any,
         media: findByProps("setGoLiveSource", "setInputVolume", "setOutputVolume") as any,
         presets: findByProps("PRESET_CUSTOM", "PRESET_VIDEO") as any,
+        listenAlong: listenAlongAdapter(findByCode("hasSpotifyAccount:", "sync_id", "Promise.reject", "openModalLazy")),
+        chatFocus: discordFocusAdapter(findByProps("focus", "restore", "minimize", "maximize")),
         start: startAdapter(findByCode('type:"STREAM_START"', "streamType:", "guildId:", "channelId:")),
         stop: stopAdapter(findByCode('type:"STREAM_STOP"', "streamKey:", "appContext:"))
     };
@@ -103,16 +120,17 @@ function controlSnapshot() {
     return { status: "Yerel Vencord bağlantısı açık", result, voiceChannel: SelectedChannelStore.getVoiceChannelId(),
         muted: MediaEngineStore.isSelfMute(), deafened: MediaEngineStore.isSelfDeaf(),
         stream: streamControl.active ? {streamKey:streamControl.key} : null,
-        streamControl,
+        streamControl, spotify:spotifyControls.state(spotifyProvider()),broadcastAudio:broadcastControls.state(broadcastProvider()),chat:chatControls.state(chatProvider()),
         autoUpdate: Settings.autoUpdate,
         capabilities: {
             recent_conversations: typeof ChannelStore?.getDMFromUserId === "function" && typeof ReadStateStore?.lastMessageId === "function",
             favorite_friends: true, favorite_rooms: typeof PermissionStore?.can === "function", room_catalog: typeof ChannelStore?.getChannelIds === "function" && typeof PermissionStore?.can === "function",
-            open_dm: typeof ChannelActionCreators.openPrivateChannel === "function",
+            open_dm: typeof chatProvider().openDm === "function",
+            chat_open: typeof chatProvider().openDm === "function",chat_close:true,chat_refresh:typeof chatProvider().fetch === "function",chat_send:chatControls.state(chatProvider()).canSend,
             mute: typeof modules.voice?.toggleSelfMute === "function", deafen: typeof modules.voice?.toggleSelfDeaf === "function", join_voice: typeof modules.channel?.selectVoiceChannel === "function",
             stream_inspect: typeof ApplicationStreamingStore?.getCurrentUserActiveStream === "function",
             stream_stop: streamControl.canStop, stream_start: streamControl.canStart, stream_sources: streamControl.canSources, stream_source: streamControl.canSource, stream_quality: streamControl.canQuality, stream_fps: streamControl.canFps, stream_audio: streamControl.canAudio,
-            vencord_update: true, auto_update: true
+            vencord_update: false, auto_update: false, spotify_track:true,spotify_profile:true,spotify_join:spotifyControls.state(spotifyProvider()).canListenAlong,broadcast_audio:broadcastControls.state(broadcastProvider()).canSelect
         }
     };
 }
@@ -165,7 +183,9 @@ function bindStores() {
     let complete = true;
     const bindings: [any, Section[]][] = [
         [UserStore, ["friends", "rooms", "controls"]],
-        [RelationshipStore, ["friends"]], [PresenceStore, ["friends"]], [ReadStateStore, ["friends"]],
+        [RelationshipStore, ["friends", "controls"]], [PresenceStore, ["friends", "controls"]], [ReadStateStore, ["friends"]],
+        [SpotifyStore, ["controls"]],
+        [MessageStore, ["controls"]],
         [ChannelStore, ["friends", "rooms", "controls"]], [GuildStore, ["rooms"]],
         [VoiceStateStore, ["rooms", "controls"]], [PermissionStore, ["rooms", "controls"]], [MediaEngineStore, ["controls"]],
         [SelectedChannelStore, ["controls"]], [ApplicationStreamingStore, ["controls"]]
@@ -178,6 +198,9 @@ async function command(message: any) {
     const modules = actions();
     const id = String(message.data?.id || "");
     switch (message.action) {
+        case "broadcast_audio": await broadcastControls.execute(broadcastProvider(),message.action,message.data); break;
+        case "spotify_track": case "spotify_profile": case "spotify_join":
+            await spotifyControls.execute(spotifyProvider(),message.action,message.data); break;
         case "favorite_friends":
             if (!Array.isArray(message.data?.ids) || message.data.ids.length > 200 || !message.data.ids.every(validId)) throw new Error("Arkadaş favorileri geçersiz");
             settings.store.favoriteFriends = favoriteIds(message.data.ids.join(",")).join(","); break;
@@ -193,18 +216,15 @@ async function command(message: any) {
         case "join_voice":
             if (!validId(id) || ![2,13].includes(ChannelStore.getChannel(id)?.type) || !PermissionStore.can(PermissionsBits.VIEW_CHANNEL, ChannelStore.getChannel(id)) || !PermissionStore.can(PermissionsBits.CONNECT, ChannelStore.getChannel(id))) throw new Error("Ses kanalı erişilemiyor");
             modules.channel.selectVoiceChannel(id); break;
-        case "open_dm":
-            if (!RelationshipStore.getFriendIDs().includes(id)) throw new Error("Seçili arkadaş bulunamadı");
-            ChannelActionCreators.openPrivateChannel(id); break;
+        case "open_dm": case "chat_open": case "chat_close": case "chat_refresh": case "chat_send":
+            await chatControls.execute(chatProvider(),message.action,message.data); break;
         case "stream_sources":
             if (typeof message.data?.open !== "boolean") throw new Error("Kaynak seçimi geçersiz");
             if (message.data.open) await streamControls.catalog.open(streamProvider()); else streamControls.catalog.clear(); break;
         case "stream_start": case "stream_source": case "stream_audio": case "stream_stop": case "stream_quality": case "stream_fps":
             await streamControls.execute(streamProvider(),message.action,message.data); break;
-        case "auto_update": Settings.autoUpdate = message.data?.enabled === true; break;
-        case "vencord_update":
-            if (await checkForUpdates()) await update();
-            result = "Vencord güncellendi; etkinleşmesi için Discord'u yeniden aç."; return;
+        case "auto_update":
+        case "vencord_update": throw new Error("Köprülü Vencord'u Game Library içindeki Köprüyü güncelle düğmesiyle güncelle.");
         default: throw new Error("Desteklenmeyen köprü işlemi");
     }
     result = "İşlem Discord'a iletildi; güncel durum bağlantıdan okunuyor.";
@@ -214,12 +234,17 @@ export default definePlugin({
     name: "GameLibraryBridge", description: "Local Game Library connection with bounded messages, selected friends and version-gated controls.",
     authors: [{ name: "Game Library", id: 0n }], settings,
     async start() {
+        // Standard Vencord bundles omit user plugins. Keep this custom bridge intact.
+        Settings.autoUpdate = false;
         cache = new SnapshotCache();
         moduleCache = undefined;
         lastFallback = 0;
         catalogQuery = null;
         catalogAccount = undefined;
         streamControls = new StreamControls();
+        spotifyControls = new SpotifyControls();
+        broadcastControls.clear();
+        chatControls.clear();
         transportGeneration = -1;
         SettingsStore.addChangeListener("autoUpdate", invalidateSettings);
         SettingsStore.addPrefixChangeListener("plugins.GameLibraryBridge", invalidateSettings);
@@ -229,7 +254,16 @@ export default definePlugin({
             try {
                 const pending = await Native.poll();
                 if (pending.connected) {
-                    if (transportGeneration !== pending.generation) { transportGeneration = pending.generation; catalogQuery = null; streamControls.catalog.clear(); }
+                    if (transportGeneration !== pending.generation) {
+                        transportGeneration = pending.generation;
+                        catalogQuery = null;
+                        streamControls = new StreamControls();
+                        spotifyControls.clear();
+                        broadcastControls.clear();
+                        chatControls.clear();
+                        result = "";
+                        cache.invalidate();
+                    }
                     const complete = bindStores();
                     if (!complete && Date.now() - lastFallback >= 4000) { cache.invalidate(); lastFallback = Date.now(); }
                     for (const message of pending.commands) {
@@ -240,9 +274,12 @@ export default definePlugin({
                         cache.invalidate("controls");
                     }
                     if (streamControls.waiting && streamControls.observe(streamProvider())) cache.invalidate("controls");
+                    if (spotifyControls.observe(spotifyProvider())) cache.invalidate("controls");
+                    if (broadcastControls.waiting && broadcastControls.observe(broadcastProvider())) cache.invalidate("controls");
+                    if (chatControls.observe(chatProvider())) cache.invalidate("controls");
                     const packet = cache.packet(pending.generation, section => section === "friends" ? friendSnapshot() : section === "rooms" ? roomSnapshot() : controlSnapshot());
                     if (!await Native.snapshot(packet)) cache.invalidate();
-                } else streamControls.catalog.clear();
+                } else {streamControls.catalog.clear();spotifyControls.clear();broadcastControls.clear();chatControls.clear();}
             } catch { result = "Discord sürümündeki bir yetenek kullanılamıyor"; cache.invalidate(); }
             finally { busy = false; }
         }, 1000);
@@ -258,6 +295,9 @@ export default definePlugin({
         catalogQuery = null;
         catalogAccount = undefined;
         streamControls = new StreamControls();
+        spotifyControls.clear();
+        broadcastControls.clear();
+        chatControls.clear();
         Native.stop();
     }
 });

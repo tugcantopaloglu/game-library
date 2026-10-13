@@ -2,10 +2,16 @@
 
 mod accounts;
 mod bridge;
+mod broadcast;
+mod chat;
 mod completion;
 mod measurement;
 mod media;
+mod network_tools;
+mod obs;
 mod social;
+mod spotify;
+mod steam_web;
 mod stream;
 mod updates;
 mod validation;
@@ -112,6 +118,34 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         accounts::prepare_epic(&data_dir)?;
         return Ok(());
     }
+    if let Some(output) = argument_value(&args, "--steam-browser-probe") {
+        std::fs::write(
+            output,
+            serde_json::to_vec_pretty(&steam_web::probe(&data_dir)?)?,
+        )?;
+        return Ok(());
+    }
+    if args.iter().any(|argument| argument == "--open-steam-login") {
+        let mut games = steam_web::library(&data_dir, true)?;
+        let mut store = Store::open(&data_dir.join("library.db"))?;
+        let roots = library_core::steam::discover_roots(&store.roots()?);
+        for game in &mut games {
+            game.artwork_path = library_core::steam::local_artwork(&roots, game.app_id);
+        }
+        store.apply_owned_games(Source::Steam, &games)?;
+        if let Some(id) = steam_web::account_id(&data_dir) {
+            store.set_setting("steam_account_id", &id)?;
+        }
+        if let Some(output) = argument_value(&args, "--output") {
+            std::fs::write(
+                output,
+                serde_json::to_vec_pretty(
+                    &serde_json::json!({"source":"steam","ownedGames":games.len(),"saved":true}),
+                )?,
+            )?;
+        }
+        return Ok(());
+    }
     if args.iter().any(|argument| argument == "--open-epic-login") {
         accounts::login_epic(&data_dir)?;
         return Ok(());
@@ -139,7 +173,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         loop {
             let snapshot = bridge.snapshot();
             if snapshot["connected"] == true || start.elapsed().as_secs() >= 90 {
-                let report = serde_json::json!({"connected":snapshot["connected"],"status":snapshot["status"],"friendCount":snapshot["friends"].as_array().map(Vec::len),"roomCount":snapshot["rooms"].as_array().map(Vec::len),"capabilities":snapshot["capabilities"],"muted":snapshot["muted"],"deafened":snapshot["deafened"],"autoUpdate":snapshot["autoUpdate"]});
+                let report = serde_json::json!({"connected":snapshot["connected"],"status":snapshot["status"],"friendCount":snapshot["friends"].as_array().map(Vec::len),"roomCount":snapshot["rooms"].as_array().map(Vec::len),"voiceConnected":snapshot["voiceChannel"].as_str().is_some_and(|id|!id.is_empty()),"capabilities":snapshot["capabilities"],"muted":snapshot["muted"],"deafened":snapshot["deafened"],"autoUpdate":snapshot["autoUpdate"]});
                 std::fs::write(output, serde_json::to_vec_pretty(&report)?)?;
                 break;
             }
@@ -172,7 +206,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                     .or(store.setting("steam_account_id")?)
                     .or_else(library_core::steam::active_user_id)
                     .ok_or("SteamID64 bulunamadı")?;
-                (accounts::steam(&id)?, vec![])
+                (accounts::steam(&data_dir, &id)?, vec![])
             }
             Source::Epic => accounts::epic(&data_dir)?,
             _ => return Err("Bu kaynak hesap eşitlemesini desteklemiyor".into()),
@@ -281,7 +315,6 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
     let bridge_enabled = store.setting("bridge_enabled")?.as_deref() == Some("true");
     let auto_update_app = store.setting("auto_update_app")?.as_deref() == Some("true");
-    let auto_update_vencord = store.setting("auto_update_vencord")?.as_deref() != Some("false");
     let ui = LibraryWindow::new()?;
     ui.window().set_size(slint::LogicalSize::new(1280.0, 720.0));
     ui.set_steam_account_id(
@@ -300,7 +333,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                     value.split(" · ").next().unwrap_or("")
                 )
             })
-            .unwrap_or_else(|| "Hesap kütüphanesi henüz eşitlenmedi.".into());
+            .unwrap_or_else(|| if source==Source::Steam {"Steam'in açık olması kurulu oyunları bulur. Kurulu olmayan oyunlar için Steam'e bağlan ile bir kez hesabına giriş yap.".into()}else{"Hesap kütüphanesi henüz eşitlenmedi. Hesabı bağla ile giriş yap.".into()});
         if source == Source::Steam {
             ui.set_steam_account_status(status.into());
         } else {
@@ -309,7 +342,13 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
     ui.set_bridge_enabled(bridge_enabled);
     ui.set_auto_update_app(auto_update_app);
-    ui.set_auto_update_vencord(auto_update_vencord);
+    ui.set_broadcast_requirements(broadcast::REQUIREMENTS.into());
+    ui.set_obs_port(
+        store
+            .setting("obs_port")?
+            .unwrap_or_else(|| obs::DEFAULT_PORT.to_string())
+            .into(),
+    );
     let tray = LibraryTray::new()?;
     let about = AboutWindow::new()?;
     let state = Arc::new(worker::State {
@@ -511,6 +550,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     register_command!(on_delete_collection, (id) => Command::CollectionDelete(id as i64));
     register_command!(on_collection_member, (id,collection,member) => Command::CollectionMember(id.into(),collection as i64,member));
     register_command!(on_bridge_action, (action,id) => Command::BridgeAction(action.into(),serde_json::json!({"id":id.as_str()})));
+    register_command!(on_chat_action, (action,user,channel,content) => Command::Chat(action.into(),user.into(),channel.into(),content.into()));
     register_command!(on_social_filter, (text,favorites) => Command::SocialFilter(text.into(),favorites));
     register_command!(on_friend_favorite, (id,favorite) => Command::FriendFavorite(id.into(),favorite));
     register_command!(on_room_filter, (mode,text) => Command::RoomFilter(mode,text.into()));
@@ -527,14 +567,24 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     register_command!(on_artwork_key, (key) => Command::ArtworkKey(key.into()));
     register_command!(on_search_covers, (id) => Command::SearchCovers(id.into()));
     register_command!(on_steam_credentials, (id,key) => Command::SteamCredentials(id.into(),key.into()));
+    register_command!(on_steam_login, () => Command::SteamLogin);
     register_command!(on_steam_key_page, () => Command::SteamKeyPage);
-    register_command!(on_sync_account, (source) => Command::SyncAccount(if source==0 {Source::Steam} else {Source::Epic}));
+    register_command!(on_sync_account, (source,id,key) => Command::SyncAccount(if source==0 {Source::Steam} else {Source::Epic},id.into(),key.into()));
+    register_command!(on_obs_connect, (port,password) => Command::ObsConnect(port.into(),password.into()));
+    register_command!(on_obs_action, (action,scene) => Command::ObsAction(action,scene.into()));
+    register_command!(on_broadcast_inspect, () => Command::BroadcastInspect);
+    register_command!(on_broadcast_open, (action) => Command::BroadcastOpen(action));
+    register_command!(on_network_action, (action,index,encrypted) => Command::NetworkAction(action,index,encrypted));
+    register_command!(on_network_update_preference, (enabled) => Command::NetworkAutoUpdate(enabled));
+    register_command!(on_broadcast_select, () => Command::BridgeAction("broadcast_audio".into(),serde_json::json!({})));
+    register_command!(on_spotify_open, () => Command::SpotifyOpen);
+    register_command!(on_spotify_action, (action,user,track) => if action=="spotify_track" {Command::SpotifyTrack(user.into(),track.into())}else{Command::BridgeAction(action.into(),serde_json::json!({"userId":user.as_str()}))});
     register_command!(on_epic_login, () => Command::EpicLogin);
     register_command!(on_completion_lookup, (id,url) => Command::Completion(id.into(),url.into()));
     register_command!(on_completion_open, (id,search) => Command::CompletionOpen(id.into(),search));
     register_command!(on_update_stage, () => Command::UpdateStage);
     register_command!(on_update_apply, () => Command::UpdateApply);
-    register_command!(on_update_preferences, (app,vencord) => Command::UpdatePreferences(app,vencord));
+    register_command!(on_update_preferences, (app) => Command::UpdatePreferences(app));
     let installer_sender = sender.clone();
     let weak = ui.as_weak();
     ui.on_installer(move |action,branch| {
@@ -606,6 +656,41 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(section) = argument_value(&args, "--section") {
         ui.set_section(section.parse()?);
     }
+    if args.iter().any(|argument| argument == "--chat-fixture") {
+        ui.set_section(7);
+        ui.set_chat_active(true);
+        ui.set_chat_user_id("223456789012345678".into());
+        ui.set_chat_name("Örnek sohbet".into());
+        ui.set_chat_status("Görsel doğrulama · Örnek metinler; mesaj gönderimi kapalı.".into());
+        ui.set_chat_messages(
+            std::rc::Rc::new(slint::VecModel::from(vec![
+                ChatMessageTile {
+                    id: "1".into(),
+                    author: "Arkadaş".into(),
+                    content: "Merhaba! Bu akşam birlikte oynayalım mı?".into(),
+                    time: "21:10".into(),
+                    own: false,
+                },
+                ChatMessageTile {
+                    id: "2".into(),
+                    author: "Sen".into(),
+                    content:
+                        "Olur. Oyunu kütüphaneden seçip açıyorum.\nSohbet artık burada görünür."
+                            .into(),
+                    time: "21:11".into(),
+                    own: true,
+                },
+                ChatMessageTile {
+                    id: "3".into(),
+                    author: "Arkadaş".into(),
+                    content: "Güzel, ses odasında görüşürüz.".into(),
+                    time: "21:12".into(),
+                    own: false,
+                },
+            ]))
+            .into(),
+        );
+    }
     if let Some(tab) = argument_value(&args, "--detail-tab") {
         ui.set_detail_tab(tab.parse()?);
     }
@@ -652,7 +737,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         let capture_timer = screenshot_timer.clone();
         screenshot_timer.start(TimerMode::Repeated, Duration::from_millis(500), move || {
             if let Some(ui) = weak.upgrade() {
-                let ready = !ui.get_loading() && detail_target.as_ref().is_none_or(|id| ui.get_detail_id() == id);
+                let ready = !ui.get_loading() && (!(ui.get_section()==11 || ui.get_section()==12) || !ui.get_integration_busy()) && detail_target.as_ref().is_none_or(|id| ui.get_detail_id() == id);
                 if capture_started.elapsed() < Duration::from_secs(3) || (!ready && capture_started.elapsed() < Duration::from_secs(30)) { return; }
                 capture_timer.stop();
                 if let Err(error) = validation::screenshot(&ui, Path::new(&output)) {
@@ -745,6 +830,8 @@ fn main() {
                 || argument == "--open-epic-login"
                 || argument == "--sync-account"
                 || argument == "--completion-for"
+                || argument == "--steam-browser-probe"
+                || argument == "--open-steam-login"
         }) {
             rfd::MessageDialog::new()
                 .set_title("Game Library")

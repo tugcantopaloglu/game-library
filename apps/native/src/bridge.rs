@@ -174,10 +174,12 @@ impl Bridge {
                     }
                     Ok(())
                 })();
-                let _ = result;
+                let status = result.err().unwrap_or_else(|| {
+                    "Discord bağlantısı kapandı. Güncel köprü ve açık Discord bekleniyor.".into()
+                });
                 if let Ok(mut state) = state_copy.lock() {
                     let change = state.change.wrapping_add(1);
-                    *state = LiveState::disconnected("Vencord bağlantısı kapalı veya uyumsuz");
+                    *state = LiveState::disconnected(&status);
                     state.change = change;
                 }
             }

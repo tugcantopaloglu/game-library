@@ -12,12 +12,18 @@ export global Theme {
     out property <color> positive: #8ec6a8;
 }
 
+export component Brand inherits Rectangle {
+    in property <int> kind;
+    width: 28px; height: 28px; horizontal-stretch: 0; vertical-stretch: 0; background: transparent;
+    Image { width: parent.width; height: parent.height; image-fit: ImageFit.contain; source: kind == 1 ? @image-url("logos/steam.png") : kind == 2 ? @image-url("logos/epic.png") : kind == 3 ? @image-url("logos/riot.png") : kind == 4 ? @image-url("logos/discord.png") : kind == 5 ? @image-url("logos/spotify.png") : kind == 6 ? @image-url("logos/nvidia.png") : kind == 7 ? @image-url("logos/obs.png") : kind == 8 ? @image-url("logos/cloudflare.png") : kind == 9 ? @image-url("logos/goodbyedpi.png") : @image-url("logos/game-library.png"); }
+}
 export component Glyph inherits Rectangle {
     in property <int> kind;
     in property <bool> filled;
     in property <color> ink: Theme.muted;
     width: 18px; preferred-height: 18px; background: transparent;
-    Image {
+    if root.kind == 3: Brand { kind: 4; width: parent.width; height: parent.width; y: (parent.height - self.height) / 2; }
+    if root.kind != 3: Image {
         x: 0px; y: (parent.height - self.height) / 2; width: parent.width; height: parent.width;
         colorize: root.ink;
         source: root.kind == 1 ? (root.filled ? @image-url("icons/star-filled.svg") : @image-url("icons/star.svg")) : root.kind == 2 ? @image-url("icons/folder.svg") : root.kind == 3 ? @image-url("icons/chat.svg") : root.kind == 4 ? @image-url("icons/settings.svg") : root.kind == 5 ? @image-url("icons/activity.svg") : root.kind == 6 ? @image-url("icons/search.svg") : root.kind == 7 ? @image-url("icons/plus.svg") : root.kind == 8 ? @image-url("icons/refresh.svg") : root.kind == 9 ? @image-url("icons/play.svg") : root.kind == 10 ? @image-url("icons/arrow.svg") : root.kind == 11 ? @image-url("icons/clock.svg") : root.kind == 12 ? @image-url("icons/tray.svg") : root.kind == 14 ? @image-url("icons/microphone.svg") : root.kind == 15 ? @image-url("icons/speaker.svg") : @image-url("icons/grid.svg");

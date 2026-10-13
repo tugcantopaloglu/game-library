@@ -1,4 +1,7 @@
-use crate::{CollectionTile, CoverTile, GameTile, LibraryWindow, RoomTile, SocialTile};
+use crate::{
+    ChatMessageTile, CollectionTile, CoverTile, GameTile, LibraryWindow, MusicTile, RoomTile,
+    SocialTile,
+};
 use library_core::models::{Game, LibraryStatus, Source};
 use library_core::{launcher, sources, storage::Store};
 use platform_windows::shell::open_target;
@@ -53,6 +56,7 @@ pub enum Command {
     BridgeEnable(bool),
     BridgeRefresh,
     BridgeAction(String, serde_json::Value),
+    Chat(String, String, String, String),
     SocialFilter(String, bool),
     FriendFavorite(String, bool),
     RoomFilter(i32, String),
@@ -65,14 +69,23 @@ pub enum Command {
     UpdateCheck,
     UpdateStage,
     UpdateApply,
-    UpdatePreferences(bool, bool),
+    UpdatePreferences(bool),
     Session(i64, String, Option<u32>, bool),
     ArtworkKey(String),
     SearchCovers(String),
     SteamCredentials(String, String),
+    SteamLogin,
     SteamKeyPage,
-    SyncAccount(Source),
+    SyncAccount(Source, String, String),
     EpicLogin,
+    ObsConnect(String, String),
+    ObsAction(i32, String),
+    BroadcastInspect,
+    BroadcastOpen(i32),
+    NetworkAction(i32, i32, bool),
+    NetworkAutoUpdate(bool),
+    SpotifyOpen,
+    SpotifyTrack(String, String),
     Completion(String, String),
     CompletionOpen(String, bool),
     AutoCover(
@@ -84,6 +97,12 @@ pub enum Command {
 }
 
 enum NetworkTask {
+    SteamApi(String),
+    SteamLogin,
+    Libraries(String),
+    Obs(u16, Option<crate::obs::Action>),
+    Broadcast,
+    NetworkTools(NetworkToolTask),
     Cover(String, String),
     Search(String, String, Option<u32>),
     Installer(crate::updates::InstallerAction, String),
@@ -94,13 +113,31 @@ enum NetworkTask {
     EpicLogin,
     Completion(String, Game, String),
 }
+enum NetworkToolTask {
+    Inspect,
+    Prepare,
+    Start,
+    Stop,
+    Dns(String, bool),
+    Restore,
+    AutoUpdate(bool),
+    BackgroundUpdate,
+}
 pub enum NetworkResult {
+    Libraries(Vec<(Source, Result<crate::accounts::EpicLibrary, String>)>),
+    Obs(Result<crate::obs::ActionResult, String>),
+    Broadcast(crate::broadcast::Report),
+    NetworkTools(crate::network_tools::Report, Result<String, String>),
     Cover(String, Result<PathBuf, String>),
     Search(String, Result<Vec<crate::media::CoverCandidate>, String>),
     Notice(Result<String, String>),
     Check(Result<crate::updates::UpdateManifest, String>),
     Stage(Result<PathBuf, String>),
-    Owned(Source, Result<crate::accounts::EpicLibrary, String>),
+    Owned(
+        Source,
+        Result<crate::accounts::EpicLibrary, String>,
+        Option<String>,
+    ),
     Completion(String, Result<crate::completion::FetchedCompletion, String>),
 }
 
@@ -533,6 +570,134 @@ fn bridge_status(
     }
     ui.upgrade_in_event_loop(move |ui| {
         ui.set_bridge_connected(connected);
+        let chat = crate::chat::view(&snapshot);
+        let selected = ui.get_chat_user_id().as_str() == chat.user_id;
+        let status = if !connected {
+            "Discord bağlantısı kapalı. Yeniden bağlandığında arkadaşını seç.".into()
+        } else if snapshot["capabilities"]["chat_open"] != true {
+            "Yeni sohbet köprüsü için görüşmen bitince Discord'u tamamen kapatıp yeniden aç.".into()
+        } else if chat.status.is_empty() {
+            snapshot["chat"]["status"]
+                .as_str()
+                .unwrap_or("Sohbet için bir arkadaş seç.")
+                .chars()
+                .take(256)
+                .collect::<String>()
+        } else {
+            chat.status
+        };
+        ui.set_chat_status(status.into());
+        if selected && !chat.name.is_empty() {
+            ui.set_chat_name(chat.name.into());
+        }
+        ui.set_chat_loading(selected && chat.loading);
+        ui.set_chat_pending(selected && chat.pending);
+        ui.set_chat_can_send(selected && chat.can_send);
+        ui.set_chat_can_open_discord(
+            connected
+                && snapshot["capabilities"]["open_dm"] == true
+                && snapshot["capabilities"]["chat_open"] == true,
+        );
+        ui.set_chat_channel_id(if selected {
+            chat.channel_id.into()
+        } else {
+            "".into()
+        });
+        if selected
+            && !chat.sent_nonce.is_empty()
+            && ui.get_chat_sent_nonce().as_str() != chat.sent_nonce
+        {
+            ui.set_chat_sent_nonce(chat.sent_nonce.into());
+            ui.set_chat_draft("".into());
+        }
+        let messages = if selected { chat.messages } else { Vec::new() };
+        ui.set_chat_messages(
+            Rc::new(VecModel::from(
+                messages
+                    .into_iter()
+                    .map(|message| ChatMessageTile {
+                        id: message.id.into(),
+                        author: message.author.into(),
+                        content: message.content.into(),
+                        time: message.time.into(),
+                        own: message.own,
+                    })
+                    .collect::<Vec<_>>(),
+            ))
+            .into(),
+        );
+        ui.set_can_broadcast_audio(connected && snapshot["broadcastAudio"]["canSelect"] == true);
+        ui.set_broadcast_discord_status(
+            format!(
+                "{} {}",
+                snapshot["broadcastAudio"]["status"]
+                    .as_str()
+                    .unwrap_or("Güncel Broadcast köprüsü bekleniyor."),
+                snapshot["broadcastAudio"]["result"].as_str().unwrap_or("")
+            )
+            .into(),
+        );
+        let music = &snapshot["spotify"];
+        ui.set_spotify_status(
+            if connected {
+                music["status"]
+                    .as_str()
+                    .unwrap_or("Güncel Spotify köprüsü bekleniyor")
+            } else {
+                "Spotify etkinliği için Discord bağlantısını aç."
+            }
+            .into(),
+        );
+        if connected
+            && music["current"]["id"]
+                .as_str()
+                .is_some_and(crate::spotify::valid_track_id)
+        {
+            ui.set_spotify_track(
+                format!(
+                    "{} · {}",
+                    music["current"]["title"].as_str().unwrap_or(""),
+                    music["current"]["artist"].as_str().unwrap_or("")
+                )
+                .into(),
+            );
+            ui.set_spotify_track_id(music["current"]["id"].as_str().unwrap_or("").into());
+        } else {
+            ui.set_spotify_track("".into());
+            ui.set_spotify_track_id("".into());
+        }
+        let music_friends = if connected {
+            music["friends"].as_array()
+        } else {
+            None
+        }
+        .into_iter()
+        .flatten()
+        .take(200)
+        .filter_map(|row| {
+            let id = row["userId"].as_str()?;
+            let track = row["track"]["id"]
+                .as_str()
+                .filter(|id| crate::spotify::valid_track_id(id))?;
+            let name = snapshot["friends"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .find(|friend| friend["id"] == id)
+                .and_then(|friend| friend["name"].as_str())
+                .unwrap_or("Spotify arkadaşı");
+            Some(MusicTile {
+                user_id: id.into(),
+                name: name.into(),
+                title: row["track"]["title"].as_str().unwrap_or("").into(),
+                artist: row["track"]["artist"].as_str().unwrap_or("").into(),
+                track_id: track.into(),
+                can_profile: row["canOpenProfile"] == true,
+                can_join: row["canListenAlong"] == true,
+            })
+        })
+        .collect::<Vec<_>>();
+        ui.set_music_friends(Rc::new(VecModel::from(music_friends)).into());
         ui.set_social_fixture(snapshot["fixture"] == true);
         ui.set_bridge_status(lines.join("\n").into());
         ui.set_can_favorite_friends(can_favorite);
@@ -872,9 +1037,124 @@ pub fn start(
     std::thread::spawn(move || {
         while let Ok(task) = network_receiver.recv() {
             let result = match task {
-                NetworkTask::Cover(id, url) => {
-                    NetworkResult::Cover(id, crate::media::remote_cover(&network_data, &url, crate::media::CoverUse::Selected))
+                NetworkTask::SteamApi(id) => NetworkResult::Owned(
+                    Source::Steam,
+                    crate::accounts::steam_api(&id).map(|games| (games, vec![])),
+                    None,
+                ),
+                NetworkTask::SteamLogin => {
+                    let result =
+                        crate::steam_web::library(&network_data, true).map(|games| (games, vec![]));
+                    let account = if result.is_ok() {
+                        crate::steam_web::account_id(&network_data)
+                    } else {
+                        None
+                    };
+                    NetworkResult::Owned(Source::Steam, result, account)
                 }
+                NetworkTask::Libraries(id) => NetworkResult::Libraries(vec![
+                    (
+                        Source::Steam,
+                        crate::accounts::steam(&network_data, &id).map(|games| (games, vec![])),
+                    ),
+                    (Source::Epic, crate::accounts::epic(&network_data)),
+                ]),
+                NetworkTask::Obs(port, action) => NetworkResult::Obs((|| {
+                    let mut password = platform_windows::credentials::obs_password(port)?;
+                    let result = match action {
+                        Some(action) => crate::obs::perform(port, password.as_deref(), action),
+                        None => crate::obs::snapshot(port, password.as_deref()).map(|snapshot| {
+                            crate::obs::ActionResult {
+                                snapshot,
+                                verified: true,
+                                message: "OBS bağlantısı doğrulandı.".into(),
+                            }
+                        }),
+                    };
+                    if let Some(secret) = &mut password {
+                        unsafe {
+                            secret.as_bytes_mut().fill(0);
+                        }
+                    }
+                    result
+                })()),
+                NetworkTask::Broadcast => NetworkResult::Broadcast(crate::broadcast::inspect()),
+                NetworkTask::NetworkTools(task) => {
+                    let message = (|| match task {
+                        NetworkToolTask::Inspect => Ok(String::new()),
+                        NetworkToolTask::Prepare => {
+                            crate::network_tools::prepare_latest(&network_data).map(|package| {
+                                format!("GoodbyeDPI {} hazırlandı.", package.release.version)
+                            })
+                        }
+                        NetworkToolTask::Start => {
+                            if !network_data.join("network-tools/prepared.json").is_file() {
+                                crate::network_tools::prepare_latest(&network_data)?;
+                            }
+                            crate::network_tools::start(&network_data).map(|value| {
+                                value["message"]
+                                    .as_str()
+                                    .unwrap_or("GoodbyeDPI başlatıldı.")
+                                    .to_owned()
+                            })
+                        }
+                        NetworkToolTask::Stop => {
+                            crate::network_tools::stop(&network_data).map(|value| {
+                                value["message"]
+                                    .as_str()
+                                    .unwrap_or("GoodbyeDPI durduruldu.")
+                                    .to_owned()
+                            })
+                        }
+                        NetworkToolTask::Dns(guid, encrypted) => {
+                            crate::network_tools::enable_dns(&network_data, &guid, encrypted).map(
+                                |value| {
+                                    value["message"]
+                                        .as_str()
+                                        .unwrap_or("Cloudflare DNS uygulandı.")
+                                        .to_owned()
+                                },
+                            )
+                        }
+                        NetworkToolTask::Restore => {
+                            crate::network_tools::restore_dns(&network_data).map(|value| {
+                                value["message"]
+                                    .as_str()
+                                    .unwrap_or("Önceki DNS ayarları geri yüklendi.")
+                                    .to_owned()
+                            })
+                        }
+                        NetworkToolTask::AutoUpdate(enabled) => {
+                            crate::network_tools::set_auto_update(&network_data, enabled)?;
+                            if enabled {
+                                crate::network_tools::auto_update_if_due(&network_data)?;
+                            }
+                            Ok(String::new())
+                        }
+                        NetworkToolTask::BackgroundUpdate => {
+                            crate::network_tools::auto_update_if_due(&network_data).map(|updated| {
+                                if updated {
+                                    "Yeni GoodbyeDPI paketi hazır. Sonraki başlatmada kullanılacak."
+                                        .into()
+                                } else {
+                                    String::new()
+                                }
+                            })
+                        }
+                    })();
+                    NetworkResult::NetworkTools(
+                        crate::network_tools::inspect(&network_data),
+                        message,
+                    )
+                }
+                NetworkTask::Cover(id, url) => NetworkResult::Cover(
+                    id,
+                    crate::media::remote_cover(
+                        &network_data,
+                        &url,
+                        crate::media::CoverUse::Selected,
+                    ),
+                ),
                 NetworkTask::Search(id, title, steam_id) => {
                     NetworkResult::Search(id, crate::media::search_covers(&title, steam_id))
                 }
@@ -888,9 +1168,25 @@ pub fn start(
                 NetworkTask::Stage(manifest) => {
                     NetworkResult::Stage(crate::updates::stage(&network_data, &manifest))
                 }
-                NetworkTask::Owned(source,id) => NetworkResult::Owned(source,match source {Source::Steam=>crate::accounts::steam(&id).map(|games|(games,vec![])),Source::Epic=>crate::accounts::epic(&network_data),_=>Err("Hesap kaynağı desteklenmiyor".into())}),
-                NetworkTask::EpicLogin => NetworkResult::Notice(crate::accounts::login_epic(&network_data).map(|_|"Epic giriş penceresi açıldı. Bağlantıyı tamamladıktan sonra hesap oyunlarını eşitle.".into())),
-                NetworkTask::Completion(id,game,url) => NetworkResult::Completion(id,crate::completion::lookup(&game,&url)),
+                NetworkTask::Owned(source, id) => NetworkResult::Owned(
+                    source,
+                    match source {
+                        Source::Steam => {
+                            crate::accounts::steam(&network_data, &id).map(|games| (games, vec![]))
+                        }
+                        Source::Epic => crate::accounts::epic(&network_data),
+                        _ => Err("Hesap kaynağı desteklenmiyor".into()),
+                    },
+                    None,
+                ),
+                NetworkTask::EpicLogin => NetworkResult::Owned(
+                    Source::Epic,
+                    crate::accounts::login_epic(&network_data),
+                    None,
+                ),
+                NetworkTask::Completion(id, game, url) => {
+                    NetworkResult::Completion(id, crate::completion::lookup(&game, &url))
+                }
             };
             busy.store(false, Ordering::SeqCst);
             if network_sender.send(Command::NetworkDone(result)).is_err() {
@@ -901,12 +1197,14 @@ pub fn start(
     std::thread::spawn(move || {
         let mut store = store;
         let _ = store.recover_sessions();
-        let mut bridge = None;
+        let mut bridge: Option<crate::bridge::Bridge> = None;
         let mut available_update = None;
         let mut staged_update = None;
         let mut auto_update_app =
             store.setting("auto_update_app").ok().flatten().as_deref() == Some("true");
         let mut next_update = std::time::Instant::now();
+        let mut next_network_check = std::time::Instant::now() + std::time::Duration::from_secs(15);
+        let mut network_interfaces: Vec<String> = Vec::new();
         let mut query = Query {
             filter: "all".into(),
             ..Query::default()
@@ -915,24 +1213,126 @@ pub fn start(
         let mut social_query = crate::social::Query::default();
         let mut social_view = None;
         loop {
+            if std::time::Instant::now() >= next_network_check
+                && !network.busy.load(Ordering::SeqCst)
+            {
+                next_network_check =
+                    std::time::Instant::now() + std::time::Duration::from_secs(3600);
+                let _ = submit(
+                    &network,
+                    &ui,
+                    NetworkTask::NetworkTools(NetworkToolTask::BackgroundUpdate),
+                );
+            }
             let command = if auto_update_app && std::time::Instant::now() >= next_update {
                 next_update =
                     std::time::Instant::now() + std::time::Duration::from_secs(24 * 60 * 60);
                 Command::UpdateCheck
             } else {
-                match if auto_update_app {
-                    receiver.recv_timeout(std::time::Duration::from_secs(3600))
-                } else {
-                    receiver
-                        .recv()
-                        .map_err(|_| mpsc::RecvTimeoutError::Disconnected)
-                } {
+                match receiver.recv_timeout(std::time::Duration::from_secs(30)) {
                     Ok(command) => command,
                     Err(mpsc::RecvTimeoutError::Timeout) => continue,
                     Err(_) => break,
                 }
             };
             let result = match command {
+                Command::ObsConnect(port, password) => (|| {
+                    let port = port
+                        .trim()
+                        .parse::<u16>()
+                        .ok()
+                        .filter(|port| *port > 0)
+                        .ok_or("OBS portu 1–65535 arasında olmalı")?;
+                    if !password.is_empty() {
+                        platform_windows::credentials::save_obs_password(port, &password)?;
+                    }
+                    store
+                        .set_setting("obs_port", &port.to_string())
+                        .map_err(|error| error.to_string())?;
+                    submit(&network, &ui, NetworkTask::Obs(port, None))
+                })(),
+                Command::ObsAction(action, scene) => (|| {
+                    let port = store
+                        .setting("obs_port")
+                        .map_err(|error| error.to_string())?
+                        .and_then(|port| port.parse().ok())
+                        .unwrap_or(crate::obs::DEFAULT_PORT);
+                    let action = match action {
+                        0 => crate::obs::Action::SetScene(scene),
+                        1 => crate::obs::Action::StartStream,
+                        2 => crate::obs::Action::StopStream,
+                        3 => crate::obs::Action::StartRecording,
+                        4 => crate::obs::Action::StopRecording,
+                        _ => return Err("OBS işlemi geçersiz".into()),
+                    };
+                    submit(&network, &ui, NetworkTask::Obs(port, Some(action)))
+                })(),
+                Command::BroadcastInspect => submit(&network, &ui, NetworkTask::Broadcast),
+                Command::NetworkAutoUpdate(enabled) => submit(
+                    &network,
+                    &ui,
+                    NetworkTask::NetworkTools(NetworkToolTask::AutoUpdate(enabled)),
+                ),
+                Command::NetworkAction(action, index, encrypted) => (|| {
+                    let task = match action {
+                        0 => NetworkToolTask::Inspect,
+                        1 => NetworkToolTask::Prepare,
+                        2 => NetworkToolTask::Start,
+                        3 => NetworkToolTask::Stop,
+                        4 => NetworkToolTask::Dns(
+                            network_interfaces
+                                .get(
+                                    usize::try_from(index)
+                                        .map_err(|_| "Bir ağ bağdaştırıcısı seç")?,
+                                )
+                                .cloned()
+                                .ok_or("Bir ağ bağdaştırıcısı seç")?,
+                            encrypted,
+                        ),
+                        5 => NetworkToolTask::Restore,
+                        6 => {
+                            return open_target(crate::network_tools::CLOUDFLARE_DOCS)
+                                .map_err(|error| error.to_string())
+                        }
+                        7 => {
+                            return open_target(crate::network_tools::RELEASES_URL)
+                                .map_err(|error| error.to_string())
+                        }
+                        _ => return Err("Ağ aracı işlemi geçersiz".into()),
+                    };
+                    submit(&network, &ui, NetworkTask::NetworkTools(task))
+                })(),
+                Command::BroadcastOpen(action) => match action {
+                    0 => crate::broadcast::open(),
+                    1 => crate::broadcast::open_download(),
+                    2 => crate::broadcast::open_setup(),
+                    _ => Err("Broadcast işlemi geçersiz".into()),
+                }
+                .map(|message| set_notice(&ui, message)),
+                Command::SpotifyOpen => crate::spotify::open_app(),
+                Command::SpotifyTrack(user, track) => (|| {
+                    let snapshot = bridge
+                        .as_ref()
+                        .ok_or("Discord bağlantısını aç.")?
+                        .snapshot();
+                    if snapshot["connected"] != true {
+                        return Err("Discord bağlantısı güncel değil".into());
+                    }
+                    let selected = if user.is_empty() {
+                        snapshot["spotify"]["current"]["id"].as_str()
+                    } else {
+                        snapshot["spotify"]["friends"]
+                            .as_array()
+                            .into_iter()
+                            .flatten()
+                            .find(|row| row["userId"] == user)
+                            .and_then(|row| row["track"]["id"].as_str())
+                    };
+                    if selected != Some(track.as_str()) {
+                        return Err("Spotify parçası değişti; güncel parçayı seç".into());
+                    }
+                    crate::spotify::open_track(&track)
+                })(),
                 Command::AutoCover(id, result, completion) => (|| {
                     if let Some(completion) = completion {
                         store
@@ -975,6 +1375,10 @@ pub fn start(
                     })
                     .map_err(|error| error.to_string())
                 })(),
+                Command::SteamLogin => {
+                    let _=ui.upgrade_in_event_loop(|ui|ui.set_steam_account_status("Steam giriş penceresinde hesabını doğrula; oyunların ardından otomatik alınacak.".into()));
+                    submit(&network, &ui, NetworkTask::SteamLogin)
+                }
                 Command::SteamKeyPage => open_target("https://steamcommunity.com/dev/apikey")
                     .map_err(|error| error.to_string()),
                 Command::SteamCredentials(id, key) => (|| {
@@ -994,20 +1398,42 @@ pub fn start(
                     });
                     Ok(())
                 })(),
-                Command::SyncAccount(source) => submit(
-                    &network,
-                    &ui,
-                    NetworkTask::Owned(
-                        source,
+                Command::SyncAccount(source, id, key) => (|| {
+                    let api = source == Source::Steam && !id.trim().is_empty();
+                    let id = if source == Source::Steam && !id.trim().is_empty() {
+                        let id = id.trim();
+                        if id.len() != 17 || !id.bytes().all(|byte| byte.is_ascii_digit()) {
+                            return Err("SteamID64 17 rakam olmalı".into());
+                        }
+                        if !key.trim().is_empty() {
+                            platform_windows::credentials::save_steam_key(key.trim())?;
+                        }
+                        store
+                            .set_setting("steam_account_id", id)
+                            .map_err(|error| error.to_string())?;
+                        id.to_owned()
+                    } else {
                         store
                             .setting("steam_account_id")
                             .ok()
                             .flatten()
                             .or_else(library_core::steam::active_user_id)
-                            .unwrap_or_default(),
-                    ),
-                ),
-                Command::EpicLogin => submit(&network, &ui, NetworkTask::EpicLogin),
+                            .unwrap_or_default()
+                    };
+                    submit(
+                        &network,
+                        &ui,
+                        if api {
+                            NetworkTask::SteamApi(id)
+                        } else {
+                            NetworkTask::Owned(source, id)
+                        },
+                    )
+                })(),
+                Command::EpicLogin => {
+                    let _=ui.upgrade_in_event_loop(|ui|ui.set_epic_account_status("Epic giriş penceresinde hesabını doğrula; oyunların ardından otomatik alınacak.".into()));
+                    submit(&network, &ui, NetworkTask::EpicLogin)
+                }
                 Command::Completion(id, url) => store
                     .game(&id)
                     .map_err(|error| error.to_string())
@@ -1051,8 +1477,60 @@ pub fn start(
                 Command::NetworkDone(result) => {
                     let _ = ui.upgrade_in_event_loop(|ui| ui.set_integration_busy(false));
                     match result {
-                        NetworkResult::Owned(source,result) => result.and_then(|(mut games,covers)| {
-                            if source==Source::Steam { let roots=library_core::steam::discover_roots(&store.roots().map_err(|error|error.to_string())?);for game in &mut games {game.artwork_path=library_core::steam::local_artwork(&roots,game.app_id);} }
+                        NetworkResult::Libraries(results) => {
+                            let mut errors = Vec::new();
+                            for (source,result) in results {
+                                match result {
+                                    Ok((mut games,covers)) => {
+                                        if source==Source::Steam {let roots=library_core::steam::discover_roots(&store.roots().unwrap_or_default());for game in &mut games {game.artwork_path=library_core::steam::local_artwork(&roots,game.app_id);}}
+                                        let apply=(|| {store.apply_owned_games(source,&games).map_err(|error|error.to_string())?;for (id,url) in covers {store.set_artwork_url(source,&id,&url).map_err(|error|error.to_string())?;}Ok::<_,String>(())})();
+                                        let message=match apply {Ok(())=>format!("{} hesabından {} oyun eşitlendi.",source.label(),games.len()),Err(error)=>{errors.push(source.label());error}};
+                                        let _=ui.upgrade_in_event_loop(move |ui|if source==Source::Steam {ui.set_steam_account_status(message.into());}else{ui.set_epic_account_status(message.into());});
+                                    },
+                                    Err(error) => {errors.push(source.label());let _=ui.upgrade_in_event_loop(move |ui|if source==Source::Steam {ui.set_steam_account_status(error.into());}else{ui.set_epic_account_status(error.into());});}
+                                }
+                            }
+                            if !errors.is_empty() {set_notice(&ui,format!("{} hesapları eşitlenemedi. Ayarlar → Kaynaklar bölümünde bağlantıyı tamamla; önceki oyunlar korundu.",errors.join(" / ")));}
+                            publish(&store,&query,&state,&ui)
+                        },
+                        NetworkResult::Obs(result) => {
+                            ui.upgrade_in_event_loop(move |ui| match result {
+                                Ok(result) => {
+                                    let snapshot = result.snapshot;
+                                    let index = snapshot.scenes.iter().position(|scene|scene==&snapshot.current_scene).unwrap_or(0) as i32;
+                                    ui.set_obs_scenes(Rc::new(VecModel::from(snapshot.scenes.into_iter().map(slint::SharedString::from).collect::<Vec<_>>())).into());
+                                    ui.set_obs_scene_index(index);
+                                    ui.set_obs_connected(true);ui.set_obs_streaming(snapshot.streaming);ui.set_obs_recording(snapshot.recording);
+                                    ui.set_obs_status(format!("{} {}OBS {} · Sahne: {} · Yayın: {} · Kayıt: {}",result.message,if result.verified {""}else{"Sonuç henüz doğrulanmadı. "},snapshot.obs_version,snapshot.current_scene,if snapshot.streaming {"açık"}else{"kapalı"},if snapshot.recording {"açık"}else{"kapalı"}).into());
+                                },
+                                Err(error) => {ui.set_obs_connected(false);ui.set_obs_status(error.into());ui.set_obs_scenes(Rc::new(VecModel::from(Vec::<slint::SharedString>::new())).into());}
+                            }).map_err(|error|error.to_string())
+                        },
+                        NetworkResult::Broadcast(report) => {
+                            let summary=report.summary();
+                            let audio=report.device(crate::broadcast::DeviceKind::Microphone).is_some() && report.device(crate::broadcast::DeviceKind::Speaker).is_some();
+                            ui.upgrade_in_event_loop(move |ui| {ui.set_broadcast_status(summary.into());ui.set_broadcast_installed(report.installed);ui.set_broadcast_rtx(report.rtx_detected);ui.set_broadcast_audio_available(audio);}).map_err(|error|error.to_string())
+                        },
+                        NetworkResult::NetworkTools(report,result) => {
+                            let interfaces=report.runtime["interfaces"].as_array().cloned().unwrap_or_default();
+                            network_interfaces=interfaces.iter().filter_map(|interface|interface["guid"].as_str().map(str::to_owned)).collect();
+                            let preferred=report.runtime["preferredInterfaceGuid"].as_str().unwrap_or_default();
+                            let index=network_interfaces.iter().position(|guid|guid==preferred).unwrap_or(0) as i32;
+                            let names=interfaces.iter().filter(|interface|interface["guid"].is_string()).map(|interface|format!("{}{}",interface["name"].as_str().unwrap_or("Ağ"),if interface["up"]==true {" · Bağlı"}else{" · Kapalı"})).collect::<Vec<_>>();
+                            let message=match result {Ok(message)=>message,Err(error)=>format!("İşlem tamamlanamadı: {error}")};
+                            let status=format!("{}{}",if message.is_empty(){String::new()}else{format!("{message}\n\n")},report.summary());
+                            ui.upgrade_in_event_loop(move|ui|{
+                                ui.set_network_status(status.into());ui.set_network_interfaces(Rc::new(VecModel::from(names.into_iter().map(slint::SharedString::from).collect::<Vec<_>>())).into());ui.set_network_interface_index(index);
+                                ui.set_network_supported(report.windows);ui.set_network_dns_enabled(report.runtime["dnsEnabled"]==true);ui.set_network_rollback_available(report.runtime["rollbackAvailable"]==true);ui.set_network_running(report.runtime["running"]==true);ui.set_network_stop_available(report.runtime["stopAvailable"]==true);
+                                ui.set_network_doh_supported(report.runtime["dohSupported"]==true);ui.set_network_encrypted_dns(report.runtime["dohSupported"]==true);ui.set_network_auto_update(report.preferences.auto_update);ui.set_network_version(report.prepared_version.unwrap_or_default().into());ui.set_network_digest_verified(report.publisher_digest_verified);
+                                ui.set_network_dns_details(format!("IPv4: {} · IPv6: {}\nŞifreli DNS: {}",crate::network_tools::CLOUDFLARE_IPV4.join(" / "),crate::network_tools::CLOUDFLARE_IPV6.join(" / "),crate::network_tools::CLOUDFLARE_DOH).into());
+                            }).map_err(|error|error.to_string())
+                        },
+                        NetworkResult::Owned(source,result,account_id) => result.inspect_err(|error| {let message=error.clone();let _=ui.upgrade_in_event_loop(move |ui|if source==Source::Steam {ui.set_steam_account_status(message.into());}else{ui.set_epic_account_status(message.into());});}).and_then(|(mut games,covers)| {
+                            if source==Source::Steam {
+                                if let Some(id)=account_id {store.set_setting("steam_account_id",&id).map_err(|error|error.to_string())?;let _=ui.upgrade_in_event_loop(move|ui|ui.set_steam_account_id(id.into()));}
+                                let roots=library_core::steam::discover_roots(&store.roots().map_err(|error|error.to_string())?);for game in &mut games {game.artwork_path=library_core::steam::local_artwork(&roots,game.app_id);}
+                            }
                             store.apply_owned_games(source,&games).map_err(|error|error.to_string())?;
                             for (id,url) in covers { store.set_artwork_url(source,&id,&url).map_err(|error|error.to_string())?; }
                             let status=format!("{} hesabından {} oyun eşitlendi. Kurulum bilgileri korundu.",source.label(),games.len());
@@ -1218,18 +1696,6 @@ pub fn start(
                     }
                     if let Some(bridge) = &bridge {
                         let snapshot = bridge.snapshot();
-                        let desired = store
-                            .setting("auto_update_vencord")
-                            .map_err(|error| error.to_string())?
-                            .as_deref()
-                            != Some("false");
-                        if snapshot["connected"] == true
-                            && snapshot["capabilities"]["auto_update"] == true
-                            && snapshot["autoUpdate"] != desired
-                        {
-                            bridge
-                                .command("auto_update", serde_json::json!({"enabled":desired}))?;
-                        }
                         if snapshot["connected"] == true
                             && snapshot["capabilities"]["favorite_friends"] == true
                         {
@@ -1363,10 +1829,34 @@ pub fn start(
                     bridge.command(&action, data)
                 })(
                 ),
+                Command::Chat(action, user, channel, content) => (|| {
+                    let bridge = bridge.as_ref().ok_or("Discord bağlantısını aç.")?;
+                    let request = crate::chat::request(
+                        &bridge.snapshot(),
+                        &action,
+                        &user,
+                        &channel,
+                        &content,
+                    )?;
+                    bridge.command(&action, request)?;
+                    ui.upgrade_in_event_loop(move |ui| {
+                        if action == "chat_open" {
+                            ui.set_chat_loading(true);
+                            ui.set_chat_can_send(false);
+                            ui.set_chat_status("Birebir sohbet açılıyor…".into());
+                        } else if action == "chat_send" {
+                            ui.set_chat_pending(true);
+                            ui.set_chat_can_send(false);
+                            ui.set_chat_status("Mesajın Discord onayı bekleniyor.".into());
+                        }
+                    })
+                    .map_err(|error| error.to_string())
+                })(),
                 Command::BridgeAction(action, data) => bridge
                     .as_ref()
                     .ok_or("Discord bağlantısını aç.")
                     .and_then(|bridge| {
+                        if action=="open_dm" && bridge.snapshot()["capabilities"]["chat_open"]!=true {return Err("Yeni birebir sohbet köprüsü için Discord'u tamamen kapatıp yeniden aç.");}
                         bridge
                             .command(&action, data)
                             .map_err(|_| "Discord işlemi gönderilemedi")
@@ -1393,20 +1883,11 @@ pub fn start(
                         })
                         .map_err(|error| error.to_string())
                     }),
-                Command::UpdatePreferences(app, vencord) => (|| {
+                Command::UpdatePreferences(app) => (|| {
                     auto_update_app = app;
                     store
                         .set_setting("auto_update_app", if app { "true" } else { "false" })
                         .map_err(|error| error.to_string())?;
-                    store
-                        .set_setting(
-                            "auto_update_vencord",
-                            if vencord { "true" } else { "false" },
-                        )
-                        .map_err(|error| error.to_string())?;
-                    if let Some(bridge) = &bridge {
-                        bridge.command("auto_update", serde_json::json!({"enabled":vencord}))?;
-                    }
                     set_notice(&ui, "Güncelleme tercihleri kaydedildi.".into());
                     Ok(())
                 })(),
@@ -1543,7 +2024,17 @@ pub fn start(
                         };
                         let _ =
                             ui.upgrade_in_event_loop(move |ui| ui.set_scan_notice(message.into()));
-                        publish(&store, &query, &state, &ui)
+                        publish(&store, &query, &state, &ui)?;
+                        if !scanned.report.cancelled && !network.busy.load(Ordering::SeqCst) {
+                            let id = store
+                                .setting("steam_account_id")
+                                .ok()
+                                .flatten()
+                                .or_else(library_core::steam::active_user_id)
+                                .unwrap_or_default();
+                            submit(&network, &ui, NetworkTask::Libraries(id))?;
+                        }
+                        Ok(())
                     })();
                     state.scanning.store(false, Ordering::SeqCst);
                     let _ = ui.upgrade_in_event_loop(|ui| ui.set_scanning(false));

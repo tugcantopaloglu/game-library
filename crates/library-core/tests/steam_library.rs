@@ -20,6 +20,30 @@ fn active_account_skips_game_libraries_without_client_configuration() {
 }
 
 #[test]
+fn account_detection_supports_autologin_without_guessing_between_accounts() {
+    let temp = tempfile::tempdir().unwrap();
+    let client = temp.path().join("Steam");
+    std::fs::create_dir_all(client.join("config")).unwrap();
+    let login = client.join("config/loginusers.vdf");
+    std::fs::write(
+        &login,
+        r#""users" { "76561198000000001" { "AutoLogin" "1" } }"#,
+    )
+    .unwrap();
+    assert_eq!(
+        steam::active_user_id_from(std::slice::from_ref(&client)),
+        Some("76561198000000001".into())
+    );
+    std::fs::write(&login,r#""users" { "76561198000000001" { "AutoLogin" "0" } "76561198000000002" { "AutoLogin" "1" } }"#).unwrap();
+    assert_eq!(
+        steam::active_user_id_from(std::slice::from_ref(&client)),
+        Some("76561198000000002".into())
+    );
+    std::fs::write(&login,r#""users" { "76561198000000001" { "AutoLogin" "0" } "76561198000000002" { "AutoLogin" "0" } }"#).unwrap();
+    assert_eq!(steam::active_user_id_from(&[client]), None);
+}
+
+#[test]
 fn current_steam_cover_folders_are_found_and_redistributables_are_not_games() {
     let temp = tempfile::tempdir().unwrap();
     let root = library(temp.path(), "Steam");

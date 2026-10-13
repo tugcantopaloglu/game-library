@@ -301,6 +301,7 @@ fn enable_bridge_settings(settings: &mut serde_json::Value, data: &Path) -> Resu
         return Err("GameLibraryBridge ayarları geçersiz; mevcut dosya korundu".into());
     }
     settings["plugins"]["GameLibraryBridge"]["enabled"] = serde_json::json!(true);
+    settings["autoUpdate"] = serde_json::json!(false);
     settings["plugins"]["GameLibraryBridge"]["dataDirectory"] =
         serde_json::json!(external_path(data));
     if settings["plugins"]["GameLibraryBridge"]["selectedFriends"].is_null() {
@@ -337,6 +338,24 @@ pub fn prepare_bridge(data: &Path) -> Result<String, String> {
             "streamAdapter.ts",
             include_str!(
                 "../../../integrations/vencord/gameLibraryBridge.desktop/streamAdapter.ts"
+            ),
+        ),
+        (
+            "transport.ts",
+            include_str!("../../../integrations/vencord/gameLibraryBridge.desktop/transport.ts"),
+        ),
+        (
+            "spotify.ts",
+            include_str!("../../../integrations/vencord/gameLibraryBridge.desktop/spotify.ts"),
+        ),
+        (
+            "broadcast.ts",
+            include_str!("../../../integrations/vencord/gameLibraryBridge.desktop/broadcast.ts"),
+        ),
+        (
+            "directMessage.ts",
+            include_str!(
+                "../../../integrations/vencord/gameLibraryBridge.desktop/directMessage.ts"
             ),
         ),
     ] {
@@ -391,10 +410,82 @@ pub fn prepare_bridge(data: &Path) -> Result<String, String> {
         }
         std::thread::sleep(std::time::Duration::from_millis(250));
     }
-    Ok(
-        "Vencord ve köprü derlendi. Vencord kur/onar ile seçili Discord kurulumuna uygulanabilir."
-            .into(),
-    )
+    let installed =
+        PathBuf::from(std::env::var_os("APPDATA").ok_or("Windows kullanıcı klasörü eksik")?)
+            .join("Vencord/dist");
+    if installed.join("patcher.js").is_file() {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|error| error.to_string())?
+            .as_millis();
+        install_prepared_bridge(
+            &directory.join("source/dist"),
+            &installed,
+            &directory.join(format!("backups/standalone-{stamp}")),
+        )?;
+        configure_bridge(data)?;
+        Ok("Vencord köprüsü güncellendi ve eski paket yedeklendi. Discord'u tamamen kapatıp açınca bağlantı etkinleşir.".into())
+    } else {
+        Ok("Vencord ve köprü derlendi. Vencord kur/onar ile seçili Discord kurulumuna uygulanabilir.".into())
+    }
+}
+
+fn install_prepared_bridge(source: &Path, installed: &Path, backup: &Path) -> Result<(), String> {
+    let names = ["patcher.js", "preload.js", "renderer.js", "renderer.css"];
+    let mut files = Vec::new();
+    for name in names {
+        let metadata =
+            std::fs::metadata(source.join(name)).map_err(|_| "Derlenmiş Vencord paketi eksik")?;
+        if !metadata.is_file() || metadata.len() > 8 * 1024 * 1024 {
+            return Err("Derlenmiş Vencord paketi geçersiz".into());
+        }
+        let bytes = std::fs::read(source.join(name)).map_err(|error| error.to_string())?;
+        if bytes.len() > 8 * 1024 * 1024 {
+            return Err("Derlenmiş Vencord paketi çok büyük".into());
+        }
+        files.push((name, bytes));
+    }
+    let renderer = &files[2].1;
+    if !renderer
+        .windows(b"GameLibraryBridge".len())
+        .any(|bytes| bytes == b"GameLibraryBridge")
+    {
+        return Err("Vencord paketinde Game Library köprüsü yok; mevcut kurulum korundu".into());
+    }
+    std::fs::create_dir_all(backup).map_err(|error| error.to_string())?;
+    for name in names {
+        if installed.join(name).is_file() {
+            std::fs::copy(installed.join(name), backup.join(name))
+                .map_err(|error| error.to_string())?;
+        }
+    }
+    for (name, bytes) in &files {
+        if let Err(error) = std::fs::write(installed.join(name), bytes) {
+            let mut failures = Vec::new();
+            for original in names {
+                let restored = if backup.join(original).is_file() {
+                    std::fs::copy(backup.join(original), installed.join(original)).map(|_| ())
+                } else if installed.join(original).is_file() {
+                    std::fs::remove_file(installed.join(original))
+                } else {
+                    Ok(())
+                };
+                if let Err(error) = restored {
+                    failures.push(format!("{original}: {error}"));
+                }
+            }
+            return Err(format!(
+                "Vencord paketi uygulanamadı: {error}. {}Yedek: {}",
+                if failures.is_empty() {
+                    "Önceki paket geri yüklendi. ".into()
+                } else {
+                    format!("Geri alma hatası: {}. ", failures.join(", "))
+                },
+                backup.display()
+            ));
+        }
+    }
+    Ok(())
 }
 
 pub fn vencord_installer(
@@ -498,6 +589,37 @@ mod tests {
     use super::*;
     use ed25519_dalek::{Signer, SigningKey};
     #[test]
+    fn installed_bridge_rejects_missing_plugin_and_preserves_backup() {
+        let temp = tempfile::tempdir().unwrap();
+        let source = temp.path().join("source");
+        let installed = temp.path().join("installed");
+        let backup = temp.path().join("backup");
+        std::fs::create_dir_all(&source).unwrap();
+        std::fs::create_dir_all(&installed).unwrap();
+        for name in ["patcher.js", "preload.js", "renderer.js", "renderer.css"] {
+            std::fs::write(source.join(name), b"new bundle").unwrap();
+            std::fs::write(installed.join(name), b"original bundle").unwrap();
+        }
+        assert!(install_prepared_bridge(&source, &installed, &backup).is_err());
+        assert!(!backup.exists());
+        assert_eq!(
+            std::fs::read(installed.join("renderer.js")).unwrap(),
+            b"original bundle"
+        );
+        std::fs::write(source.join("renderer.js"), b"new GameLibraryBridge bundle").unwrap();
+        install_prepared_bridge(&source, &installed, &backup).unwrap();
+        assert_eq!(
+            std::fs::read(installed.join("renderer.js")).unwrap(),
+            b"new GameLibraryBridge bundle"
+        );
+        for name in ["patcher.js", "preload.js", "renderer.js", "renderer.css"] {
+            assert_eq!(
+                std::fs::read(backup.join(name)).unwrap(),
+                b"original bundle"
+            );
+        }
+    }
+    #[test]
     fn update_readiness_rejects_stale_or_unrelated_process_reports() {
         let report = serde_json::to_vec(
             &serde_json::json!({"ready":true,"version":"0.2.0","pid":42,"token":"nonce"}),
@@ -514,7 +636,7 @@ mod tests {
         let mut settings = serde_json::json!({"plugins":{"Other":{"enabled":true},"GameLibraryBridge":{"enabled":false,"selectedFriends":"123,456"}},"autoUpdate":true});
         enable_bridge_settings(&mut settings, Path::new(r"\\?\C:\GameLibrary")).unwrap();
         assert_eq!(settings["plugins"]["Other"]["enabled"], true);
-        assert_eq!(settings["autoUpdate"], true);
+        assert_eq!(settings["autoUpdate"], false);
         assert_eq!(
             settings["plugins"]["GameLibraryBridge"]["selectedFriends"],
             "123,456"
