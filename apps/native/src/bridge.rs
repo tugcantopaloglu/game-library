@@ -4,11 +4,37 @@ use std::net::{TcpListener, TcpStream};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 pub const PROTOCOL: u64 = 1;
+const MAX_SNAPSHOT_AGE: Duration = Duration::from_secs(6);
+
+struct LiveState {
+    value: Value,
+    received_at: Option<Instant>,
+}
+
+impl LiveState {
+    fn disconnected(status: &str) -> Self {
+        Self {
+            value: json!({"connected":false,"status":status}),
+            received_at: None,
+        }
+    }
+
+    fn snapshot(&self, now: Instant) -> Value {
+        if self
+            .received_at
+            .is_some_and(|at| now.saturating_duration_since(at) > MAX_SNAPSHOT_AGE)
+        {
+            return json!({"connected":false,"status":"Discord verisi güncel değil. Yeni durum bekleniyor."});
+        }
+        self.value.clone()
+    }
+}
+
 pub struct Bridge {
-    pub state: Arc<Mutex<Value>>,
+    state: Arc<Mutex<LiveState>>,
     commands: mpsc::SyncSender<Value>,
     stop: Arc<AtomicBool>,
     address: std::net::SocketAddr,
@@ -47,9 +73,9 @@ impl Bridge {
         let directory = data.join("integrations/vencord");
         std::fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
         std::fs::write(directory.join("bridge.json"),serde_json::to_vec(&json!({"protocol":PROTOCOL,"port":listener.local_addr().map_err(|error|error.to_string())?.port(),"token":token})).map_err(|error|error.to_string())?).map_err(|error|error.to_string())?;
-        let state = Arc::new(Mutex::new(
-            json!({"connected":false,"status":"Vencord köprüsü bekleniyor"}),
-        ));
+        let state = Arc::new(Mutex::new(LiveState::disconnected(
+            "Vencord köprüsü bekleniyor",
+        )));
         let state_copy = state.clone();
         let (commands, receiver) = mpsc::sync_channel(16);
         std::thread::spawn(move || {
@@ -85,9 +111,18 @@ impl Bridge {
                         match read_message(&mut reader) {
                             Ok(value) => {
                                 if value["type"] == "snapshot" {
+                                    if value["protocol"] != PROTOCOL
+                                        || value["version"] != PROTOCOL
+                                        || !value["capabilities"].is_object()
+                                        || !value["friends"].is_array()
+                                        || !value["rooms"].is_array()
+                                    {
+                                        return Err("Köprü durum verisi veya sürümü uyumsuz".into());
+                                    }
                                     if let Ok(mut state) = state_copy.lock() {
-                                        *state = value;
-                                        state["connected"] = json!(true);
+                                        state.value = value;
+                                        state.value["connected"] = json!(true);
+                                        state.received_at = Some(Instant::now());
                                     }
                                 }
                             }
@@ -102,7 +137,7 @@ impl Bridge {
                 })();
                 let _ = result;
                 if let Ok(mut state) = state_copy.lock() {
-                    *state = json!({"connected":false,"status":"Vencord bağlantısı kapalı veya uyumsuz"});
+                    *state = LiveState::disconnected("Vencord bağlantısı kapalı veya uyumsuz");
                 }
             }
         });
@@ -119,7 +154,7 @@ impl Bridge {
     pub fn snapshot(&self) -> Value {
         self.state
             .lock()
-            .map(|state| state.clone())
+            .map(|state| state.snapshot(Instant::now()))
             .unwrap_or_else(|_| json!({"connected":false}))
     }
 
@@ -167,7 +202,7 @@ mod tests {
         .unwrap();
         let mut reader = BufReader::new(stream.try_clone().unwrap());
         assert_eq!(read_message(&mut reader).unwrap()["type"], "welcome");
-        write_message(&mut stream,&json!({"type":"snapshot","capabilities":{"mute":true},"friends":[{"name":"Test friend"}]})).unwrap();
+        write_message(&mut stream,&json!({"type":"snapshot","protocol":PROTOCOL,"version":PROTOCOL,"capabilities":{"mute":true},"friends":[{"name":"Test friend"}],"rooms":[]})).unwrap();
         let start = std::time::Instant::now();
         while bridge.snapshot()["connected"] != true && start.elapsed() < Duration::from_secs(1) {
             std::thread::sleep(Duration::from_millis(10));
@@ -183,5 +218,61 @@ mod tests {
         }
         assert_eq!(bridge.snapshot()["connected"], false);
         assert!(bridge.snapshot()["friends"].is_null());
+    }
+
+    #[test]
+    fn heartbeats_do_not_keep_stale_social_data_or_controls_live() {
+        let directory = tempfile::tempdir().unwrap();
+        let bridge = Bridge::start(directory.path()).unwrap();
+        let mut stream = TcpStream::connect(bridge.address).unwrap();
+        stream
+            .set_read_timeout(Some(Duration::from_secs(1)))
+            .unwrap();
+        let mut reader = BufReader::new(stream.try_clone().unwrap());
+        write_message(
+            &mut stream,
+            &json!({"type":"hello","protocol":PROTOCOL,"token":bridge.token}),
+        )
+        .unwrap();
+        assert_eq!(read_message(&mut reader).unwrap()["type"], "welcome");
+        let snapshot = json!({"type":"snapshot","protocol":PROTOCOL,"version":PROTOCOL,"capabilities":{"mute":true},"friends":[{"name":"Test friend"}],"rooms":[]});
+        write_message(&mut stream, &snapshot).unwrap();
+        assert_eq!(read_message(&mut reader).unwrap()["type"], "ping");
+        assert_eq!(bridge.snapshot()["connected"], true);
+        bridge.state.lock().unwrap().received_at =
+            Some(Instant::now() - MAX_SNAPSHOT_AGE - Duration::from_secs(1));
+        write_message(&mut stream, &json!({"type":"heartbeat"})).unwrap();
+        assert_eq!(read_message(&mut reader).unwrap()["type"], "ping");
+        assert_eq!(bridge.snapshot()["connected"], false);
+        assert!(bridge.snapshot()["friends"].is_null());
+        assert!(bridge.command("mute", json!({})).is_err());
+        write_message(&mut stream, &snapshot).unwrap();
+        assert_eq!(read_message(&mut reader).unwrap()["type"], "ping");
+        assert_eq!(bridge.snapshot()["connected"], true);
+        assert!(bridge.command("mute", json!({})).is_ok());
+    }
+
+    #[test]
+    fn incompatible_snapshot_clears_social_state_after_a_valid_handshake() {
+        let directory = tempfile::tempdir().unwrap();
+        let bridge = Bridge::start(directory.path()).unwrap();
+        let mut stream = TcpStream::connect(bridge.address).unwrap();
+        stream
+            .set_read_timeout(Some(Duration::from_secs(1)))
+            .unwrap();
+        let mut reader = BufReader::new(stream.try_clone().unwrap());
+        write_message(
+            &mut stream,
+            &json!({"type":"hello","protocol":PROTOCOL,"token":bridge.token}),
+        )
+        .unwrap();
+        assert_eq!(read_message(&mut reader).unwrap()["type"], "welcome");
+        write_message(&mut stream, &json!({"type":"snapshot","protocol":PROTOCOL,"version":PROTOCOL,"capabilities":{"mute":true},"friends":[],"rooms":[]})).unwrap();
+        assert_eq!(read_message(&mut reader).unwrap()["type"], "ping");
+        write_message(&mut stream, &json!({"type":"snapshot","protocol":PROTOCOL,"version":2,"capabilities":{"mute":true},"friends":[{"name":"Stale friend"}],"rooms":[]})).unwrap();
+        assert!(read_message(&mut reader).is_err());
+        assert_eq!(bridge.snapshot()["connected"], false);
+        assert!(bridge.snapshot()["friends"].is_null());
+        assert!(bridge.command("mute", json!({})).is_err());
     }
 }
