@@ -71,3 +71,61 @@ fn private_or_incomplete_account_responses_are_not_accepted_as_empty_libraries()
     assert!(!games[0].installed);
     assert_eq!(games[0].source_id, "namespace:catalog:game-app");
 }
+
+#[test]
+fn long_game_identifiers_can_persist_completion_and_cover_metadata() {
+    let dir = tempfile::tempdir().unwrap();
+    let database = dir.path().join("library.db");
+    let mut store = Store::open(&database).unwrap();
+    let bytes = serde_json::to_vec(&serde_json::json!([{
+        "app_name":"fixture-app", "app_title":"Fixture game",
+        "metadata":{"namespace":"n".repeat(200),"id":"c".repeat(200)}
+    }]))
+    .unwrap();
+    let (games, _) = owned::epic(&bytes).unwrap();
+    store.apply_owned_games(Source::Epic, &games).unwrap();
+    let executable = dir
+        .path()
+        .join("long-install-directory-".repeat(5))
+        .join("Game.exe");
+    std::fs::create_dir_all(executable.parent().unwrap()).unwrap();
+    std::fs::write(&executable, b"fixture; never run").unwrap();
+    let manual = store
+        .add_manual(&executable, "Manual game", vec![])
+        .unwrap();
+    let ids = [games[0].id.clone(), manual];
+    let completion = CompletionTimes {
+        hltb_id: 42,
+        name: "Fixture game".into(),
+        main_seconds: Some(3600),
+        extra_seconds: None,
+        completionist_seconds: None,
+        fetched_ms: 1,
+    };
+    for id in &ids {
+        let game = store.game(id).unwrap();
+        assert!(game.source_id.len() > 128);
+        store.save_completion(id, &completion).unwrap();
+        store
+            .set_artwork_url(
+                game.source,
+                &game.source_id,
+                "https://howlongtobeat.com/games/fixture.jpg",
+            )
+            .unwrap();
+    }
+    assert!(store
+        .set_artwork_url(Source::Epic, &"x".repeat(4097), "https://example.test")
+        .is_err());
+    assert!(store.set_setting(&"x".repeat(129), "value").is_err());
+    drop(store);
+    let store = Store::open(&database).unwrap();
+    for id in &ids {
+        let game = store.game(id).unwrap();
+        assert_eq!(store.completion(&game).unwrap().unwrap().hltb_id, 42);
+        assert_eq!(
+            store.artwork_url(&game).unwrap().as_deref(),
+            Some("https://howlongtobeat.com/games/fixture.jpg")
+        );
+    }
+}

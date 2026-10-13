@@ -177,7 +177,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         };
         store.apply_owned_games(source, &games)?;
         for (id, url) in covers {
-            store.set_setting(&format!("cover-url:{}:{id}", source.as_str()), &url)?;
+            store.set_artwork_url(source, &id, &url)?;
         }
         if let Some(output) = argument_value(&args, "--output") {
             std::fs::write(
@@ -197,10 +197,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         )?;
         store.save_completion(&id, &completion.times)?;
         if let Some(url) = &completion.image_url {
-            store.set_setting(
-                &format!("cover-url:{}:{}", game.source.as_str(), game.source_id),
-                url,
-            )?;
+            store.set_artwork_url(game.source, &game.source_id, url)?;
         }
         if let Some(output) = argument_value(&args, "--output") {
             std::fs::write(output, serde_json::to_vec_pretty(&completion.times)?)?;

@@ -204,7 +204,7 @@ fn publish(
         }
         let pixels = game.artwork_path.as_deref().and_then(thumbnail);
         if pixels.is_none() && game.source != Source::Manual {
-            let url=store.setting(&format!("cover-url:{}:{}",game.source.as_str(),game.source_id)).ok().flatten().or_else(||(game.source==Source::Steam).then(||format!("https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/{}/library_600x900.jpg",game.app_id)));
+            let url=store.artwork_url(&game).ok().flatten().or_else(||(game.source==Source::Steam).then(||format!("https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/{}/library_600x900.jpg",game.app_id)));
             if let (Ok(queue), Ok(mut attempted)) =
                 (state.cover_requests.lock(), state.cover_attempts.lock())
             {
@@ -841,13 +841,13 @@ pub fn start(
                         NetworkResult::Owned(source,result) => result.and_then(|(mut games,covers)| {
                             if source==Source::Steam { let roots=library_core::steam::discover_roots(&store.roots().map_err(|error|error.to_string())?);for game in &mut games {game.artwork_path=library_core::steam::local_artwork(&roots,game.app_id);} }
                             store.apply_owned_games(source,&games).map_err(|error|error.to_string())?;
-                            for (id,url) in covers { store.set_setting(&format!("cover-url:{}:{id}",source.as_str()),&url).map_err(|error|error.to_string())?; }
+                            for (id,url) in covers { store.set_artwork_url(source,&id,&url).map_err(|error|error.to_string())?; }
                             let status=format!("{} hesabından {} oyun eşitlendi. Kurulum bilgileri korundu.",source.label(),games.len());
                             ui.upgrade_in_event_loop(move |ui| if source==Source::Steam {ui.set_steam_account_status(status.into());}else{ui.set_epic_account_status(status.into());}).map_err(|error|error.to_string())?;
                             publish(&store,&query,&state,&ui)
                         }),
                         NetworkResult::Completion(id,result) => (|| {
-                            let (summary,url)=match result {Ok(completion)=> {store.save_completion(&id,&completion.times).map_err(|error|error.to_string())?; let game=store.game(&id).map_err(|error|error.to_string())?; if let Some(url)=completion.image_url {store.set_setting(&format!("cover-url:{}:{}",game.source.as_str(),game.source_id),&url).map_err(|error|error.to_string())?;} (crate::completion::summary(&completion.times),Some(format!("https://howlongtobeat.com/game/{}",completion.times.hltb_id)))},Err(error)=>(format!("HowLongToBeat: {error}"),None)};
+                            let (summary,url)=match result {Ok(completion)=> {store.save_completion(&id,&completion.times).map_err(|error|error.to_string())?; let game=store.game(&id).map_err(|error|error.to_string())?; if let Some(url)=completion.image_url {store.set_artwork_url(game.source,&game.source_id,&url).map_err(|error|error.to_string())?;} (crate::completion::summary(&completion.times),Some(format!("https://howlongtobeat.com/game/{}",completion.times.hltb_id)))},Err(error)=>(format!("HowLongToBeat: {error}"),None)};
                             let times=store.completion(&store.game(&id).map_err(|error|error.to_string())?).map_err(|error|error.to_string())?; ui.upgrade_in_event_loop(move |ui| {if ui.get_detail_id()==id {set_completion(&ui,times.as_ref());ui.set_completion_summary(summary.into());if let Some(url)=url {ui.set_completion_url(url.into());}}}).map_err(|error|error.to_string())
                         })(),
                         NetworkResult::Notice(result) => result.map(|notice|set_notice(&ui,notice)),

@@ -358,16 +358,41 @@ impl Store {
         }
         let value = serde_json::to_string(completion)
             .map_err(|error| LibraryError::Invalid(error.to_string()))?;
-        self.set_setting(
-            &format!("hltb:{}:{}", game.source.as_str(), game.source_id),
-            &value,
-        )
+        self.set_metadata("hltb", game.source, &game.source_id, &value)
     }
 
     pub fn completion(&self, game: &Game) -> Result<Option<CompletionTimes>> {
         Ok(self
             .setting(&format!("hltb:{}:{}", game.source.as_str(), game.source_id))?
             .and_then(|value| serde_json::from_str(&value).ok()))
+    }
+
+    pub fn artwork_url(&self, game: &Game) -> Result<Option<String>> {
+        self.setting(&format!(
+            "cover-url:{}:{}",
+            game.source.as_str(),
+            game.source_id
+        ))
+    }
+
+    pub fn set_artwork_url(&self, source: Source, source_id: &str, url: &str) -> Result<()> {
+        self.set_metadata("cover-url", source, source_id, url)
+    }
+
+    fn set_metadata(&self, kind: &str, source: Source, source_id: &str, value: &str) -> Result<()> {
+        if source_id.is_empty()
+            || source_id.len() > 4096
+            || source_id.contains('\0')
+            || value.len() > 16_384
+            || value.contains('\0')
+        {
+            return Err(LibraryError::Invalid(
+                "Oyun metadata boyut sınırını aşıyor".into(),
+            ));
+        }
+        let key = format!("{kind}:{}:{source_id}", source.as_str());
+        self.connection.execute("INSERT INTO settings(key,value) VALUES(?1,?2) ON CONFLICT(key) DO UPDATE SET value=excluded.value", params![key,value])?;
+        Ok(())
     }
     pub fn set_source_artwork(&self, id: &str, path: &str) -> Result<()> {
         if path.len() > 4096 || path.contains('\0') {
