@@ -639,7 +639,7 @@ pub fn start(
                         .image_url
                         .ok_or("Bu oyunun kaynak kapağı bulunamadı")?
                 };
-                crate::media::remote_cover(&cover_data, &url)
+                crate::media::remote_cover(&cover_data, &url, crate::media::CoverUse::Automatic)
             })();
             if cover_sender
                 .send(Command::AutoCover(request.game.id, result, completion))
@@ -662,7 +662,7 @@ pub fn start(
         while let Ok(task) = network_receiver.recv() {
             let result = match task {
                 NetworkTask::Cover(id, url) => {
-                    NetworkResult::Cover(id, crate::media::remote_cover(&network_data, &url))
+                    NetworkResult::Cover(id, crate::media::remote_cover(&network_data, &url, crate::media::CoverUse::Selected))
                 }
                 NetworkTask::Search(id, title, steam_id) => {
                     NetworkResult::Search(id, crate::media::search_covers(&title, steam_id))

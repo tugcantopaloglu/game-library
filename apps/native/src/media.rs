@@ -6,6 +6,12 @@ use std::time::Duration;
 pub const MAX_COVER: u64 = 8 * 1024 * 1024;
 const CACHE_BUDGET: u64 = 512 * 1024 * 1024;
 
+#[derive(Clone, Copy)]
+pub enum CoverUse {
+    Automatic,
+    Selected,
+}
+
 pub fn agent(seconds: u64) -> ureq::Agent {
     ureq::Agent::config_builder()
         .timeout_global(Some(Duration::from_secs(seconds)))
@@ -99,11 +105,12 @@ fn validate_image(bytes: &[u8]) -> Result<(), String> {
     Ok(())
 }
 
-fn save_cover(data: &Path, bytes: &[u8], user: bool) -> Result<PathBuf, String> {
+fn save_cover(data: &Path, bytes: &[u8], usage: CoverUse) -> Result<PathBuf, String> {
     if bytes.len() as u64 > MAX_COVER {
         return Err("Kapak 8 MiB sınırını aşıyor".into());
     }
     validate_image(bytes)?;
+    let user = matches!(usage, CoverUse::Selected);
     let directory = data.join(if user {
         "artwork/user"
     } else {
@@ -118,7 +125,7 @@ fn save_cover(data: &Path, bytes: &[u8], user: bool) -> Result<PathBuf, String> 
         std::fs::rename(&temporary, &target).map_err(|error| error.to_string())?;
     }
     if !user {
-        trim_cache(&directory, &target)?;
+        trim_cache(&directory, &target, CACHE_BUDGET)?;
     }
     Ok(target)
 }
@@ -129,10 +136,10 @@ pub fn import_cover(data: &Path, path: &Path) -> Result<PathBuf, String> {
     file.take(MAX_COVER + 1)
         .read_to_end(&mut bytes)
         .map_err(|error| error.to_string())?;
-    save_cover(data, &bytes, true)
+    save_cover(data, &bytes, CoverUse::Selected)
 }
 
-pub fn remote_cover(data: &Path, url: &str) -> Result<PathBuf, String> {
+pub fn remote_cover(data: &Path, url: &str, usage: CoverUse) -> Result<PathBuf, String> {
     let bytes = download(
         url,
         &[
@@ -149,10 +156,10 @@ pub fn remote_cover(data: &Path, url: &str) -> Result<PathBuf, String> {
         ],
         MAX_COVER,
     )?;
-    save_cover(data, &bytes, false)
+    save_cover(data, &bytes, usage)
 }
 
-fn trim_cache(directory: &Path, keep: &Path) -> Result<(), String> {
+fn trim_cache(directory: &Path, keep: &Path, budget: u64) -> Result<(), String> {
     let mut entries = Vec::new();
     for entry in std::fs::read_dir(directory).map_err(|error| error.to_string())? {
         let entry = entry.map_err(|error| error.to_string())?;
@@ -169,7 +176,7 @@ fn trim_cache(directory: &Path, keep: &Path) -> Result<(), String> {
     entries.sort_by_key(|entry| entry.2);
     let mut size: u64 = entries.iter().map(|entry| entry.1).sum();
     for (path, bytes, _) in entries {
-        if size <= CACHE_BUDGET {
+        if size <= budget {
             break;
         }
         if path != keep {
@@ -267,6 +274,33 @@ mod tests {
             assert!(super::trusted_url(url, &["cdn2.steamgriddb.com"]).is_err());
         }
         let directory = tempfile::tempdir().unwrap();
-        assert!(super::save_cover(directory.path(), &[0; 10], true).is_err());
+        assert!(super::save_cover(directory.path(), &[0; 10], super::CoverUse::Selected).is_err());
+    }
+
+    #[test]
+    fn selected_covers_survive_automatic_cache_eviction() {
+        let directory = tempfile::tempdir().unwrap();
+        let image = |color| {
+            let mut bytes = std::io::Cursor::new(Vec::new());
+            image::RgbaImage::from_pixel(2, 2, image::Rgba(color))
+                .write_to(&mut bytes, image::ImageFormat::Png)
+                .unwrap();
+            bytes.into_inner()
+        };
+        let original = image([42, 57, 66, 255]);
+        let selected =
+            super::save_cover(directory.path(), &original, super::CoverUse::Selected).unwrap();
+        let automatic =
+            super::save_cover(directory.path(), &original, super::CoverUse::Automatic).unwrap();
+        let newest = super::save_cover(
+            directory.path(),
+            &image([100, 57, 66, 255]),
+            super::CoverUse::Automatic,
+        )
+        .unwrap();
+        super::trim_cache(&directory.path().join("artwork/cache"), &newest, 0).unwrap();
+        assert!(!automatic.exists());
+        assert!(newest.exists());
+        assert_eq!(std::fs::read(selected).unwrap(), original);
     }
 }
