@@ -1,5 +1,9 @@
 # Yayın kontrolleri — 13 Ekim 2026
 
+## Açık yayının kaynağını değiştirme
+
+Aynı native seçici açık yayında Kaynak / Değiştir işlemini sunar. Mevcut çözünürlük ve FPS korunur. Kaynak yeniden okunurken hesap, oda, yayın anahtarı veya mevcut medya ayarları değişmişse istek uygulanmaz. Yeni kaynak kimliği geri okunmadan başarı gösterilmez. Kaynak doğrulama sürerken ikinci yayın işlemi kabul edilmez. İki kısa köprü testi kaliteyi koruma ve doğrulama sırasında başka yayına geçişi kontrol eder.
+
 ## Başlatma ve kaynak seçici
 
 Native Yayın panelindeki kaynak seçici mevcut ses odasında paylaşılabilecek ekran ve pencereleri listeler. Discord'un kendi desktop capture köprüsünden yalnızca ad/kimlik alınır; thumbnail boyutu sıfırdır, ikon ve video önizlemesi istenmez. Liste kullanıcı açtığında veya Yenile seçtiğinde okunur. 100 kayıt ve 30 saniyelik seçim geçerliliği sınırı vardır. Panel kapandığında, sayfa değiştiğinde, tepsiye geçildiğinde ve hesap/oda/bağlantı değiştiğinde katalog bırakılır.

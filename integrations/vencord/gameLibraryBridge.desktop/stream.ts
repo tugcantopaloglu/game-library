@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
-import { CaptureCatalog } from "./capture";
+import { bounded, CaptureCatalog } from "./capture";
 import type { CaptureProvider, CaptureSource } from "./capture";
 export interface LiveStream {
     key: string;
@@ -48,6 +48,7 @@ export class StreamControls {
             canStop: !!live?.key && typeof provider.stop === "function", canQuality: writable, canFps: writable,
             canStart: provider.known !== false && !!provider.account && !!provider.channel && !live && !!provider.start && !!provider.listSources,
             canSources: !!provider.listSources && !!provider.account && !!provider.channel,
+            canSource: writable && !!provider.listSources && !!provider.account && !!provider.channel,
             ...this.catalog.state(provider)
         };
     }
@@ -70,6 +71,21 @@ export class StreamControls {
             return;
         }
         if (!live || data?.streamKey !== live.key) throw new Error("Yayın değişti. Güncel yayın üzerinden yeniden dene.");
+        if (action === "stream_source") {
+            if (!state.canSource || data?.channelId !== provider.channel) throw new Error("Yayın kaynağı bu istemcide değiştirilemiyor");
+            const before: LiveStream = {...live,source:{...live.source!,desktopSource:{...live.source!.desktopSource},quality:{...live.source!.quality}}};
+            const account = provider.account, channel = provider.channel;
+            this.pending = {key:live.key,account:account ?? "",channel:channel ?? "",sourceId:String(data.sourceId),action,value:0,expires:now+8000,before};
+            this.result = "Kaynak doğrulanıyor…";
+            try {
+                const selected = await this.catalog.resolve(provider,data.sourceRevision,data.sourceId,now);
+                const current = provider.read();
+                if (provider.known === false || provider.account !== account || provider.channel !== channel || current?.key !== live.key || JSON.stringify(current.source) !== JSON.stringify(before.source)) throw new Error("Ses odası veya yayın kaynağı değişti");
+                await bounded(()=>provider.setSource!({...before.source!,desktopSource:{...before.source!.desktopSource,id:selected.id,sourcePid:null}},before.context));
+                this.catalog.clear(); this.result = "Discord'dan sonuç bekleniyor…";
+            } catch (error) { this.pending = undefined; this.result = "Kaynak değiştirilemedi"; throw error; }
+            return;
+        }
         let value = 0;
         if (action === "stream_stop") {
             if (!state.canStop) throw new Error("Yayın durdurma bu istemcide kullanılamıyor");
@@ -109,8 +125,12 @@ export class StreamControls {
             if (now >= pending.expires) { this.pending = undefined; this.result = "Discord yayının başladığını doğrulamadı"; return true; }
             return false;
         }
+        if (live?.key === pending.key && pending.before?.source && live.source && (pending.action === "stream_source" ? ![pending.before.source.desktopSource.id,pending.sourceId].includes(live.source.desktopSource.id) : pending.action !== "stream_stop" && live.source.desktopSource.id !== pending.before.source.desktopSource.id)) {
+            this.pending = undefined; this.result = "Yayın kaynağı değişti; önceki işlem iptal edildi"; return true;
+        }
         const confirmed = pending.action === "stream_stop" ? !live : live?.key === pending.key &&
-            (pending.action === "stream_quality" ? live.source?.quality.resolution : live.source?.quality.frameRate) === pending.value;
+            (pending.action === "stream_source" ? live.source?.desktopSource.id === pending.sourceId :
+            (pending.action === "stream_quality" ? live.source?.quality.resolution : live.source?.quality.frameRate) === pending.value);
         if (confirmed) { this.pending = undefined; this.result = "Yayın değişikliği doğrulandı"; return true; }
         if (live?.key !== pending.key) { this.pending = undefined; this.result = "Yayın değişti; önceki işlem iptal edildi"; return true; }
         if (now >= pending.expires) {

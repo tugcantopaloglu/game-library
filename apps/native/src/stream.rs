@@ -64,11 +64,11 @@ pub fn selection_request(
     index: i32,
 ) -> Result<Value, String> {
     let view = view(snapshot);
-    if action != "stream_start"
+    if !matches!(action, "stream_start" | "stream_source")
         || snapshot["capabilities"][action] != true
         || !view.known
-        || view.active
-        || !key.is_empty()
+        || (action == "stream_start" && (view.active || !key.is_empty()))
+        || (action == "stream_source" && (!view.active || key.is_empty() || key != view.key))
         || view.pending
         || view.source_pending
         || !view.source_open

@@ -110,7 +110,7 @@ function controlSnapshot() {
             open_dm: typeof ChannelActionCreators.openPrivateChannel === "function",
             mute: typeof modules.voice?.toggleSelfMute === "function", deafen: typeof modules.voice?.toggleSelfDeaf === "function", join_voice: typeof modules.channel?.selectVoiceChannel === "function",
             stream_inspect: typeof ApplicationStreamingStore?.getCurrentUserActiveStream === "function",
-            stream_stop: streamControl.canStop, stream_start: streamControl.canStart, stream_sources: streamControl.canSources, stream_source: false, stream_quality: streamControl.canQuality, stream_fps: streamControl.canFps, stream_audio: false,
+            stream_stop: streamControl.canStop, stream_start: streamControl.canStart, stream_sources: streamControl.canSources, stream_source: streamControl.canSource, stream_quality: streamControl.canQuality, stream_fps: streamControl.canFps, stream_audio: false,
             vencord_update: true, auto_update: true
         }
     };
@@ -197,7 +197,7 @@ async function command(message: any) {
         case "stream_sources":
             if (typeof message.data?.open !== "boolean") throw new Error("Kaynak seçimi geçersiz");
             if (message.data.open) await streamControls.catalog.open(streamProvider()); else streamControls.catalog.clear(); break;
-        case "stream_start": case "stream_stop": case "stream_quality": case "stream_fps":
+        case "stream_start": case "stream_source": case "stream_stop": case "stream_quality": case "stream_fps":
             await streamControls.execute(streamProvider(),message.action,message.data); break;
         case "auto_update": Settings.autoUpdate = message.data?.enabled === true; break;
         case "vencord_update":

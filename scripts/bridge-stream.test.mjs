@@ -96,3 +96,23 @@ test("current Discord action contracts receive settings and unknown contracts st
     startAdapter(start)(null,"room",{id:"screen:0:0",name:"Screen"});
     assert.equal(calls[2].sourceId,"screen:0:0"); assert.equal(calls[2].sound,false);
 });
+
+test("source changes preserve quality and confirm only the selected source", async () => {
+    const data = fixture(), control = new StreamControls();
+    Object.assign(data.provider,{account:"first",channel:"room",listSources:async()=>[{id:"screen:0:0",name:"Screen"}]});
+    await control.catalog.open(data.provider,0);
+    await control.execute(data.provider,"stream_source",{streamKey:"live",channelId:"room",sourceRevision:control.state(data.provider).sourceRevision,sourceId:"screen:0:0"},1);
+    assert.deepEqual(data.live.source.quality,{resolution:720,frameRate:30}); assert.equal(control.observe(data.provider,2),true);
+    assert.equal(data.live.source.desktopSource.id,"screen:0:0"); assert.equal(control.state(data.provider).sourceOpen,false);
+});
+
+test("replacing a stream during source validation leaves the replacement untouched", async () => {
+    const data = fixture(), control = new StreamControls(); let finish;
+    Object.assign(data.provider,{account:"first",channel:"room",listSources:async()=>[{id:"screen:0:0",name:"Screen"}]});
+    await control.catalog.open(data.provider,0);
+    const revision = control.state(data.provider).sourceRevision;
+    data.provider.listSources = ()=>new Promise(resolve=>{finish=resolve;});
+    const pending = control.execute(data.provider,"stream_source",{streamKey:"live",channelId:"room",sourceRevision:revision,sourceId:"screen:0:0"},1);
+    await Promise.resolve(); data.live = {...data.live,key:"replacement"}; finish([{id:"screen:0:0",name:"Screen"}]);
+    await assert.rejects(pending); assert.equal(data.writes.length,0);
+});

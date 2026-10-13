@@ -576,6 +576,12 @@ fn bridge_status(
             ui.set_stream_source_index(-1);
         }
         ui.set_stream_source_revision(stream.source_revision);
+        ui.set_can_stream_source(
+            connected
+                && snapshot["capabilities"]["stream_source"] == true
+                && stream.active
+                && !stream.pending,
+        );
         ui.set_stream_source_channel(stream.source_channel.into());
         ui.set_stream_source_pending(stream.source_pending);
         ui.set_stream_source_error(stream.source_error.into());

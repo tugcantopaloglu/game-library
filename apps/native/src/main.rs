@@ -520,6 +520,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     register_command!(on_stream_stop, (key) => Command::StreamControl("stream_stop".into(),key.into(),0));
     register_command!(on_stream_catalog, (open) => Command::StreamCatalog(open));
     register_command!(on_stream_start, (channel,revision,index) => Command::StreamSelection("stream_start".into(),String::new(),channel.into(),revision,index));
+    register_command!(on_stream_source, (key,channel,revision,index) => Command::StreamSelection("stream_source".into(),key.into(),channel.into(),revision,index));
     register_command!(on_update_check, () => Command::UpdateCheck);
     register_command!(on_prepare_bridge, () => Command::PrepareBridge);
     register_command!(on_artwork_key, (key) => Command::ArtworkKey(key.into()));
