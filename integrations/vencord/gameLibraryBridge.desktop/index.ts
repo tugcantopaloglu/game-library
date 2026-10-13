@@ -2,11 +2,12 @@
 import { definePluginSettings, Settings, SettingsStore } from "@api/Settings";
 import { checkForUpdates, update } from "@utils/updater";
 import definePlugin, { OptionType, PluginNative } from "@utils/types";
-import { findByProps } from "@webpack";
+import { findByCode, findByProps } from "@webpack";
 import { ApplicationStreamingStore, ChannelActionCreators, ChannelStore, GuildStore, MediaEngineStore, PermissionStore, PermissionsBits, PresenceStore, ReadStateStore, RelationshipStore, SelectedChannelStore, UserStore, VoiceStateStore } from "@webpack/common";
 import { favoriteIds, lastMessageAt, validId, visibleFriends } from "./social";
 import { SnapshotCache, StoreListeners, Section } from "./state";
 import { LiveStream, StreamControls, StreamProvider } from "./stream";
+import { mediaAdapter, startAdapter, stopAdapter } from "./streamAdapter";
 
 const Native = VencordNative.pluginHelpers.GameLibraryBridge as PluginNative<typeof import("./native")>;
 const settings = definePluginSettings({
@@ -34,7 +35,9 @@ function resolveActions() {
         voice: findByProps("toggleSelfMute", "toggleSelfDeaf") as any,
         channel: findByProps("selectVoiceChannel", "selectChannel") as any,
         streaming: findByProps("stopStream") as any,
-        media: findByProps("setGoLiveSource", "setInputVolume", "setOutputVolume") as any
+        media: findByProps("setGoLiveSource", "setInputVolume", "setOutputVolume") as any,
+        start: startAdapter(findByCode('type:"STREAM_START"', "streamType:", "guildId:", "channelId:")),
+        stop: stopAdapter(findByCode('type:"STREAM_STOP"', "streamKey:", "appContext:"))
     };
 }
 
@@ -107,7 +110,7 @@ function controlSnapshot() {
             open_dm: typeof ChannelActionCreators.openPrivateChannel === "function",
             mute: typeof modules.voice?.toggleSelfMute === "function", deafen: typeof modules.voice?.toggleSelfDeaf === "function", join_voice: typeof modules.channel?.selectVoiceChannel === "function",
             stream_inspect: typeof ApplicationStreamingStore?.getCurrentUserActiveStream === "function",
-            stream_stop: streamControl.canStop, stream_start: false, stream_source: false, stream_quality: streamControl.canQuality, stream_fps: streamControl.canFps, stream_audio: false,
+            stream_stop: streamControl.canStop, stream_start: streamControl.canStart, stream_sources: streamControl.canSources, stream_source: false, stream_quality: streamControl.canQuality, stream_fps: streamControl.canFps, stream_audio: false,
             vencord_update: true, auto_update: true
         }
     };
@@ -115,12 +118,20 @@ function controlSnapshot() {
 
 function streamProvider(): StreamProvider {
     const modules = actions();
-    const account = UserStore.getCurrentUser()?.id;
-    const current = ApplicationStreamingStore.getCurrentUserActiveStream?.();
+    const write = mediaAdapter(modules.media);
+    const capture = typeof DiscordNative !== "undefined" && typeof DiscordNative.desktopCapture?.getDesktopCaptureSources === "function" ?
+        () => DiscordNative.desktopCapture.getDesktopCaptureSources({types:["screen","window"],thumbnailSize:{width:0,height:0},fetchWindowIcons:false}) : undefined;
+    const allowed = () => {
+        const id = SelectedChannelStore.getVoiceChannelId();
+        const channel = id ? ChannelStore.getChannel(id) : undefined;
+        return !!channel && [1,2,3,13].includes(channel.type) && (!channel.guild_id || (typeof PermissionStore?.can === "function" && PermissionStore.can(PermissionsBits.VIEW_CHANNEL,channel) && PermissionStore.can(PermissionsBits.CONNECT,channel) && PermissionStore.can(PermissionsBits.STREAM,channel)));
+    };
     return {
-        account,
-        known: !!account && (!current || current.ownerId === account),
+        get account() { return UserStore.getCurrentUser()?.id; },
+        get channel() { return SelectedChannelStore.getVoiceChannelId() || undefined; },
+        get known() { const account = UserStore.getCurrentUser()?.id, current = ApplicationStreamingStore.getCurrentUserActiveStream?.(); return !!account && (!current || current.ownerId === account); },
         read: () => {
+            const account = UserStore.getCurrentUser()?.id;
             const active = ApplicationStreamingStore.getCurrentUserActiveStream();
             if (!active || active.ownerId !== account) return null;
             const rtc = ApplicationStreamingStore.getState?.().rtcStreams ?? {};
@@ -137,8 +148,14 @@ function streamProvider(): StreamProvider {
             const metadata = ApplicationStreamingStore.getStreamerActiveStreamMetadata?.();
             return {key:key && key.length <= 256 ? key : "",source:validSource ? source : null,context:context === "stream" ? "stream" : "default",sourceName: (metadata?.sourceName ?? "").slice(0,128)} as LiveStream;
         },
-        setSource: typeof modules.media?.setGoLiveSource === "function" ? (source,context) => modules.media.setGoLiveSource(source,context) : undefined,
-        stop: typeof modules.streaming?.stopStream === "function" ? key => modules.streaming.stopStream(key) : undefined
+        setSource: write,
+        stop: modules.stop,
+        listSources: capture,
+        get start() { return modules.start && capture && allowed() ? (channelId: string, source: import("./capture").CaptureSource) => {
+            if (!allowed() || SelectedChannelStore.getVoiceChannelId() !== channelId || ApplicationStreamingStore.getCurrentUserActiveStream()) throw new Error("Ses odası veya yayın durumu değişti");
+            const channel = ChannelStore.getChannel(channelId);
+            return modules.start!(channel.guild_id ?? null,channelId,source);
+        } : undefined; }
     };
 }
 
@@ -177,7 +194,10 @@ async function command(message: any) {
         case "open_dm":
             if (!RelationshipStore.getFriendIDs().includes(id)) throw new Error("Seçili arkadaş bulunamadı");
             ChannelActionCreators.openPrivateChannel(id); break;
-        case "stream_stop": case "stream_quality": case "stream_fps":
+        case "stream_sources":
+            if (typeof message.data?.open !== "boolean") throw new Error("Kaynak seçimi geçersiz");
+            if (message.data.open) await streamControls.catalog.open(streamProvider()); else streamControls.catalog.clear(); break;
+        case "stream_start": case "stream_stop": case "stream_quality": case "stream_fps":
             await streamControls.execute(streamProvider(),message.action,message.data); break;
         case "auto_update": Settings.autoUpdate = message.data?.enabled === true; break;
         case "vencord_update":
@@ -207,7 +227,7 @@ export default definePlugin({
             try {
                 const pending = await Native.poll();
                 if (pending.connected) {
-                    if (transportGeneration !== pending.generation) { transportGeneration = pending.generation; catalogQuery = null; }
+                    if (transportGeneration !== pending.generation) { transportGeneration = pending.generation; catalogQuery = null; streamControls.catalog.clear(); }
                     const complete = bindStores();
                     if (!complete && Date.now() - lastFallback >= 4000) { cache.invalidate(); lastFallback = Date.now(); }
                     for (const message of pending.commands) {
@@ -220,7 +240,7 @@ export default definePlugin({
                     if (streamControls.waiting && streamControls.observe(streamProvider())) cache.invalidate("controls");
                     const packet = cache.packet(pending.generation, section => section === "friends" ? friendSnapshot() : section === "rooms" ? roomSnapshot() : controlSnapshot());
                     if (!await Native.snapshot(packet)) cache.invalidate();
-                }
+                } else streamControls.catalog.clear();
             } catch { result = "Discord sürümündeki bir yetenek kullanılamıyor"; cache.invalidate(); }
             finally { busy = false; }
         }, 1000);

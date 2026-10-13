@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { StreamControls } from "../integrations/vencord/gameLibraryBridge.desktop/stream.ts";
+import { CaptureCatalog, sources } from "../integrations/vencord/gameLibraryBridge.desktop/capture.ts";
+import { mediaAdapter, startAdapter } from "../integrations/vencord/gameLibraryBridge.desktop/streamAdapter.ts";
 
 function fixture() {
     let live = {key:"live",context:"stream",sourceName:"Game",source:{desktopSource:{id:"window:1:0",sourcePid:1,soundshareId:null,soundshareSession:null},quality:{resolution:720,frameRate:30}}};
@@ -50,4 +52,47 @@ test("an account change cannot confirm a stop in the previous session", async ()
     data.provider.account = "second"; data.live = null;
     assert.equal(control.observe(data.provider,1),true);
     assert.equal(control.state(data.provider).result,"Discord oturumu değişti; önceki işlem iptal edildi");
+});
+
+test("capture metadata is bounded and closing the picker discards delayed results", async () => {
+    const metadata = sources(Array.from({length:110},(_,i)=>({id:`window:${i}:0`,name:`Window ${i}`,url:"large-preview"})));
+    assert.equal(metadata.length,100); assert.equal("url" in metadata[0],false);
+    assert.deepEqual(sources([{id:"file:///secret",name:"bad"}]),[]);
+    let finish;
+    const provider = {account:"first",channel:"room",listSources:()=>new Promise(resolve=>{finish=resolve;})};
+    const catalog = new CaptureCatalog(); const pending = catalog.open(provider,0);
+    await Promise.resolve(); catalog.clear(); finish([{id:"window:1:0",name:"Game"}]); await pending;
+    assert.equal(catalog.state(provider).sourceOpen,false); assert.equal(catalog.state(provider).sources.length,0);
+});
+
+test("start revalidates the chosen source and confirms the actual stream", async () => {
+    let live = null, starts = 0;
+    const provider = {account:"first",channel:"room",known:true,read:()=>live,listSources:async()=>[{id:"window:1:0",name:"Game"}],start:()=>{starts++;}};
+    const control = new StreamControls(); await control.catalog.open(provider,0);
+    const state = control.state(provider), data = {streamKey:"",channelId:"room",sourceRevision:state.sourceRevision,sourceId:"window:1:0"};
+    await assert.rejects(control.execute(provider,"stream_start",{...data,channelId:"other"},1));
+    await control.execute(provider,"stream_start",data,1); assert.equal(starts,1); assert.equal(control.observe(provider,2),false);
+    live = fixture().live; assert.equal(control.observe(provider,3),true); assert.equal(control.state(provider).result,"Yayın başlatıldığı doğrulandı");
+    await assert.rejects(control.execute(provider,"stream_start",data,4)); assert.equal(starts,1);
+});
+
+test("a disappeared source and a changed account never start a stream", async () => {
+    let entries = [{id:"window:1:0",name:"Game"}], starts = 0;
+    const provider = {account:"first",channel:"room",read:()=>null,listSources:async()=>entries,start:()=>{starts++;}};
+    const control = new StreamControls(); await control.catalog.open(provider,0);
+    const data = {streamKey:"",channelId:"room",sourceRevision:control.state(provider).sourceRevision,sourceId:"window:1:0"};
+    entries = [{id:"window:1:0",name:"Different window"}]; await assert.rejects(control.execute(provider,"stream_start",data,1));
+    provider.account = "second"; await assert.rejects(control.execute(provider,"stream_start",data,2)); assert.equal(starts,0);
+});
+
+test("current Discord action contracts receive settings and unknown contracts stay disabled", () => {
+    const calls = [];
+    const media = {setGoLiveSource(settings) { if (settings?.qualityOptions) calls.push(settings.desktopSettings); calls.push({type:"MEDIA_ENGINE_SET_GO_LIVE_SOURCE",settings:settings}); }};
+    mediaAdapter(media)(fixture().live.source,"stream");
+    assert.deepEqual(calls[0],{sourceId:"window:1:0",sound:false});
+    assert.equal(calls[1].settings.context,"stream"); assert.equal(calls[1].settings.qualityOptions.resolution,720);
+    assert.equal(mediaAdapter({setGoLiveSource(){}}),undefined); assert.equal(startAdapter(()=>{}),undefined);
+    function start(guild,channel,options) { calls.push({type:"STREAM_START",streamType:guild ? "guild":"call",guildId:guild,channelId:channel,...options}); }
+    startAdapter(start)(null,"room",{id:"screen:0:0",name:"Screen"});
+    assert.equal(calls[2].sourceId,"screen:0:0"); assert.equal(calls[2].sound,false);
 });

@@ -328,6 +328,20 @@ pub fn prepare_bridge(data: &Path) -> Result<String, String> {
         include_str!("../../../integrations/vencord/gameLibraryBridge.desktop/stream.ts"),
     )
     .map_err(|error| error.to_string())?;
+    for (name, contents) in [
+        (
+            "capture.ts",
+            include_str!("../../../integrations/vencord/gameLibraryBridge.desktop/capture.ts"),
+        ),
+        (
+            "streamAdapter.ts",
+            include_str!(
+                "../../../integrations/vencord/gameLibraryBridge.desktop/streamAdapter.ts"
+            ),
+        ),
+    ] {
+        std::fs::write(plugin.join(name), contents).map_err(|error| error.to_string())?;
+    }
     std::fs::write(
         plugin.join("state.ts"),
         include_str!("../../../integrations/vencord/gameLibraryBridge.desktop/state.ts"),

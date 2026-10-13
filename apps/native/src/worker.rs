@@ -58,6 +58,8 @@ pub enum Command {
     RoomFilter(i32, String),
     RoomFavorite(String, bool),
     StreamControl(String, String, i32),
+    StreamCatalog(bool),
+    StreamSelection(String, String, String, i32, i32),
     Installer(crate::updates::InstallerAction, String),
     PrepareBridge,
     UpdateCheck,
@@ -564,6 +566,42 @@ fn bridge_status(
         );
         ui.set_stream_pending(stream.pending);
         ui.set_stream_result(stream.result.into());
+        ui.set_can_stream_start(
+            connected && snapshot["capabilities"]["stream_start"] == true && !stream.pending,
+        );
+        ui.set_can_stream_sources(
+            connected && snapshot["capabilities"]["stream_sources"] == true && !stream.pending,
+        );
+        if ui.get_stream_source_revision() != stream.source_revision || stream.sources.is_empty() {
+            ui.set_stream_source_index(-1);
+        }
+        ui.set_stream_source_revision(stream.source_revision);
+        ui.set_stream_source_channel(stream.source_channel.into());
+        ui.set_stream_source_pending(stream.source_pending);
+        ui.set_stream_source_error(stream.source_error.into());
+        ui.set_stream_source_names(
+            Rc::new(VecModel::from(
+                stream
+                    .sources
+                    .iter()
+                    .map(|source| {
+                        slint::SharedString::from(format!(
+                            "{} · {}",
+                            if source.kind == "screen" {
+                                "Ekran"
+                            } else {
+                                "Pencere"
+                            },
+                            source.name
+                        ))
+                    })
+                    .collect::<Vec<_>>(),
+            ))
+            .into(),
+        );
+        if !connected || stream.pending {
+            ui.set_stream_source_picker(false);
+        }
         ui.set_stream_audio(
             match stream.audio {
                 Some(true) => "Açık",
@@ -1275,6 +1313,23 @@ pub fn start(
                     let data = crate::stream::request(&bridge.snapshot(), &action, &key, index)?;
                     bridge.command(&action, data)
                 })(),
+                Command::StreamCatalog(open) => (|| {
+                    let bridge = bridge.as_ref().ok_or("Discord bağlantısını aç.")?;
+                    bridge.command("stream_sources", serde_json::json!({"open":open}))
+                })(),
+                Command::StreamSelection(action, key, channel, revision, index) => (|| {
+                    let bridge = bridge.as_ref().ok_or("Discord bağlantısını aç.")?;
+                    let data = crate::stream::selection_request(
+                        &bridge.snapshot(),
+                        &action,
+                        &key,
+                        &channel,
+                        revision,
+                        index,
+                    )?;
+                    bridge.command(&action, data)
+                })(
+                ),
                 Command::BridgeAction(action, data) => bridge
                     .as_ref()
                     .ok_or("Discord bağlantısını aç.")

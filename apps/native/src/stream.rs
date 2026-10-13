@@ -2,6 +2,14 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 #[derive(Default, Deserialize)]
+#[serde(default)]
+pub struct Source {
+    pub id: String,
+    pub name: String,
+    pub kind: String,
+}
+
+#[derive(Default, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct View {
     pub known: bool,
@@ -16,6 +24,12 @@ pub struct View {
     pub fps_options: Vec<u32>,
     pub pending: bool,
     pub result: String,
+    pub sources: Vec<Source>,
+    pub source_revision: i32,
+    pub source_channel: String,
+    pub source_pending: bool,
+    pub source_open: bool,
+    pub source_error: String,
 }
 
 pub fn view(snapshot: &Value) -> View {
@@ -31,7 +45,45 @@ pub fn view(snapshot: &Value) -> View {
     view.fps_options.retain(|value| (1..=120).contains(value));
     view.resolutions.truncate(8);
     view.fps_options.truncate(8);
+    view.sources.retain(|source| {
+        source.id.len() <= 128
+            && !source.id.contains('\0')
+            && matches!(source.kind.as_str(), "window" | "screen")
+            && source.id.starts_with(&format!("{}:", source.kind))
+    });
+    view.sources.truncate(100);
     view
+}
+
+pub fn selection_request(
+    snapshot: &Value,
+    action: &str,
+    key: &str,
+    channel: &str,
+    revision: i32,
+    index: i32,
+) -> Result<Value, String> {
+    let view = view(snapshot);
+    if action != "stream_start"
+        || snapshot["capabilities"][action] != true
+        || !view.known
+        || view.active
+        || !key.is_empty()
+        || view.pending
+        || view.source_pending
+        || !view.source_open
+        || revision <= 0
+        || revision != view.source_revision
+        || channel.is_empty()
+        || channel != view.source_channel
+    {
+        return Err("Ses odası veya kaynak seçimi değişti; listeyi yenile".into());
+    }
+    let source = usize::try_from(index)
+        .ok()
+        .and_then(|index| view.sources.get(index))
+        .ok_or("Kaynak seçimi artık kullanılamıyor")?;
+    Ok(json!({"streamKey":key,"channelId":channel,"sourceRevision":revision,"sourceId":source.id}))
 }
 
 pub fn request(snapshot: &Value, action: &str, key: &str, index: i32) -> Result<Value, String> {

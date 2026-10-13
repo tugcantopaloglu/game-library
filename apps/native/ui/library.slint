@@ -125,6 +125,15 @@ export component LibraryWindow inherits Window {
     in property <bool> can-inspect-stream;
     in property <bool> can-stream-quality;
     in property <bool> can-stream-fps;
+    in property <bool> can-stream-start;
+    in property <bool> can-stream-sources;
+    in property <[string]> stream-source-names;
+    in property <int> stream-source-revision;
+    in property <string> stream-source-channel;
+    in property <bool> stream-source-pending;
+    in property <string> stream-source-error;
+    in-out property <bool> stream-source-picker;
+    in-out property <int> stream-source-index: -1;
     in property <bool> stream-active;
     in property <bool> stream-known;
     in property <bool> stream-pending;
@@ -181,7 +190,8 @@ export component LibraryWindow inherits Window {
     in property <string> measurement-summary;
     in property <int> measurement-progress;
     in-out property <int> section;
-    changed section => { if section != 7 && room-mode == 2 { room-mode = 1; root.room-filter(1,room-query); } }
+    changed section => { if section != 7 { if room-mode == 2 { room-mode = 1; root.room-filter(1,room-query); } if stream-source-picker { stream-source-picker = false; root.stream-catalog(false); } } }
+    changed stream-panel => { if !stream-panel && stream-source-picker { stream-source-picker = false; root.stream-catalog(false); } }
     in-out property <bool> installed-only;
     in-out property <string> query;
     in-out property <length> scroll-position;
@@ -219,6 +229,8 @@ export component LibraryWindow inherits Window {
     callback stream-quality(string,int);
     callback stream-fps(string,int);
     callback stream-stop(string);
+    callback stream-catalog(bool);
+    callback stream-start(string,int,int);
     callback bridge-action(string,string);
     callback installer(int,int);
     callback prepare-bridge;
@@ -479,6 +491,7 @@ export component LibraryWindow inherits Window {
                             Heading { text: !stream-known ? "Yayın durumu bilinmiyor" : stream-active ? "Yayındasın" : "Yayın yok"; }
                             if stream-active: Caption { text: stream-source; font-size: 12px; overflow: elide; }
                             Rectangle { horizontal-stretch: 1; background: transparent; }
+                            if !stream-active && can-stream-sources: Action { text: stream-source-picker ? "Vazgeç" : "Kaynak seç"; ghost: true; enabled: !stream-pending; clicked => { stream-source-picker = !stream-source-picker; root.stream-catalog(stream-source-picker); } }
                             if can-stop-stream: Action { text: "Durdur"; danger: true; clicked => { root.stream-stop(stream-key); } }
                         }
                         if stream-active: HorizontalLayout { spacing: 10px;
@@ -491,7 +504,13 @@ export component LibraryWindow inherits Window {
                             Caption { text: "Yayın sesi · " + stream-audio; font-size: 12px; horizontal-stretch: 0; }
                             Rectangle { horizontal-stretch: 1; background: transparent; }
                         }
-                        Caption { text: !bridge-connected ? "Discord bağlantısı bekleniyor." : !stream-known ? "Discord yayın verisi okunamadı." : stream-pending ? "Discord'dan sonuç bekleniyor…" : stream-result != "" ? stream-result : stream-active ? "Bu sürümde başlatma, kaynak ve yayın sesi değişimi henüz desteklenmiyor." : "Yayını Discord'da başlatabilirsin."; font-size: 11px; }
+                        if stream-source-picker: HorizontalLayout { spacing: 10px;
+                            ComboBox { horizontal-stretch: 1; model: stream-source-names; current-index <=> stream-source-index; enabled: !stream-pending && !stream-source-pending; }
+                            Action { text: "Yenile"; ghost: true; enabled: !stream-pending && !stream-source-pending; clicked => { root.stream-catalog(true); } }
+                            Action { text: "Başlat"; enabled: can-stream-start && stream-source-index >= 0 && !stream-source-pending; clicked => { root.stream-start(stream-source-channel,stream-source-revision,stream-source-index); } }
+                        }
+                        if stream-source-picker && stream-source-error != "": Caption { text: stream-source-error; font-size: 11px; }
+                        Caption { text: !bridge-connected ? "Discord bağlantısı bekleniyor." : !stream-known ? "Discord yayın verisi okunamadı." : stream-pending ? "Discord'dan sonuç bekleniyor…" : stream-result != "" ? stream-result : stream-source-picker && stream-source-names.length == 0 ? "Paylaşılabilecek kaynak yok. Listeyi yenileyebilirsin." : stream-active ? "Yayın ayarları Discord'dan okunuyor." : can-stream-start ? "Paylaşılacak pencereyi veya ekranı seç." : "Yayın için Discord'da bir ses odasına bağlan."; font-size: 11px; }
                     } }
                     HorizontalLayout { spacing: 24px;
                         VerticalLayout { min-width: 0px; horizontal-stretch: 2; spacing: 10px;

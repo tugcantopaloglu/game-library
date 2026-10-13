@@ -385,6 +385,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let weak = ui.as_weak();
     ui.on_hide_window(move || {
         if let Some(ui) = weak.upgrade() {
+            if ui.get_stream_source_picker() {
+                ui.set_stream_source_picker(false);
+                ui.invoke_stream_catalog(false);
+            }
             if ui.get_room_mode() == 2 {
                 ui.set_room_mode(1);
                 ui.invoke_room_filter(1, ui.get_room_query());
@@ -395,6 +399,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let weak = ui.as_weak();
     ui.window().on_close_requested(move || {
         if let Some(ui) = weak.upgrade() {
+            if ui.get_stream_source_picker() {
+                ui.set_stream_source_picker(false);
+                ui.invoke_stream_catalog(false);
+            }
             if ui.get_room_mode() == 2 {
                 ui.set_room_mode(1);
                 ui.invoke_room_filter(1, ui.get_room_query());
@@ -510,6 +518,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     register_command!(on_stream_quality, (key,index) => Command::StreamControl("stream_quality".into(),key.into(),index));
     register_command!(on_stream_fps, (key,index) => Command::StreamControl("stream_fps".into(),key.into(),index));
     register_command!(on_stream_stop, (key) => Command::StreamControl("stream_stop".into(),key.into(),0));
+    register_command!(on_stream_catalog, (open) => Command::StreamCatalog(open));
+    register_command!(on_stream_start, (channel,revision,index) => Command::StreamSelection("stream_start".into(),String::new(),channel.into(),revision,index));
     register_command!(on_update_check, () => Command::UpdateCheck);
     register_command!(on_prepare_bridge, () => Command::PrepareBridge);
     register_command!(on_artwork_key, (key) => Command::ArtworkKey(key.into()));
