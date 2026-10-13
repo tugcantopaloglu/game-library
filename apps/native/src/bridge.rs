@@ -12,6 +12,7 @@ const MAX_SNAPSHOT_AGE: Duration = Duration::from_secs(6);
 struct LiveState {
     value: Value,
     received_at: Option<Instant>,
+    change: u64,
 }
 
 impl LiveState {
@@ -19,6 +20,7 @@ impl LiveState {
         Self {
             value: json!({"connected":false,"status":status}),
             received_at: None,
+            change: 0,
         }
     }
 
@@ -30,6 +32,30 @@ impl LiveState {
             return json!({"connected":false,"status":"Discord verisi güncel değil. Yeni durum bekleniyor."});
         }
         self.value.clone()
+    }
+
+    fn confirm(&mut self, message: &Value, now: Instant) -> bool {
+        let revision = message["revision"].as_u64();
+        if message["protocol"] != PROTOCOL
+            || message["version"] != PROTOCOL
+            || !revision.is_some_and(|revision| revision > 0 && revision <= 9_007_199_254_740_991)
+            || revision != self.value["revision"].as_u64()
+            || self.received_at.is_none()
+        {
+            return false;
+        }
+        self.received_at = Some(now);
+        true
+    }
+
+    fn view_token(&self) -> (u64, bool) {
+        (
+            self.change,
+            self.value["connected"] == true
+                && self
+                    .received_at
+                    .is_some_and(|at| at.elapsed() <= MAX_SNAPSHOT_AGE),
+        )
     }
 }
 
@@ -123,6 +149,13 @@ impl Bridge {
                                         state.value = value;
                                         state.value["connected"] = json!(true);
                                         state.received_at = Some(Instant::now());
+                                        state.change = state.change.wrapping_add(1);
+                                    }
+                                } else if value["type"] == "snapshot_unchanged" {
+                                    if let Ok(mut state) = state_copy.lock() {
+                                        if !state.confirm(&value, Instant::now()) {
+                                            return Err("Köprü durum onayı uyumsuz".into());
+                                        }
                                     }
                                 }
                             }
@@ -137,7 +170,9 @@ impl Bridge {
                 })();
                 let _ = result;
                 if let Ok(mut state) = state_copy.lock() {
+                    let change = state.change.wrapping_add(1);
                     *state = LiveState::disconnected("Vencord bağlantısı kapalı veya uyumsuz");
+                    state.change = change;
                 }
             }
         });
@@ -156,6 +191,13 @@ impl Bridge {
             .lock()
             .map(|state| state.snapshot(Instant::now()))
             .unwrap_or_else(|_| json!({"connected":false}))
+    }
+
+    pub fn view_token(&self) -> (u64, bool) {
+        self.state
+            .lock()
+            .map(|state| state.view_token())
+            .unwrap_or((0, false))
     }
 
     pub fn command(&self, action: &str, data: Value) -> Result<(), String> {
@@ -185,6 +227,22 @@ impl Drop for Bridge {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn unchanged_confirmation_requires_the_current_snapshot_revision() {
+        let now = Instant::now();
+        let mut state = LiveState::disconnected("test");
+        state.value = json!({"connected":true,"revision":7,"friends":[],"rooms":[]});
+        state.received_at = Some(now - MAX_SNAPSHOT_AGE - Duration::from_secs(1));
+        let token = state.view_token();
+        assert!(!state.confirm(&json!({"protocol":1,"version":1,"revision":6}), now));
+        assert_eq!(state.snapshot(now)["connected"], false);
+        assert!(state.confirm(&json!({"protocol":1,"version":1,"revision":7}), now));
+        assert_eq!(state.snapshot(now)["connected"], true);
+        assert_eq!(state.view_token().0, token.0);
+        assert!(!state.confirm(&json!({"protocol":1,"version":2,"revision":7}), now));
+        state.received_at = None;
+        assert!(!state.confirm(&json!({"protocol":1,"version":1,"revision":7}), now));
+    }
     #[test]
     fn bridge_requires_pairing_and_clears_live_data_on_disconnect() {
         let directory = tempfile::tempdir().unwrap();

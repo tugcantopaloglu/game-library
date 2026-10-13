@@ -735,6 +735,7 @@ pub fn start(
         };
         let mut completion_attempts = std::collections::HashSet::new();
         let mut social_query = crate::social::Query::default();
+        let mut social_view = None;
         loop {
             let command = if auto_update_app && std::time::Instant::now() >= next_update {
                 next_update =
@@ -1010,6 +1011,7 @@ pub fn start(
                     .and_then(|_| publish_collections(&store, &ui))
                     .and_then(|_| detail(&store, &id, &ui)),
                 Command::BridgeEnable(enabled) => (|| {
+                    social_view = None;
                     store
                         .set_setting("bridge_enabled", if enabled { "true" } else { "false" })
                         .map_err(|error| error.to_string())?;
@@ -1027,6 +1029,15 @@ pub fn start(
                     )
                 })(),
                 Command::BridgeRefresh => (|| {
+                    let token = bridge.as_ref().map(|bridge| bridge.view_token());
+                    let minute = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|time| time.as_secs() / 60)
+                        .unwrap_or_default();
+                    let next_view = (token, minute);
+                    if social_view == Some(next_view) {
+                        return Ok(());
+                    }
                     if let Some(bridge) = &bridge {
                         let snapshot = bridge.snapshot();
                         let desired = store
@@ -1054,7 +1065,9 @@ pub fn start(
                             }
                         }
                     }
-                    bridge_status(bridge.as_ref(), &store, &social_query, &ui)
+                    bridge_status(bridge.as_ref(), &store, &social_query, &ui)?;
+                    social_view = Some(next_view);
+                    Ok(())
                 })(),
                 Command::SocialFilter(text, favorites_only) => {
                     social_query = crate::social::Query {
@@ -1064,6 +1077,7 @@ pub fn start(
                     bridge_status(bridge.as_ref(), &store, &social_query, &ui)
                 }
                 Command::FriendFavorite(id, favorite) => (|| {
+                    social_view = None;
                     let snapshot = bridge
                         .as_ref()
                         .ok_or("Discord bağlantısını aç.")?

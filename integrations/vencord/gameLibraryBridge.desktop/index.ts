@@ -1,10 +1,11 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
-import { definePluginSettings, Settings } from "@api/Settings";
+import { definePluginSettings, Settings, SettingsStore } from "@api/Settings";
 import { checkForUpdates, update } from "@utils/updater";
 import definePlugin, { OptionType, PluginNative } from "@utils/types";
 import { findByProps } from "@webpack";
 import { ApplicationStreamingStore, ChannelActionCreators, ChannelStore, GuildStore, MediaEngineStore, PresenceStore, ReadStateStore, RelationshipStore, SelectedChannelStore, UserStore, VoiceStateStore } from "@webpack/common";
 import { favoriteIds, lastMessageAt, validId, visibleFriends } from "./social";
+import { SnapshotCache, StoreListeners, Section } from "./state";
 
 const Native = VencordNative.pluginHelpers.GameLibraryBridge as PluginNative<typeof import("./native")>;
 const settings = definePluginSettings({
@@ -15,8 +16,14 @@ const settings = definePluginSettings({
 let timer: ReturnType<typeof setInterval> | undefined;
 let busy = false;
 let result = "";
+let cache = new SnapshotCache();
+const listeners = new StoreListeners();
+let moduleCache: ReturnType<typeof resolveActions> | undefined;
+let lastResolve = 0;
+let lastFallback = 0;
+const invalidateSettings = () => cache.invalidate("friends", "controls");
 
-function actions() {
+function resolveActions() {
     return {
         voice: findByProps("toggleSelfMute", "toggleSelfDeaf") as any,
         channel: findByProps("selectVoiceChannel", "selectChannel") as any,
@@ -24,8 +31,15 @@ function actions() {
     };
 }
 
-function snapshot() {
-    const modules = actions();
+function actions() {
+    if (!moduleCache || Date.now() - lastResolve > 30000) {
+        moduleCache = resolveActions();
+        lastResolve = Date.now();
+    }
+    return moduleCache;
+}
+
+function friendSnapshot() {
     const selected = settings.store.selectedFriends.split(",").map(id => id.trim()).filter(id => /^\d{15,22}$/.test(id));
     const favorites = favoriteIds(settings.store.favoriteFriends);
     const recencyAvailable = typeof ChannelStore.getDMFromUserId === "function" && typeof ReadStateStore?.lastMessageId === "function";
@@ -37,18 +51,39 @@ function snapshot() {
         const user = UserStore.getUser(id);
         return { id, lastMessageAt, name: (user?.globalName || user?.username || id).slice(0,64), status: PresenceStore.getStatus(id) || "unknown", activity: PresenceStore.getActivities(id).slice(0, 2).map(activity => activity.name).join(", ").slice(0,128) };
     });
+    return { friends, accountId: UserStore.getCurrentUser()?.id, favoriteIds: favorites, recentConversations: recencyAvailable };
+}
+
+function roomSnapshot() {
     const rooms = Object.entries(VoiceStateStore.getAllVoiceStates()).flatMap(([guildId, states]) => {
         const counts = new Map<string, number>();
         Object.values(states).forEach(state => { if (state.channelId) counts.set(state.channelId, (counts.get(state.channelId) || 0) + 1); });
         return [...counts].map(([id, members]) => ({ id, name: ChannelStore.getChannel(id)?.name || id, guild: GuildStore.getGuild(guildId)?.name || "", members }));
     }).slice(0, 50);
-    return { type: "snapshot", protocol: 1, version: 1, status: "Yerel Vencord bağlantısı açık", result,
-        friends, rooms, accountId: UserStore.getCurrentUser()?.id, favoriteIds: favorites, voiceChannel: SelectedChannelStore.getVoiceChannelId(),
+    return { rooms };
+}
+
+function controlSnapshot() {
+    const modules = actions();
+    return { status: "Yerel Vencord bağlantısı açık", result, voiceChannel: SelectedChannelStore.getVoiceChannelId(),
         muted: MediaEngineStore.isSelfMute(), deafened: MediaEngineStore.isSelfDeaf(),
         stream: ApplicationStreamingStore.getCurrentUserActiveStream(),
         autoUpdate: Settings.autoUpdate,
-        capabilities: { recent_conversations: recencyAvailable, favorite_friends: true, open_dm: typeof ChannelActionCreators.openPrivateChannel === "function", mute: typeof modules.voice?.toggleSelfMute === "function", deafen: typeof modules.voice?.toggleSelfDeaf === "function", join_voice: typeof modules.channel?.selectVoiceChannel === "function", stream_stop: typeof modules.streaming?.stopStream === "function", stream_start: false, stream_source: false, stream_quality: false, stream_fps: false, stream_audio: false, vencord_update: true, auto_update: true }
+        capabilities: { recent_conversations: typeof ChannelStore?.getDMFromUserId === "function" && typeof ReadStateStore?.lastMessageId === "function", favorite_friends: true, open_dm: typeof ChannelActionCreators.openPrivateChannel === "function", mute: typeof modules.voice?.toggleSelfMute === "function", deafen: typeof modules.voice?.toggleSelfDeaf === "function", join_voice: typeof modules.channel?.selectVoiceChannel === "function", stream_stop: typeof modules.streaming?.stopStream === "function", stream_start: false, stream_source: false, stream_quality: false, stream_fps: false, stream_audio: false, vencord_update: true, auto_update: true }
     };
+}
+
+function bindStores() {
+    let complete = true;
+    const bindings: [any, Section[]][] = [
+        [UserStore, ["friends", "rooms", "controls"]],
+        [RelationshipStore, ["friends"]], [PresenceStore, ["friends"]], [ReadStateStore, ["friends"]],
+        [ChannelStore, ["friends", "rooms", "controls"]], [GuildStore, ["rooms"]],
+        [VoiceStateStore, ["rooms", "controls"]], [MediaEngineStore, ["controls"]],
+        [SelectedChannelStore, ["controls"]], [ApplicationStreamingStore, ["controls"]]
+    ];
+    for (const [store, sections] of bindings) complete = listeners.bind(store, () => cache.invalidate(...sections)) && complete;
+    return complete;
 }
 
 async function command(message: any) {
@@ -84,18 +119,35 @@ export default definePlugin({
     name: "GameLibraryBridge", description: "Local Game Library connection with bounded messages, selected friends and version-gated controls.",
     authors: [{ name: "Game Library", id: 0n }], settings,
     async start() {
+        cache = new SnapshotCache();
+        moduleCache = undefined;
+        lastFallback = 0;
+        SettingsStore.addChangeListener("autoUpdate", invalidateSettings);
+        SettingsStore.addPrefixChangeListener("plugins.GameLibraryBridge", invalidateSettings);
         await Native.start(settings.store.dataDirectory);
         timer = setInterval(async () => {
             if (busy) return; busy = true;
             try {
                 const pending = await Native.poll();
                 if (pending.connected) {
-                    for (const message of pending.commands) { try { await command(message); } catch (error) { result = error instanceof Error ? error.message : "İşlem başarısız"; } }
-                    await Native.snapshot(snapshot());
+                    const complete = bindStores();
+                    if (!complete && Date.now() - lastFallback >= 4000) { cache.invalidate(); lastFallback = Date.now(); }
+                    for (const message of pending.commands) { try { await command(message); } catch (error) { result = error instanceof Error ? error.message : "İşlem başarısız"; } cache.invalidate("controls"); }
+                    const packet = cache.packet(pending.generation, section => section === "friends" ? friendSnapshot() : section === "rooms" ? roomSnapshot() : controlSnapshot());
+                    if (!await Native.snapshot(packet)) cache.invalidate();
                 }
-            } catch { result = "Discord sürümündeki bir yetenek kullanılamıyor"; }
+            } catch { result = "Discord sürümündeki bir yetenek kullanılamıyor"; cache.invalidate(); }
             finally { busy = false; }
         }, 1000);
     },
-    stop() { if (timer) clearInterval(timer); timer = undefined; Native.stop(); }
+    stop() {
+        if (timer) clearInterval(timer);
+        timer = undefined;
+        listeners.clear();
+        SettingsStore.removeChangeListener("autoUpdate", invalidateSettings);
+        SettingsStore.removePrefixChangeListener("plugins.GameLibraryBridge", invalidateSettings);
+        cache = new SnapshotCache();
+        moduleCache = undefined;
+        Native.stop();
+    }
 });

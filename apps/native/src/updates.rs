@@ -324,6 +324,11 @@ pub fn prepare_bridge(data: &Path) -> Result<String, String> {
     )
     .map_err(|error| error.to_string())?;
     std::fs::write(
+        plugin.join("state.ts"),
+        include_str!("../../../integrations/vencord/gameLibraryBridge.desktop/state.ts"),
+    )
+    .map_err(|error| error.to_string())?;
+    std::fs::write(
         plugin.join("social.ts"),
         include_str!("../../../integrations/vencord/gameLibraryBridge.desktop/social.ts"),
     )

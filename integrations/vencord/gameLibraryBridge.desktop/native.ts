@@ -11,6 +11,7 @@ let commands: unknown[] = [];
 let connected = false;
 let directory = "";
 let enabled = false;
+let generation = 0;
 
 function reconnect() {
     if (!enabled || socket) return;
@@ -35,7 +36,7 @@ function reconnect() {
                 const line = buffer.slice(0, newline); buffer = buffer.slice(newline + 1);
                 try {
                     const message = JSON.parse(line);
-                    if (message.type === "welcome" && message.protocol === 1) connected = true;
+                    if (message.type === "welcome" && message.protocol === 1) { connected = true; generation++; }
                     if (connected && message.type === "command" && commands.length < 16) commands.push(message);
                 } catch { connection.destroy(); }
             }
@@ -57,12 +58,14 @@ export function start(_: unknown, dataDirectory: string) {
 
 export function poll() {
     const pending = commands; commands = [];
-    return { connected, commands: pending };
+    return { connected, generation, commands: pending };
 }
 
 export function snapshot(_: unknown, payload: unknown) {
     const text = JSON.stringify(payload);
-    if (connected && Buffer.byteLength(text, "utf8") + 1 <= 256 * 1024) socket?.write(text + "\n");
+    if (!connected || !socket || socket.writableLength > 256 * 1024 || Buffer.byteLength(text, "utf8") + 1 > 256 * 1024) return false;
+    socket.write(text + "\n");
+    return true;
 }
 
 export function stop() {

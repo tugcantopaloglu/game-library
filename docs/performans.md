@@ -29,7 +29,7 @@ GPU motor kullanımı ve dedicated/shared GPU belleği ayrıca izlenecek. Boşta
 - Açılışta önce SQLite snapshot'ı gösterilir; keşif ve ağ işleri sonradan başlar.
 - UI sadece görünür satırları render eder. İlk native sürüm 100 kayıtlık sayfanın JPEG/PNG kapaklarını en fazla 180×270 piksele indirir; tam sayfanın RGBA verisi en fazla 18,54 MiB'dir. Decode işçi thread'inde, tek görsel üzerinde yapılır. Daha büyük kütüphanelerde görünür kapaklara göre yükleme sonraki optimizasyondur.
 - Tam boy artwork, blur ve arka plan video kullanılmaz. Hareketler kısa, etkileşime bağlı ve durabilir.
-- Mevcut Vencord eklentisi tek timer ile saniyede bir, en fazla 50 kişi/50 oda snapshot'ı gönderir; native görünüm açıkken iki saniyede bir yenilenir. Kişi başına timer yoktur. Olay tabanlı snapshot optimizasyonu sonraki iştir; eklentinin Discord sürecine ek maliyeti henüz ayrı ölçülmedi.
+- Vencord köprüsü Flux store değişikliklerini birleştirir; arkadaşlar, odalar ve kontroller ayrı önbelleklerde yenilenir. Saniyelik komut kontrolü değişmeyen durumda yalnızca mevcut durum sürümünü onaylar; 200 arkadaş ve 50 oda tekrar taranmaz. Dinleyici API'si eksikse dört saniyelik sınırlı yeniden okuma uygulanır. Native görünüm veri/bağlantı değiştiğinde veya göreli konuşma zamanının dakikası değiştiğinde güncellenir. Discord sürecine ek maliyet henüz ayrı ölçülmedi.
 - SQLite bağlantı/cache boyutları sınırlı; iş kuyrukları sınırlı ve iptal edilebilir.
 - Oyun başladığında ağır keşif ve metadata kuyruğu duraklatılır. Kullanıcı açıkça devam ettirebilir.
 - Başlatılan oyun süreçleri öncelikle OS olaylarıyla izlenir. Kaçırılan olayları düzeltmek için yalnızca ilgili süreçlerde seyrek ve sınırlı kontrol uygulanabilir.
