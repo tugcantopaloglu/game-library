@@ -3,6 +3,7 @@ import { readFileSync } from "fs";
 import { createConnection, Socket } from "net";
 import { join, resolve } from "path";
 import { StringDecoder } from "string_decoder";
+import { encodeSnapshot } from "./state";
 
 let socket: Socket | undefined;
 let retry: ReturnType<typeof setTimeout> | undefined;
@@ -62,8 +63,9 @@ export function poll() {
 }
 
 export function snapshot(_: unknown, payload: unknown) {
-    const text = JSON.stringify(payload);
-    if (!connected || !socket || socket.writableLength > 256 * 1024 || Buffer.byteLength(text, "utf8") + 1 > 256 * 1024) return false;
+    if (!connected || !socket || socket.writableLength > 256 * 1024) return false;
+    const text = encodeSnapshot(payload, text => Buffer.byteLength(text,"utf8"));
+    if (!text || socket.writableLength + Buffer.byteLength(text,"utf8") + 1 > 256 * 1024) return false;
     socket.write(text + "\n");
     return true;
 }

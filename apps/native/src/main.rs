@@ -6,6 +6,7 @@ mod completion;
 mod measurement;
 mod media;
 mod social;
+mod stream;
 mod updates;
 mod validation;
 mod worker;
@@ -506,6 +507,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     register_command!(on_friend_favorite, (id,favorite) => Command::FriendFavorite(id.into(),favorite));
     register_command!(on_room_filter, (mode,text) => Command::RoomFilter(mode,text.into()));
     register_command!(on_room_favorite, (id,favorite) => Command::RoomFavorite(id.into(),favorite));
+    register_command!(on_stream_quality, (key,index) => Command::StreamControl("stream_quality".into(),key.into(),index));
+    register_command!(on_stream_fps, (key,index) => Command::StreamControl("stream_fps".into(),key.into(),index));
+    register_command!(on_stream_stop, (key) => Command::StreamControl("stream_stop".into(),key.into(),0));
     register_command!(on_update_check, () => Command::UpdateCheck);
     register_command!(on_prepare_bridge, () => Command::PrepareBridge);
     register_command!(on_artwork_key, (key) => Command::ArtworkKey(key.into()));

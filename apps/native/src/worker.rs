@@ -57,6 +57,7 @@ pub enum Command {
     FriendFavorite(String, bool),
     RoomFilter(i32, String),
     RoomFavorite(String, bool),
+    StreamControl(String, String, i32),
     Installer(crate::updates::InstallerAction, String),
     PrepareBridge,
     UpdateCheck,
@@ -516,6 +517,7 @@ fn bridge_status(
     let catalog_pending = connected
         && query.room_mode == 2
         && snapshot["roomCatalogQuery"].as_str() != Some(query.room_query.as_str());
+    let stream = crate::stream::view(&snapshot);
     let mut lines = vec![snapshot["status"]
         .as_str()
         .unwrap_or("Vencord bekleniyor")
@@ -542,6 +544,90 @@ fn bridge_status(
         ui.set_favorite_room_count(room_favorites.len() as i32);
         ui.set_room_catalog_pending(catalog_pending);
         ui.set_room_catalog_more(snapshot["roomCatalogMore"] == true);
+        ui.set_can_inspect_stream(connected && snapshot["capabilities"]["stream_inspect"] == true);
+        ui.set_stream_active(stream.active);
+        ui.set_stream_known(stream.known);
+        ui.set_stream_key(stream.key.into());
+        ui.set_stream_source(
+            if stream.source_name.is_empty() {
+                if stream.source_id.starts_with("window:") {
+                    "Paylaşılan pencere".into()
+                } else if stream.source_id.starts_with("screen:") {
+                    "Paylaşılan ekran".into()
+                } else {
+                    "Yayın kaynağı".into()
+                }
+            } else {
+                stream.source_name
+            }
+            .into(),
+        );
+        ui.set_stream_pending(stream.pending);
+        ui.set_stream_result(stream.result.into());
+        ui.set_stream_audio(
+            match stream.audio {
+                Some(true) => "Açık",
+                Some(false) => "Kapalı",
+                None => "Bilinmiyor",
+            }
+            .into(),
+        );
+        ui.set_stream_resolution_index(
+            stream
+                .resolution
+                .and_then(|value| {
+                    stream
+                        .resolutions
+                        .iter()
+                        .position(|option| *option == value)
+                })
+                .map(|index| index as i32)
+                .unwrap_or(-1),
+        );
+        ui.set_stream_fps_index(
+            stream
+                .fps
+                .and_then(|value| {
+                    stream
+                        .fps_options
+                        .iter()
+                        .position(|option| *option == value)
+                })
+                .map(|index| index as i32)
+                .unwrap_or(-1),
+        );
+        ui.set_stream_resolutions(
+            Rc::new(VecModel::from(
+                stream
+                    .resolutions
+                    .iter()
+                    .map(|value| slint::SharedString::from(format!("{value}p")))
+                    .collect::<Vec<_>>(),
+            ))
+            .into(),
+        );
+        ui.set_stream_fps_options(
+            Rc::new(VecModel::from(
+                stream
+                    .fps_options
+                    .iter()
+                    .map(|value| slint::SharedString::from(format!("{value} FPS")))
+                    .collect::<Vec<_>>(),
+            ))
+            .into(),
+        );
+        ui.set_can_stream_quality(
+            connected
+                && snapshot["capabilities"]["stream_quality"] == true
+                && stream.active
+                && !stream.pending,
+        );
+        ui.set_can_stream_fps(
+            connected
+                && snapshot["capabilities"]["stream_fps"] == true
+                && stream.active
+                && !stream.pending,
+        );
         let friends: Vec<SocialTile> = friends
             .iter()
             .map(|friend| {
@@ -611,7 +697,8 @@ fn bridge_status(
         ui.set_can_stop_stream(
             connected
                 && snapshot["capabilities"]["stream_stop"] == true
-                && !snapshot["stream"].is_null(),
+                && stream.active
+                && !stream.pending,
         );
         ui.set_muted(snapshot["muted"] == true);
         ui.set_deafened(snapshot["deafened"] == true);
@@ -1066,7 +1153,10 @@ pub fn start(
                             .map_err(|error| error.to_string())?
                             .as_deref()
                             != Some("false");
-                        if snapshot["connected"] == true && snapshot["autoUpdate"] != desired {
+                        if snapshot["connected"] == true
+                            && snapshot["capabilities"]["auto_update"] == true
+                            && snapshot["autoUpdate"] != desired
+                        {
                             bridge
                                 .command("auto_update", serde_json::json!({"enabled":desired}))?;
                         }
@@ -1117,6 +1207,7 @@ pub fn start(
                     Ok(())
                 })(),
                 Command::SocialFilter(text, favorites_only) => {
+                    social_view = None;
                     social_query.text = text.chars().take(256).collect();
                     social_query.favorites_only = favorites_only;
                     bridge_status(bridge.as_ref(), &store, &social_query, &ui)
@@ -1178,6 +1269,11 @@ pub fn start(
                         .set_room_favorite(account, &id, favorite)
                         .map_err(|error| error.to_string())?;
                     bridge_status(Some(bridge), &store, &social_query, &ui)
+                })(),
+                Command::StreamControl(action, key, index) => (|| {
+                    let bridge = bridge.as_ref().ok_or("Discord bağlantısını aç.")?;
+                    let data = crate::stream::request(&bridge.snapshot(), &action, &key, index)?;
+                    bridge.command(&action, data)
                 })(),
                 Command::BridgeAction(action, data) => bridge
                     .as_ref()

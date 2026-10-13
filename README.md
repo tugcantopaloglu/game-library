@@ -12,6 +12,8 @@ Bilgisayardaki oyunları tek yerde toplayan, yerel verilerle çalışan masaüst
 
 13 Ekim 2026: native arayüz sadeleştirildi. Oyun ekleme/tarama üstteki ⋯ menüsünde, kaynaklar ve performans Ayarlar altında bulunur. Discord arkadaşları son konuşmaya göre sıralanır; yıldızlanan arkadaşlar hesap bazında saklanır ve Favoriler sekmesinden süzülebilir. Konuşma sıralaması ve favoriler için güncel `gameLibraryBridge.desktop` eklentisi gerekir. [Bu çalışmanın kaydı](docs/kontrol-20261013.md).
 
+Discord köprüsü değişen veriyi önbellekten günceller; boşta arkadaş/oda listelerini tekrar taramaz. Hesap bazında 50 favori ses odası, görünür odalar için native seçim/arama ve boş oda takibi eklendi. Native yayın paneli mevcut durumu gösterir; istemci desteği varsa durdurma ve geri okumayla doğrulanan kalite/FPS değişimi sağlar. Başlatma, yeni yayın kaynağı ve yayın sesi değişimi henüz desteklenmiyor. Güncel köprü ve native uygulama birlikte kullanılmalıdır. [Uygulama ve kontrol sınırları](docs/discord-gelistirme-20261013.md).
+
 Discord yayın kapsamı: başlatma/durdurma, paylaşılan oyun veya pencereyi değiştirme, çözünürlük/kalite, FPS ve ses ayarları. Bunların tamamı ürün hedefi; her işlemin teknik erişimi ve kararlılığı ilk denemede ayrı doğrulanacak.
 
 ## Teknoloji kararı

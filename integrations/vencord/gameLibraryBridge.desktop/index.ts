@@ -6,6 +6,7 @@ import { findByProps } from "@webpack";
 import { ApplicationStreamingStore, ChannelActionCreators, ChannelStore, GuildStore, MediaEngineStore, PermissionStore, PermissionsBits, PresenceStore, ReadStateStore, RelationshipStore, SelectedChannelStore, UserStore, VoiceStateStore } from "@webpack/common";
 import { favoriteIds, lastMessageAt, validId, visibleFriends } from "./social";
 import { SnapshotCache, StoreListeners, Section } from "./state";
+import { LiveStream, StreamControls, StreamProvider } from "./stream";
 
 const Native = VencordNative.pluginHelpers.GameLibraryBridge as PluginNative<typeof import("./native")>;
 const settings = definePluginSettings({
@@ -24,13 +25,16 @@ let lastResolve = 0;
 let lastFallback = 0;
 let catalogQuery: string | null = null;
 let catalogAccount: string | undefined;
+let streamControls = new StreamControls();
+let transportGeneration = -1;
 const invalidateSettings = () => cache.invalidate("friends", "rooms", "controls");
 
 function resolveActions() {
     return {
         voice: findByProps("toggleSelfMute", "toggleSelfDeaf") as any,
         channel: findByProps("selectVoiceChannel", "selectChannel") as any,
-        streaming: findByProps("createStream", "stopStream") as any
+        streaming: findByProps("stopStream") as any,
+        media: findByProps("setGoLiveSource", "setInputVolume", "setOutputVolume") as any
     };
 }
 
@@ -91,18 +95,50 @@ function roomSnapshot() {
 
 function controlSnapshot() {
     const modules = actions();
+    const streamControl = streamControls.state(streamProvider());
     return { status: "Yerel Vencord bağlantısı açık", result, voiceChannel: SelectedChannelStore.getVoiceChannelId(),
         muted: MediaEngineStore.isSelfMute(), deafened: MediaEngineStore.isSelfDeaf(),
-        stream: ApplicationStreamingStore.getCurrentUserActiveStream(),
+        stream: streamControl.active ? {streamKey:streamControl.key} : null,
+        streamControl,
         autoUpdate: Settings.autoUpdate,
         capabilities: {
             recent_conversations: typeof ChannelStore?.getDMFromUserId === "function" && typeof ReadStateStore?.lastMessageId === "function",
             favorite_friends: true, favorite_rooms: typeof PermissionStore?.can === "function", room_catalog: typeof ChannelStore?.getChannelIds === "function" && typeof PermissionStore?.can === "function",
             open_dm: typeof ChannelActionCreators.openPrivateChannel === "function",
             mute: typeof modules.voice?.toggleSelfMute === "function", deafen: typeof modules.voice?.toggleSelfDeaf === "function", join_voice: typeof modules.channel?.selectVoiceChannel === "function",
-            stream_stop: typeof modules.streaming?.stopStream === "function", stream_start: false, stream_source: false, stream_quality: false, stream_fps: false, stream_audio: false,
+            stream_inspect: typeof ApplicationStreamingStore?.getCurrentUserActiveStream === "function",
+            stream_stop: streamControl.canStop, stream_start: false, stream_source: false, stream_quality: streamControl.canQuality, stream_fps: streamControl.canFps, stream_audio: false,
             vencord_update: true, auto_update: true
         }
+    };
+}
+
+function streamProvider(): StreamProvider {
+    const modules = actions();
+    const account = UserStore.getCurrentUser()?.id;
+    const current = ApplicationStreamingStore.getCurrentUserActiveStream?.();
+    return {
+        account,
+        known: !!account && (!current || current.ownerId === account),
+        read: () => {
+            const active = ApplicationStreamingStore.getCurrentUserActiveStream();
+            if (!active || active.ownerId !== account) return null;
+            const rtc = ApplicationStreamingStore.getState?.().rtcStreams ?? {};
+            const key = Object.keys(rtc).slice(0,100).find(key => {
+                const stream = ApplicationStreamingStore.getActiveStreamForStreamKey?.(key);
+                return stream?.ownerId === account && stream.channelId === active.channelId;
+            });
+            const source = MediaEngineStore.getGoLiveSource?.();
+            const context = MediaEngineStore.getGoLiveContext?.();
+            const validSource = !!source && typeof source.desktopSource?.id === "string" && source.desktopSource.id.length <= 256
+                && Number.isInteger(source.quality?.resolution) && source.quality.resolution > 0 && source.quality.resolution <= 4320
+                && Number.isInteger(source.quality.frameRate) && source.quality.frameRate > 0 && source.quality.frameRate <= 120
+                && (context === "default" || context === "stream");
+            const metadata = ApplicationStreamingStore.getStreamerActiveStreamMetadata?.();
+            return {key:key && key.length <= 256 ? key : "",source:validSource ? source : null,context:context === "stream" ? "stream" : "default",sourceName: (metadata?.sourceName ?? "").slice(0,128)} as LiveStream;
+        },
+        setSource: typeof modules.media?.setGoLiveSource === "function" ? (source,context) => modules.media.setGoLiveSource(source,context) : undefined,
+        stop: typeof modules.streaming?.stopStream === "function" ? key => modules.streaming.stopStream(key) : undefined
     };
 }
 
@@ -141,11 +177,8 @@ async function command(message: any) {
         case "open_dm":
             if (!RelationshipStore.getFriendIDs().includes(id)) throw new Error("Seçili arkadaş bulunamadı");
             ChannelActionCreators.openPrivateChannel(id); break;
-        case "stream_stop": {
-            const stream = ApplicationStreamingStore.getCurrentUserActiveStream() as any;
-            if (!stream?.streamKey) throw new Error("Aktif yayın bulunamadı");
-            modules.streaming.stopStream(stream.streamKey); break;
-        }
+        case "stream_stop": case "stream_quality": case "stream_fps":
+            await streamControls.execute(streamProvider(),message.action,message.data); break;
         case "auto_update": Settings.autoUpdate = message.data?.enabled === true; break;
         case "vencord_update":
             if (await checkForUpdates()) await update();
@@ -164,6 +197,8 @@ export default definePlugin({
         lastFallback = 0;
         catalogQuery = null;
         catalogAccount = undefined;
+        streamControls = new StreamControls();
+        transportGeneration = -1;
         SettingsStore.addChangeListener("autoUpdate", invalidateSettings);
         SettingsStore.addPrefixChangeListener("plugins.GameLibraryBridge", invalidateSettings);
         await Native.start(settings.store.dataDirectory);
@@ -172,9 +207,17 @@ export default definePlugin({
             try {
                 const pending = await Native.poll();
                 if (pending.connected) {
+                    if (transportGeneration !== pending.generation) { transportGeneration = pending.generation; catalogQuery = null; }
                     const complete = bindStores();
                     if (!complete && Date.now() - lastFallback >= 4000) { cache.invalidate(); lastFallback = Date.now(); }
-                    for (const message of pending.commands) { try { await command(message); } catch (error) { result = error instanceof Error ? error.message : "İşlem başarısız"; } cache.invalidate("controls"); }
+                    for (const message of pending.commands) {
+                        try { await command(message); } catch (error) {
+                            result = error instanceof Error ? error.message : "İşlem başarısız";
+                            if (String((message as any)?.action).startsWith("stream_")) streamControls.fail(result);
+                        }
+                        cache.invalidate("controls");
+                    }
+                    if (streamControls.waiting && streamControls.observe(streamProvider())) cache.invalidate("controls");
                     const packet = cache.packet(pending.generation, section => section === "friends" ? friendSnapshot() : section === "rooms" ? roomSnapshot() : controlSnapshot());
                     if (!await Native.snapshot(packet)) cache.invalidate();
                 }
@@ -192,6 +235,7 @@ export default definePlugin({
         moduleCache = undefined;
         catalogQuery = null;
         catalogAccount = undefined;
+        streamControls = new StreamControls();
         Native.stop();
     }
 });

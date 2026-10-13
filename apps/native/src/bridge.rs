@@ -44,6 +44,12 @@ impl LiveState {
         {
             return false;
         }
+        if self
+            .received_at
+            .is_some_and(|at| now.saturating_duration_since(at) > MAX_SNAPSHOT_AGE)
+        {
+            self.change = self.change.wrapping_add(1);
+        }
         self.received_at = Some(now);
         true
     }
@@ -238,7 +244,10 @@ mod tests {
         assert_eq!(state.snapshot(now)["connected"], false);
         assert!(state.confirm(&json!({"protocol":1,"version":1,"revision":7}), now));
         assert_eq!(state.snapshot(now)["connected"], true);
-        assert_eq!(state.view_token().0, token.0);
+        assert_eq!(state.view_token().0, token.0 + 1);
+        let recovered = state.view_token();
+        assert!(state.confirm(&json!({"protocol":1,"version":1,"revision":7}), now));
+        assert_eq!(state.view_token(), recovered);
         assert!(!state.confirm(&json!({"protocol":1,"version":2,"revision":7}), now));
         state.received_at = None;
         assert!(!state.confirm(&json!({"protocol":1,"version":1,"revision":7}), now));

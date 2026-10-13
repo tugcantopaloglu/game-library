@@ -122,6 +122,21 @@ export component LibraryWindow inherits Window {
     in property <bool> can-mute;
     in property <bool> can-deafen;
     in property <bool> can-stop-stream;
+    in property <bool> can-inspect-stream;
+    in property <bool> can-stream-quality;
+    in property <bool> can-stream-fps;
+    in property <bool> stream-active;
+    in property <bool> stream-known;
+    in property <bool> stream-pending;
+    in property <string> stream-key;
+    in property <string> stream-source;
+    in property <string> stream-audio;
+    in property <string> stream-result;
+    in property <[string]> stream-resolutions;
+    in property <[string]> stream-fps-options;
+    in-out property <int> stream-resolution-index;
+    in-out property <int> stream-fps-index;
+    in-out property <bool> stream-panel;
     in property <bool> muted;
     in property <bool> deafened;
     in property <string> bridge-status: "Yerel Discord/Vencord bağlantısı kapalı.";
@@ -201,6 +216,9 @@ export component LibraryWindow inherits Window {
     callback friend-favorite(string,bool);
     callback room-filter(int,string);
     callback room-favorite(string,bool);
+    callback stream-quality(string,int);
+    callback stream-fps(string,int);
+    callback stream-stop(string);
     callback bridge-action(string,string);
     callback installer(int,int);
     callback prepare-bridge;
@@ -453,9 +471,28 @@ export component LibraryWindow inherits Window {
                         if !bridge-enabled: Action { text: "Bağlan"; clicked => { bridge-enabled = true; root.bridge-toggle(true); } }
                         if can-mute: Action { text: ""; icon: 14; danger: muted; min-width: 32px; max-width: 32px; accessible-label: muted ? "Mikrofonu aç" : "Mikrofonu sustur"; clicked => { root.bridge-action("mute",""); } }
                         if can-deafen: Action { text: ""; icon: 15; danger: deafened; min-width: 32px; max-width: 32px; accessible-label: deafened ? "Sesi aç" : "Sesi kapat"; clicked => { root.bridge-action("deafen",""); } }
-                        if can-stop-stream: Action { text: "Yayını durdur"; clicked => { root.bridge-action("stream_stop",""); } }
+                        if can-inspect-stream: Action { text: "Yayın"; ghost: true; clicked => { stream-panel = !stream-panel; } }
                         Action { text: ""; icon: 4; min-width: 32px; max-width: 32px; accessible-label: "Discord bağlantı ayarları"; clicked => { section = 10; } }
                     }
+                    if stream-panel: Panel { VerticalLayout { padding: 16px; spacing: 10px;
+                        HorizontalLayout { spacing: 12px;
+                            Heading { text: !stream-known ? "Yayın durumu bilinmiyor" : stream-active ? "Yayındasın" : "Yayın yok"; }
+                            if stream-active: Caption { text: stream-source; font-size: 12px; overflow: elide; }
+                            Rectangle { horizontal-stretch: 1; background: transparent; }
+                            if can-stop-stream: Action { text: "Durdur"; danger: true; clicked => { root.stream-stop(stream-key); } }
+                        }
+                        if stream-active: HorizontalLayout { spacing: 10px;
+                            Caption { text: "Kalite"; horizontal-stretch: 0; font-size: 12px; }
+                            if stream-resolutions.length > 0: ComboBox { width: 120px; model: stream-resolutions; current-index <=> stream-resolution-index; enabled: can-stream-quality; selected(value) => { root.stream-quality(stream-key,stream-resolution-index); } }
+                            if stream-resolutions.length == 0: Caption { text: "Bilinmiyor"; font-size: 12px; horizontal-stretch: 0; }
+                            Caption { text: "FPS"; horizontal-stretch: 0; font-size: 12px; }
+                            if stream-fps-options.length > 0: ComboBox { width: 120px; model: stream-fps-options; current-index <=> stream-fps-index; enabled: can-stream-fps; selected(value) => { root.stream-fps(stream-key,stream-fps-index); } }
+                            if stream-fps-options.length == 0: Caption { text: "Bilinmiyor"; font-size: 12px; horizontal-stretch: 0; }
+                            Caption { text: "Yayın sesi · " + stream-audio; font-size: 12px; horizontal-stretch: 0; }
+                            Rectangle { horizontal-stretch: 1; background: transparent; }
+                        }
+                        Caption { text: !bridge-connected ? "Discord bağlantısı bekleniyor." : !stream-known ? "Discord yayın verisi okunamadı." : stream-pending ? "Discord'dan sonuç bekleniyor…" : stream-result != "" ? stream-result : stream-active ? "Bu sürümde başlatma, kaynak ve yayın sesi değişimi henüz desteklenmiyor." : "Yayını Discord'da başlatabilirsin."; font-size: 11px; }
+                    } }
                     HorizontalLayout { spacing: 24px;
                         VerticalLayout { min-width: 0px; horizontal-stretch: 2; spacing: 10px;
                             HorizontalLayout { spacing: 6px;
@@ -488,7 +525,7 @@ export component LibraryWindow inherits Window {
                                 clicked => { if room-mode == 2 { root.room-favorite(room.id,!room.favorite); } else { root.bridge-action("join_voice",room.id); } }
                                 favorite-clicked => { root.room-favorite(room.id,!room.favorite); }
                             } }
-                            if room-mode == 2 && room-catalog-more: Caption { text: "İlk 100 oda gösteriliyor. Aramanı daralt."; font-size: 11px; }
+                            if room-mode == 2 && room-catalog-more: Caption { text: "İlk " + rooms.length + " oda gösteriliyor. Aramanı daralt."; font-size: 11px; }
                         }
                     }
                     if bridge-connected && !recent-conversations: Caption { text: "Son konuşma sıralaması için GameLibraryBridge köprüsünü güncelle."; font-size: 11px; }

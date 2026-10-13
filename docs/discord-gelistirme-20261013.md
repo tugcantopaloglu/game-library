@@ -19,3 +19,19 @@ En fazla 50 ses odası Discord hesabına göre SQLite'ta takip edilir. Dolu odal
 Oda seçici yalnızca açıldığında yerel Discord kanallarından görünür ses/stage odalarını arar; 100 sonuç ve 128 karakterlik arama sınırı vardır. Seçici kapanınca, Discord sayfasından çıkınca veya pencere tepsiye alınca katalog temizlenir. Görünürlük ve katılma izinleri ayrı denetlenir; izin değişikliği oda önbelleğini geçersiz kılar. Bildirim veya otomatik odaya katılma eklenmedi.
 
 Kısa kontrol: hesap ayrımı/yeniden açılış/50 oda sınırı için bir SQLite testi ve boş/erişilemeyen oda görünümü için bir native test geçti. Güncel köprü gerçek Vencord tipleriyle kontrol edildi. Canlı Discord oda işlemleri bu aşamada tetiklenmedi.
+
+## Yayın kontrolleri
+
+Discord sayfasındaki Yayın eylemi native durum panelini açar. Panel mevcut kaynak adını, çözünürlüğü, FPS'i, yayın sesi durumunu ve bekleyen işlemi gösterir. Kalite/FPS seçenekleri ve durdurma yalnızca köprünün ilgili yeteneği varsa etkinleşir. Video yakalama veya kodlama Game Library sürecine taşınmadı.
+
+Köprü aktif yayının anahtarını RTC kayıtlarından kendi hesap/kanal eşleşmesiyle bulur. Önceki kodun aktif yayın nesnesinde doğrudan `streamKey` beklemesi kaldırıldı. Medya kaynağı, context ve setter sözleşmesi okunabiliyorsa kalite/FPS isteği mevcut kaynağın diğer alanlarını korur. Başlangıç seçenekleri düşük kalite düzeyleri ve aynı yayında önceden gözlenen düzeylerle sınırlıdır. Tanınmayan kaynak veya değişmiş yayın anahtarıyla işlem yapılmaz.
+
+İşlem yalnızca kuyruktan gönderildiğinde başarı gösterilmez. Beş saniye içinde gerçek kaynak kalite/FPS değeri veya yayının kapanışı geri okunur. Sonuç doğrulanmazsa hata durumu gösterilir; kalite/FPS değişimi aynı yayında önceki kaynağa geri alınmaya çalışılır. Hesap/yayın değişmişse eski işlem yeni yayına uygulanmaz. İstemci çağrısı üç saniyede zaman aşımına uğrar. Değişmeyen kontrol olayları aynı veriyi tekrar göndermez.
+
+Bu ortamda kullanılabilir canlı Discord/Vencord oturumu bulunmadı. Yayın başlatma, yeni kaynak seçimi ve yayın sesini değiştirme için güncel istemci çağrı sözleşmeleri burada doğrulanamadı; bu üç yetenek kapalıdır. Yayın sesi yalnızca okunur. Bu aşama bu işlemleri tamamlanmış veya canlı olarak çalışmış saymaz.
+
+Kısa kontrol: dört Node yayın kontrol testi, beş önbellek/IPC testi ve bir Rust yayın isteği doğrulama testi geçti. İstek sınırları, desteklenmeyen kalite, eski yayın anahtarı, geri okuma/zaman aşımı ve hesap değişimi kontrol edildi. Kısmi veri okuma hatası önbelleği yarım güncellemez; gönderilemeyen sürüm tam veri olarak yeniden gönderilir. UTF-8 mesaj bütçesi favoriler korunarak uygulanır ve bozuk surrogate değerleri düzeltilir. Süresi geçmiş durum yeniden onaylandığında native görünümün yenilenmesi için bir Rust regresyon kontrolü yapıldı. Köprü gerçek Vencord tipleriyle kontrol edildi. Tam test paketi, uzun ölçüm, gerçek yayın/ses değişikliği veya Discord kurulumu yapılmadı.
+
+Native görünüm örnek IPC verisiyle açıldı; 720p/30 FPS yayın paneli ile dolu, boş ve erişilemeyen üç favori oda görüntülendi. Görüntü `artifacts/discord-development-20261013/native-discord.jpg` içindedir ve “Örnek veri” etiketlidir. Açık eski executable kilitli olduğu için release derlemesinin son dosya kopyası yapılamadı; derlenen binary `target/release/game-library-native-next.exe` olarak hazırlandı. Yeni dosyayı açmadan önce açık uygulamadan Çıkış seçilmelidir.
+
+Kaynak/kontrol veri sözleşmeleri [MediaEngineStore](https://github.com/Vendicated/Vencord/blob/main/packages/discord-types/src/stores/MediaEngineStore.d.ts) ve [ApplicationStreamingStore](https://github.com/Vendicated/Vencord/blob/main/packages/discord-types/src/stores/ApplicationStreamingStore.d.ts) tiplerinden incelendi. Discord'un özel action modüllerinin canlı uyumu ayrıca kontrol edilmelidir.
