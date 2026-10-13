@@ -10,6 +10,8 @@ Bilgisayardaki oyunları tek yerde toplayan, yerel verilerle çalışan masaüst
 
 İlk sürüm Windows için geliştirilecek. Geliştirme ve performans referansı Windows 11 x64; Windows 10 desteği ayrıca doğrulanacak. Diğer işletim sistemleri sonraki aşamalara bırakıldı.
 
+13 Ekim 2026: native arayüz sadeleştirildi. Oyun ekleme/tarama üstteki ⋯ menüsünde, kaynaklar ve performans Ayarlar altında bulunur. Discord arkadaşları son konuşmaya göre sıralanır; yıldızlanan arkadaşlar hesap bazında saklanır ve Favoriler sekmesinden süzülebilir. Konuşma sıralaması ve favoriler için güncel `gameLibraryBridge.desktop` eklentisi gerekir. [Bu çalışmanın kaydı](docs/kontrol-20261013.md).
+
 Discord yayın kapsamı: başlatma/durdurma, paylaşılan oyun veya pencereyi değiştirme, çözünürlük/kalite, FPS ve ses ayarları. Bunların tamamı ürün hedefi; her işlemin teknik erişimi ve kararlılığı ilk denemede ayrı doğrulanacak.
 
 ## Teknoloji kararı
@@ -31,7 +33,7 @@ Epic/Riot eklendikten sonra 2.004 kayıtla pencere 32,32 MiB / %0,199; doğrudan
 
 ## Çalıştırma
 
-Windows x64 geliştirme uygulaması: `target/release/game-library-native.exe`. Pencereyi kapatmak veya Tepsiye al düğmesine basmak pencereyi gizler; uygulamadan çıkmak için Uygulama veya tepsi menüsündeki Çıkış kullanılır. Tepsi simgesine tıklamak kütüphaneyi yeniden açar. Paketleme ertelendi.
+Windows x64 geliştirme uygulaması: `target/release/game-library-native.exe`. Pencereyi kapatmak veya ⋯ menüsünden Tepsiye al seçmek pencereyi gizler; uygulamadan çıkmak için aynı menüdeki veya tepsi menüsündeki Çıkış kullanılır. Tepsi simgesine tıklamak kütüphaneyi yeniden açar. Paketleme ertelendi.
 
 Native uygulama için Rust MSVC ve C++ Build Tools yeterlidir:
 
@@ -39,13 +41,13 @@ Native uygulama için Rust MSVC ve C++ Build Tools yeterlidir:
 cargo run -p game-library-native
 ```
 
-Release derlemesi ve doğrulama:
+Release derlemesi:
 
 ```powershell
 cargo build -p game-library-native --release
-cargo test --workspace
-cargo clippy --workspace --all-targets -- -D warnings
 ```
+
+Geliştirme sırasında doğrulama değişen işlevle sınırlanır; tam test paketi ve uzun performans ölçümleri her küçük değişiklikte tekrarlanmaz.
 
 Performans ekranında anlık örnek veya 60 saniyelik ölçüm alınabilir. Ölçüm yalnızca uygulamayı kapsar; Steam ve başlatılan oyunlar dahil edilmez. Raporlar `%LOCALAPPDATA%\GameLibrary\measurements\` altında saklanır. Kütüphane ekranında sürekli kaynak izleme yapılmaz.
 
@@ -70,8 +72,8 @@ pwsh -File scripts/measure.ps1 -Mode Tray -Seconds 60
 - [Yeni kütüphane, Vencord ve güncelleme akışları](docs/kutuphane-ve-guncellemeler.md)
 - [Onaylanan devam kapsamı ve kabul işleri](docs/devam-plani.md)
 
-Fixture testleri makinedeki kurulumlardan yalıtılır; gerçek launcher kabulü ayrıca yapılır. Yerel Steam kapaklarına ek olarak kullanıcı kapağı ve isteğe bağlı SteamGridDB araması desteklenir. API anahtarı Windows Credential Manager'da saklanır. Native arayüz kapak odaklı kartlar, pencereye göre 3–6 sütun, 100 kayıtlık sayfalar ve sanallaştırılmış satırlar kullanır. Oyun ayrıntısı Genel bakış/Düzenle olarak ayrılır; Discord arkadaş ve ses odalarını liste halinde gösterir. Yeni kapsamda 42 çalışma alanı testi ve Clippy geçti. JPEG/PNG kapaklar işçi thread'inde en fazla 180×270 piksele indirilir; dosya, boyut ve decode bellek sınırları uygulanır.
+Fixture testleri makinedeki kurulumlardan yalıtılır; gerçek launcher kabulü ayrıca yapılır. Yerel Steam kapaklarına ek olarak kullanıcı kapağı ve isteğe bağlı SteamGridDB araması desteklenir. API anahtarı Windows Credential Manager'da saklanır. Native arayüz kapak odaklı kartlar, pencereye göre 4–6 sütun, 100 kayıtlık sayfalar ve sanallaştırılmış satırlar kullanır. Oyun ayrıntısı Genel bakış/Düzenle olarak ayrılır; Discord arkadaş ve ses odalarını liste halinde gösterir. JPEG/PNG kapaklar işçi thread'inde en fazla 180×270 piksele indirilir; dosya, boyut ve decode bellek sınırları uygulanır.
 
 Uygulama güncelleyicisi Ed25519 imzalı release bildirimi ve SHA-256 doğrulaması kullanır. Bu geliştirme derlemesinde güven anahtarı ve yayımlanmış imzalı release yoktur; canlı otomatik güncelleme henüz etkin değildir. Vencord'un otomatik güncelleme tercihi yerel köprüden yönetilir.
 
-Slint atfı Yardım → Hakkında ekranında `AboutSlint` bileşeniyle gösterilir. [Slint kullanım koşulları](https://slint.dev/terms-and-conditions).
+Slint atfı ⋯ → Hakkında ekranında `AboutSlint` bileşeniyle gösterilir. [Slint kullanım koşulları](https://slint.dev/terms-and-conditions).

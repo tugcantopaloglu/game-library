@@ -33,3 +33,13 @@ Snyk talimatı geçerlidir. Bu oturumda `snyk_code_scan` aracı ve Snyk CLI yok;
 - [ ] Önceki sekiz saat raporu yaklaşık 59 dakikada kaldı ve sonraki kontrolde süreç bulunamadı. Tamamlanma veya yeni derleme kararlılığı kabulü yapılmadı.
 
 Ayrıntılar: [hesaplar, kapaklar ve HowLongToBeat](hesaplar-kapaklar-hltb.md). Önceki 10.000 oyun RAM/CPU ölçümleri yeni arayüzün performans sonucu olarak sunulmaz.
+
+## 13 Ekim devamı
+
+- [x] Başlık/not ve kapak işlemleri ayrıldı; uzun oyun kimlikleri için metadata saklama düzeltildi. Seçilen uzaktan kapak otomatik önbellek temizliğinden korunur.
+- [x] Altı saniyeden eski veya uyumsuz Discord durum verisi temizlenir.
+- [x] Native arayüzde yinelenen platform bağlantıları ve üst menü kaldırıldı; kaynak/performans ayarları sekmelere taşındı, kart eylemleri hover/odak ve sağ tık menüsünde toplandı.
+- [x] Discord son konuşma sıralaması, arkadaş araması ve hesap bazında kalıcı favoriler uygulandı. Güncel yerel köprü gerektirir.
+- [ ] Güncel köprüyle gerçek Discord oturumunda sıralama/favori kabulü; kullanıcı hesap eşitleme ve önceki bekleyen launcher/yayın işleri.
+
+Kullanıcının isteğiyle bundan sonraki doğrulama değişen işlevlere odaklanır. Tam test paketi, uzun kaynak ölçümleri ve aynı başarılı kontroller her adımda tekrarlanmaz. Tamamlanan önceki ölçümler ve bu değişikliklerin kapsamı [13 Ekim kaydında](kontrol-20261013.md).

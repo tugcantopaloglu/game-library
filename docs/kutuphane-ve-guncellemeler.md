@@ -6,6 +6,8 @@
 
 Elle oyun ekle, seçilen `.exe` dosyasını ayrı bir kaynak olarak kaydeder. Başlatma shell komutu içermez; executable ve argümanlar ayrı tutulur. Oyun adına tıklamak ayrıntı ekranını açar. Başlık, not, kapak ve koleksiyon üyeliği sonraki launcher taramalarında korunur. Koleksiyonlar adları üzerinden oluşturulur, listelenir, filtrelenir ve silinir.
 
+13 Ekim kontrolünde başlık/not ve kapak değişiklikleri ayrı alan güncellemelerine çevrildi. Not kaydı kaynak kapağını sabitlemez; kapak seçimi başlığı sabitlemez. Kapak yenilenirken düzenleme taslağı korunur. Kullanıcının seçtiği uzaktan kapaklar kalıcı `artwork/user` klasöründedir; otomatik kapak önbelleği temizliğine dahil değildir. [Kontrol ve regresyon kapsamı](kontrol-20261013.md).
+
 SQLite şema 3 kullanıcı düzeltmeleri, koleksiyonlar ve oturumları ekler. Şema 2 yükseltilmeden önce `library.schema-2-backup-<zaman>.db` oluşturulur; şema 1 yedekleme yolu korunur. Elle oyun ekleme son kaynak taramasının uyarılarını değiştirmez.
 
 Oturumlar başlatma isteği, doğrulanmış çalışan süreç, sona eren süreç, başarısızlık, doğrulanamayan ve kesilmiş oturum olarak ayrılır. Manual/Epic/Riot için kayıtlı executable; Steam için ayrıntı ekranından seçilen, kurulum içindeki executable izlenir. Yeni süreç en fazla 60 saniye aranır; görüldükten sonra Windows süreç handle'ı üzerinden kapanış beklenir. Aynı anda sekiz oturum sınırı vardır. Uygulama kapanırsa sonraki açılışta açık oturumlar kesilmiş sayılır; oyunun kapandığı varsayılmaz.
@@ -32,7 +34,11 @@ Hazırlama Discord kurulumunu değiştirmez. İşlem günlükleri `%LOCALAPPDATA
 
 Windows canonical yolunun `\\?\` öneki installer ve Electron'a verilmeden kaldırılır; UNC yolu normal UNC biçimine dönüştürülür. MSIX altında yönlendirilen kullanıcı veri dizini de eklentiye gerçek yoluyla yazılır. İlk canlı denemede bu önek Discord main-process `EISDIR/lstat C:` hatasına yol açtı. Orijinal Discord arşivi geri yüklenerek açılış doğrulandı, yol düzeltildikten sonra özel Vencord yeniden uygulandı. DOS/UNC dönüşümü regresyon testiyle korunur.
 
-Köprü yalnızca loopback TCP üzerinden, oturum başına rastgele eşleştirme anahtarı ve protokol sürümüyle çalışır. Discord tokenı alınmaz. Bağlantı kapalıyken ana uygulamada bağlantı timer'ı açılmaz. Bağlantı koptuğunda kişi/oda verisi silinir; eski veri canlı gibi gösterilmez. Gösterilen arkadaş sayısı 50, oda sayısı 50, mesaj 256 KiB, komut kuyruğu 16 ile sınırlıdır. Kullanıcı eklentisindeki selectedFriends ayarı görüntülenecek kişileri sınırlar.
+Köprü yalnızca loopback TCP üzerinden, oturum başına rastgele eşleştirme anahtarı ve protokol sürümüyle çalışır. Discord tokenı alınmaz. Bağlantı kapalıyken ana uygulamada bağlantı timer'ı açılmaz. Bağlantı koptuğunda kişi/oda verisi silinir; eski veri canlı gibi gösterilmez. Gösterilen arkadaş sayısı 200, oda sayısı 50, mesaj 256 KiB, komut kuyruğu 16 ile sınırlıdır. Kullanıcı eklentisindeki selectedFriends ayarı görüntülenecek kişileri sınırlar.
+
+Heartbeat sürse bile son durum verisi altı saniyeden eskiyse görünür kişi/oda verisi ve kontroller devre dışı kalır. Protokol ve durum sürümü birlikte doğrulanır. Yeni geçerli durum geldiğinde bağlantı görünümü kendiliğinden düzelir.
+
+13 Ekim köprüsü yerel son mesaj kimliğinden konuşma zamanı üretir; mesaj içeriğini okumaz. Favoriler Discord hesabına göre yerel SQLite'ta saklanır; yeni köprüye sınırlı ID listesiyle aktarılır. Köprü favorilerin 200 kişilik görünür listenin içinde kalmasını sağlar; native arayüz son konuşma sırasını korur. Bu özellikler için köprü kaynağı yeniden hazırlanıp güncellenmelidir; eski köprüde eksik yetenek arayüzde belirtilir. Kurulum işlemleri Ayarlar → Discord bağlantısı altında bulunur.
 
 Köprü arkadaş durumu/aktivitesi, ses odaları, Discord'da görüşme açma, ses kanalına geçme, mute/deafen, destekleniyorsa yayın durdurma ve Vencord güncelleme komutlarını içerir. Normal kullanıcı hesabından otomatik DM göndermez. Yayın başlatma, kaynak, kalite/çözünürlük, FPS ve yayın sesi kontrolleri henüz gerçek istemcide doğrulanmadı; bu yetenekler kapalıdır. Teknik destek varmış gibi gösterilmez.
 
