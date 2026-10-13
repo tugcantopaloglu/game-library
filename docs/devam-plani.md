@@ -52,6 +52,6 @@ Kullanıcının isteğiyle bundan sonraki doğrulama değişen işlevlere odakla
 - [ ] Güncel Discord ortamında bu yeni akışların canlı uyumu.
 - [x] `92c2620`: Native kaynak seçici ve mevcut ses odasında yayın başlatma adaptörü.
 - [x] `1b01334`: Açık yayının kaynağını değiştirme ve değişen oturum/kaynak seçimini reddetme.
-- [x] Kaynak desteğine göre yayın sesini açma/kapatma ve başlatmada ses tercihi. İstemci action biçimi kaynak kodundan incelendi; gerçek yayın kabulü bekliyor.
+- [x] `ee7b5b9`: Kaynak desteğine göre yayın sesini açma/kapatma ve başlatmada ses tercihi. İstemci action biçimi kaynak kodundan incelendi; gerçek yayın kabulü bekliyor.
 
 Ayrıntılar [Discord geliştirme kaydında](discord-gelistirme-20261013.md) ve [yayın kontrolleri kaydında](yayin-kontrolleri-20261013.md). Yalnızca değişen işlevlere yönelik kısa kontroller yapıldı; yeni RAM/CPU veya uzun kararlılık sonucu yoktur.
