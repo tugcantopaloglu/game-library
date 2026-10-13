@@ -2,11 +2,12 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 #[derive(Default, Deserialize)]
-#[serde(default)]
+#[serde(rename_all = "camelCase", default)]
 pub struct Source {
     pub id: String,
     pub name: String,
     pub kind: String,
+    pub audio_available: bool,
 }
 
 #[derive(Default, Deserialize)]
@@ -41,7 +42,7 @@ pub fn view(snapshot: &Value) -> View {
     if view.key.len() > 256 || view.key.contains('\0') {
         return View::default();
     }
-    view.resolutions.retain(|value| (1..=4320).contains(value));
+    view.resolutions.retain(|value| *value <= 4320);
     view.fps_options.retain(|value| (1..=120).contains(value));
     view.resolutions.truncate(8);
     view.fps_options.truncate(8);
@@ -62,6 +63,7 @@ pub fn selection_request(
     channel: &str,
     revision: i32,
     index: i32,
+    audio: bool,
 ) -> Result<Value, String> {
     let view = view(snapshot);
     if !matches!(action, "stream_start" | "stream_source")
@@ -83,7 +85,12 @@ pub fn selection_request(
         .ok()
         .and_then(|index| view.sources.get(index))
         .ok_or("Kaynak seçimi artık kullanılamıyor")?;
-    Ok(json!({"streamKey":key,"channelId":channel,"sourceRevision":revision,"sourceId":source.id}))
+    if action == "stream_start" && audio && !source.audio_available {
+        return Err("Bu kaynak yayın sesi paylaşımını desteklemiyor".into());
+    }
+    Ok(
+        json!({"streamKey":key,"channelId":channel,"sourceRevision":revision,"sourceId":source.id,"audio":audio}),
+    )
 }
 
 pub fn request(snapshot: &Value, action: &str, key: &str, index: i32) -> Result<Value, String> {
@@ -100,6 +107,9 @@ pub fn request(snapshot: &Value, action: &str, key: &str, index: i32) -> Result<
         "stream_quality" => &view.resolutions,
         "stream_fps" => &view.fps_options,
         "stream_stop" => return Ok(json!({"streamKey":key})),
+        "stream_audio" if matches!(index, 0 | 1) => {
+            return Ok(json!({"streamKey":key,"audio":index == 1}))
+        }
         _ => return Err("Desteklenmeyen yayın işlemi".into()),
     };
     let value = usize::try_from(index)
@@ -133,5 +143,49 @@ mod tests {
         let mut pending = snapshot;
         pending["streamControl"]["pending"] = json!(true);
         assert!(request(&pending, "stream_stop", "live", 0).is_err());
+    }
+
+    #[test]
+    fn source_selection_requires_the_current_room_catalog_and_stream() {
+        let mut snapshot = json!({"connected":true,"capabilities":{"stream_start":true,"stream_source":true},"streamControl":{"known":true,"sourceOpen":true,"sourceRevision":2,"sourceChannel":"room","sources":[{"id":"window:1:0","name":"Game","kind":"window","audioAvailable":true}]}});
+        assert_eq!(
+            selection_request(&snapshot, "stream_start", "", "room", 2, 0, true).unwrap()
+                ["sourceId"],
+            "window:1:0"
+        );
+        assert!(selection_request(&snapshot, "stream_start", "", "room", 1, 0, false).is_err());
+        assert!(selection_request(&snapshot, "stream_start", "", "other", 2, 0, false).is_err());
+        assert!(selection_request(&snapshot, "stream_start", "", "room", 2, -1, false).is_err());
+        snapshot["streamControl"]["active"] = json!(true);
+        snapshot["streamControl"]["key"] = json!("live");
+        assert!(selection_request(&snapshot, "stream_start", "", "room", 2, 0, false).is_err());
+        assert!(selection_request(
+            &snapshot,
+            "stream_source",
+            "replacement",
+            "room",
+            2,
+            0,
+            false
+        )
+        .is_err());
+        assert!(selection_request(&snapshot, "stream_source", "live", "room", 2, 0, false).is_ok());
+        snapshot["connected"] = json!(false);
+        assert!(
+            selection_request(&snapshot, "stream_source", "live", "room", 2, 0, false).is_err()
+        );
+    }
+
+    #[test]
+    fn audio_requests_accept_only_boolean_choices_for_the_current_stream() {
+        let mut snapshot = json!({"connected":true,"capabilities":{"stream_audio":true},"streamControl":{"active":true,"key":"live"}});
+        assert_eq!(
+            request(&snapshot, "stream_audio", "live", 1).unwrap()["audio"],
+            true
+        );
+        assert!(request(&snapshot, "stream_audio", "live", 2).is_err());
+        assert!(request(&snapshot, "stream_audio", "replacement", 0).is_err());
+        snapshot["streamControl"]["pending"] = json!(true);
+        assert!(request(&snapshot, "stream_audio", "live", 0).is_err());
     }
 }

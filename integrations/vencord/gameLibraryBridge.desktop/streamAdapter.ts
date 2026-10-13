@@ -4,19 +4,19 @@ import type { CaptureSource } from "./capture";
 
 function code(value: unknown): string { return typeof value === "function" ? Function.prototype.toString.call(value) : ""; }
 
-export function mediaAdapter(media: any) {
+export function mediaAdapter(media: any, preset: unknown) {
     const body = code(media?.setGoLiveSource);
-    if (!body.includes("MEDIA_ENGINE_SET_GO_LIVE_SOURCE") || !body.includes("qualityOptions") || !body.includes("settings:")) return undefined;
-    return (source: NonNullable<LiveStream["source"]>, context: LiveStream["context"], sound = !!source.desktopSource.soundshareId) => media.setGoLiveSource({
+    if (!Number.isInteger(preset) || !body.includes("MEDIA_ENGINE_SET_GO_LIVE_SOURCE") || !body.includes("qualityOptions") || !body.includes("settings:")) return undefined;
+    return (source: NonNullable<LiveStream["source"]>, context: LiveStream["context"], sound = source.desktopSource.soundshareId != null) => media.setGoLiveSource({
         desktopSettings:{sourceId:source.desktopSource.id,sound},
-        qualityOptions:{resolution:source.quality.resolution,frameRate:source.quality.frameRate},context
+        qualityOptions:{preset,resolution:source.quality.resolution,frameRate:source.quality.frameRate},context
     });
 }
 
 export function startAdapter(start: any) {
     const body = code(start);
     if (typeof start !== "function" || start.length !== 3 || !["STREAM_START","streamType:","guildId:","channelId:"].every(part=>body.includes(part))) return undefined;
-    return (guild: string | null, channel: string, source: CaptureSource) => start(guild,channel,{sourceId:source.id,sourceName:source.name,sound:false});
+    return (guild: string | null, channel: string, source: CaptureSource, sound = false) => start(guild,channel,{sourceId:source.id,sourceName:source.name,sound});
 }
 
 export function stopAdapter(stop: any) {

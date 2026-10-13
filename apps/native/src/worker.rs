@@ -59,7 +59,7 @@ pub enum Command {
     RoomFavorite(String, bool),
     StreamControl(String, String, i32),
     StreamCatalog(bool),
-    StreamSelection(String, String, String, i32, i32),
+    StreamSelection(String, String, String, i32, i32, bool),
     Installer(crate::updates::InstallerAction, String),
     PrepareBridge,
     UpdateCheck,
@@ -572,7 +572,10 @@ fn bridge_status(
         ui.set_can_stream_sources(
             connected && snapshot["capabilities"]["stream_sources"] == true && !stream.pending,
         );
-        if ui.get_stream_source_revision() != stream.source_revision || stream.sources.is_empty() {
+        if ui.get_stream_source_revision() != stream.source_revision
+            || ui.get_stream_source_index() >= stream.sources.len() as i32
+            || stream.sources.is_empty()
+        {
             ui.set_stream_source_index(-1);
         }
         ui.set_stream_source_revision(stream.source_revision);
@@ -584,6 +587,23 @@ fn bridge_status(
         );
         ui.set_stream_source_channel(stream.source_channel.into());
         ui.set_stream_source_pending(stream.source_pending);
+        ui.set_stream_source_audio_capabilities(
+            Rc::new(VecModel::from(
+                stream
+                    .sources
+                    .iter()
+                    .map(|source| source.audio_available)
+                    .collect::<Vec<_>>(),
+            ))
+            .into(),
+        );
+        ui.set_can_stream_audio(
+            connected
+                && snapshot["capabilities"]["stream_audio"] == true
+                && stream.active
+                && !stream.pending,
+        );
+        ui.set_stream_audio_enabled(stream.audio == Some(true));
         ui.set_stream_source_error(stream.source_error.into());
         ui.set_stream_source_names(
             Rc::new(VecModel::from(
@@ -645,7 +665,13 @@ fn bridge_status(
                 stream
                     .resolutions
                     .iter()
-                    .map(|value| slint::SharedString::from(format!("{value}p")))
+                    .map(|value| {
+                        slint::SharedString::from(if *value == 0 {
+                            "Kaynak".into()
+                        } else {
+                            format!("{value}p")
+                        })
+                    })
                     .collect::<Vec<_>>(),
             ))
             .into(),
@@ -1323,7 +1349,7 @@ pub fn start(
                     let bridge = bridge.as_ref().ok_or("Discord bağlantısını aç.")?;
                     bridge.command("stream_sources", serde_json::json!({"open":open}))
                 })(),
-                Command::StreamSelection(action, key, channel, revision, index) => (|| {
+                Command::StreamSelection(action, key, channel, revision, index, audio) => (|| {
                     let bridge = bridge.as_ref().ok_or("Discord bağlantısını aç.")?;
                     let data = crate::stream::selection_request(
                         &bridge.snapshot(),
@@ -1332,6 +1358,7 @@ pub fn start(
                         &channel,
                         revision,
                         index,
+                        audio,
                     )?;
                     bridge.command(&action, data)
                 })(

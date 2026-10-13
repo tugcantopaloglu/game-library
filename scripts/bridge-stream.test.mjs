@@ -3,6 +3,7 @@ import test from "node:test";
 import { StreamControls } from "../integrations/vencord/gameLibraryBridge.desktop/stream.ts";
 import { CaptureCatalog, sources } from "../integrations/vencord/gameLibraryBridge.desktop/capture.ts";
 import { mediaAdapter, startAdapter } from "../integrations/vencord/gameLibraryBridge.desktop/streamAdapter.ts";
+import { encodeSnapshot } from "../integrations/vencord/gameLibraryBridge.desktop/state.ts";
 
 function fixture() {
     let live = {key:"live",context:"stream",sourceName:"Game",source:{desktopSource:{id:"window:1:0",sourcePid:1,soundshareId:null,soundshareSession:null},quality:{resolution:720,frameRate:30}}};
@@ -88,7 +89,7 @@ test("a disappeared source and a changed account never start a stream", async ()
 test("current Discord action contracts receive settings and unknown contracts stay disabled", () => {
     const calls = [];
     const media = {setGoLiveSource(settings) { if (settings?.qualityOptions) calls.push(settings.desktopSettings); calls.push({type:"MEDIA_ENGINE_SET_GO_LIVE_SOURCE",settings:settings}); }};
-    mediaAdapter(media)(fixture().live.source,"stream");
+    mediaAdapter(media,3)(fixture().live.source,"stream");
     assert.deepEqual(calls[0],{sourceId:"window:1:0",sound:false});
     assert.equal(calls[1].settings.context,"stream"); assert.equal(calls[1].settings.qualityOptions.resolution,720);
     assert.equal(mediaAdapter({setGoLiveSource(){}}),undefined); assert.equal(startAdapter(()=>{}),undefined);
@@ -115,4 +116,35 @@ test("replacing a stream during source validation leaves the replacement untouch
     const pending = control.execute(data.provider,"stream_source",{streamKey:"live",channelId:"room",sourceRevision:revision,sourceId:"screen:0:0"},1);
     await Promise.resolve(); data.live = {...data.live,key:"replacement"}; finish([{id:"screen:0:0",name:"Screen"}]);
     await assert.rejects(pending); assert.equal(data.writes.length,0);
+});
+
+test("stream audio preserves the picture and accepts a zero soundshare identifier", async () => {
+    const data = fixture(), control = new StreamControls();
+    data.provider.audioSupported = ()=>true;
+    data.provider.setSource = (source,context,audio)=>{data.writes.push(source);data.live = {...data.live,source:{...source,desktopSource:{...source.desktopSource,soundshareId:audio ? 0:null}}};};
+    await control.execute(data.provider,"stream_audio",{streamKey:"live",audio:true},0);
+    assert.equal(control.observe(data.provider,1),true); assert.equal(control.state(data.provider).audio,true);
+    assert.equal(data.live.source.desktopSource.id,"window:1:0"); assert.deepEqual(data.live.source.quality,{resolution:720,frameRate:30});
+    await control.execute(data.provider,"stream_audio",{streamKey:"live",audio:false},2);
+    assert.equal(control.observe(data.provider,3),true); assert.equal(control.state(data.provider).audio,false);
+});
+
+test("unsupported audio and unconfirmed starts cannot report success", async () => {
+    const data = fixture(), control = new StreamControls();
+    data.provider.audioSupported = ()=>false;
+    await assert.rejects(control.execute(data.provider,"stream_audio",{streamKey:"live",audio:true},0)); assert.equal(data.writes.length,0);
+    data.live = null;
+    Object.assign(data.provider,{account:"first",channel:"room",listSources:async()=>[{id:"screen:0:0",name:"Screen"}],start:()=>{}});
+    await control.catalog.open(data.provider,0); const revision = control.state(data.provider).sourceRevision;
+    await assert.rejects(control.execute(data.provider,"stream_start",{streamKey:"",channelId:"room",sourceId:"screen:0:0",sourceRevision:revision,audio:true},1));
+    await control.execute(data.provider,"stream_start",{streamKey:"",channelId:"room",sourceId:"screen:0:0",sourceRevision:revision,audio:false},2);
+    assert.equal(control.observe(data.provider,8002),true); assert.equal(control.state(data.provider).result,"Discord yayının başladığını doğrulamadı");
+});
+
+test("large source catalogs keep the IPC budget and favorite data intact", () => {
+    const payload = {type:"snapshot",friends:[{id:"favorite",activity:"x".repeat(230000)}],favoriteIds:["favorite"],streamControl:{sourceRevision:2,sources:Array.from({length:100},(_,i)=>({id:`window:${i}:0`,name:"😀".repeat(128)}))}};
+    const encoded = encodeSnapshot(payload,text=>Buffer.byteLength(text,"utf8"));
+    assert.ok(encoded); assert.ok(Buffer.byteLength(encoded,"utf8") + 1 <= 256 * 1024);
+    const packet = JSON.parse(encoded); assert.equal(packet.friends[0].activity.length,230000); assert.equal(packet.streamControl.sourceRevision,2);
+    assert.ok(packet.streamControl.sources.length < 100); assert.equal(payload.streamControl.sources.length,100);
 });

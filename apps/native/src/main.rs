@@ -519,8 +519,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     register_command!(on_stream_fps, (key,index) => Command::StreamControl("stream_fps".into(),key.into(),index));
     register_command!(on_stream_stop, (key) => Command::StreamControl("stream_stop".into(),key.into(),0));
     register_command!(on_stream_catalog, (open) => Command::StreamCatalog(open));
-    register_command!(on_stream_start, (channel,revision,index) => Command::StreamSelection("stream_start".into(),String::new(),channel.into(),revision,index));
-    register_command!(on_stream_source, (key,channel,revision,index) => Command::StreamSelection("stream_source".into(),key.into(),channel.into(),revision,index));
+    register_command!(on_stream_start, (channel,revision,index,audio) => Command::StreamSelection("stream_start".into(),String::new(),channel.into(),revision,index,audio));
+    register_command!(on_change_stream_source, (key,channel,revision,index) => Command::StreamSelection("stream_source".into(),key.into(),channel.into(),revision,index,false));
+    register_command!(on_change_stream_audio, (key,audio) => Command::StreamControl("stream_audio".into(),key.into(),i32::from(audio)));
     register_command!(on_update_check, () => Command::UpdateCheck);
     register_command!(on_prepare_bridge, () => Command::PrepareBridge);
     register_command!(on_artwork_key, (key) => Command::ArtworkKey(key.into()));

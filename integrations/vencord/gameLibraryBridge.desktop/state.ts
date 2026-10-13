@@ -64,6 +64,14 @@ export function encodeSnapshot(payload: any, byteLength: (text:string) => number
                 text = encode()!;
             }
         }
+        if (Array.isArray(value.streamControl?.sources) && byteLength(text) + 1 > 256 * 1024) {
+            value.streamControl = {...value.streamControl};
+            while (byteLength(text) + 1 > 256 * 1024 && value.streamControl.sources.length) {
+                value.streamControl.sources = value.streamControl.sources.slice(0,Math.floor(value.streamControl.sources.length / 2));
+                value.streamControl.sourcesTruncated = true;
+                text = encode()!;
+            }
+        }
     }
     return byteLength(text) + 1 <= 256 * 1024 ? text : null;
 }

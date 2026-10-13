@@ -1,9 +1,10 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
-export interface CaptureSource { id: string; name: string; kind: "window" | "screen"; }
+export interface CaptureSource { id: string; name: string; kind: "window" | "screen"; audioAvailable?: boolean; }
 export interface CaptureProvider {
     account?: string;
     channel?: string;
     listSources?: () => Promise<unknown>;
+    audioSupported?: (id: string) => boolean;
 }
 
 export function sources(value: unknown): CaptureSource[] {
@@ -56,7 +57,7 @@ export class CaptureCatalog {
         const account = provider.account, channel = provider.channel;
         this.opened = true; this.pending = true; this.entries = []; this.error = "";
         try {
-            const entries = sources(await bounded(provider.listSources));
+            const entries = sources(await bounded(provider.listSources)).map(source=>({...source,audioAvailable:provider.audioSupported?.(source.id) === true}));
             if (epoch !== this.epoch || account !== provider.account || channel !== provider.channel) return;
             this.entries = entries; this.expires = now + 30000;
             this.revision = this.revision % 2147483646 + 1;
@@ -72,6 +73,6 @@ export class CaptureCatalog {
         const epoch = this.epoch, account = provider.account, channel = provider.channel;
         const fresh = sources(await bounded(provider.listSources)).find(source=>source.id === selected.id && source.name === selected.name);
         if (!fresh || epoch !== this.epoch || account !== provider.account || channel !== provider.channel) throw new Error("Kaynak veya ses odası değişti; listeyi yenile");
-        return fresh;
+        return {...fresh,audioAvailable:provider.audioSupported?.(fresh.id) === true};
     }
 }

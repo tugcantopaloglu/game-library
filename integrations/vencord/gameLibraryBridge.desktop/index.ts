@@ -36,6 +36,7 @@ function resolveActions() {
         channel: findByProps("selectVoiceChannel", "selectChannel") as any,
         streaming: findByProps("stopStream") as any,
         media: findByProps("setGoLiveSource", "setInputVolume", "setOutputVolume") as any,
+        presets: findByProps("PRESET_CUSTOM", "PRESET_VIDEO") as any,
         start: startAdapter(findByCode('type:"STREAM_START"', "streamType:", "guildId:", "channelId:")),
         stop: stopAdapter(findByCode('type:"STREAM_STOP"', "streamKey:", "appContext:"))
     };
@@ -110,7 +111,7 @@ function controlSnapshot() {
             open_dm: typeof ChannelActionCreators.openPrivateChannel === "function",
             mute: typeof modules.voice?.toggleSelfMute === "function", deafen: typeof modules.voice?.toggleSelfDeaf === "function", join_voice: typeof modules.channel?.selectVoiceChannel === "function",
             stream_inspect: typeof ApplicationStreamingStore?.getCurrentUserActiveStream === "function",
-            stream_stop: streamControl.canStop, stream_start: streamControl.canStart, stream_sources: streamControl.canSources, stream_source: streamControl.canSource, stream_quality: streamControl.canQuality, stream_fps: streamControl.canFps, stream_audio: false,
+            stream_stop: streamControl.canStop, stream_start: streamControl.canStart, stream_sources: streamControl.canSources, stream_source: streamControl.canSource, stream_quality: streamControl.canQuality, stream_fps: streamControl.canFps, stream_audio: streamControl.canAudio,
             vencord_update: true, auto_update: true
         }
     };
@@ -118,7 +119,7 @@ function controlSnapshot() {
 
 function streamProvider(): StreamProvider {
     const modules = actions();
-    const write = mediaAdapter(modules.media);
+    const write = mediaAdapter(modules.media,modules.presets?.PRESET_CUSTOM);
     const capture = typeof DiscordNative !== "undefined" && typeof DiscordNative.desktopCapture?.getDesktopCaptureSources === "function" ?
         () => DiscordNative.desktopCapture.getDesktopCaptureSources({types:["screen","window"],thumbnailSize:{width:0,height:0},fetchWindowIcons:false}) : undefined;
     const allowed = () => {
@@ -142,7 +143,7 @@ function streamProvider(): StreamProvider {
             const source = MediaEngineStore.getGoLiveSource?.();
             const context = MediaEngineStore.getGoLiveContext?.();
             const validSource = !!source && typeof source.desktopSource?.id === "string" && source.desktopSource.id.length <= 256
-                && Number.isInteger(source.quality?.resolution) && source.quality.resolution > 0 && source.quality.resolution <= 4320
+                && Number.isInteger(source.quality?.resolution) && source.quality.resolution >= 0 && source.quality.resolution <= 4320
                 && Number.isInteger(source.quality.frameRate) && source.quality.frameRate > 0 && source.quality.frameRate <= 120
                 && (context === "default" || context === "stream");
             const metadata = ApplicationStreamingStore.getStreamerActiveStreamMetadata?.();
@@ -151,10 +152,11 @@ function streamProvider(): StreamProvider {
         setSource: write,
         stop: modules.stop,
         listSources: capture,
-        get start() { return modules.start && capture && allowed() ? (channelId: string, source: import("./capture").CaptureSource) => {
+        audioSupported: id => id.startsWith("screen:") ? MediaEngineStore.supportsScreenSoundshare?.() === true : id.startsWith("window:") && MediaEngineStore.supports?.("SOUNDSHARE") === true,
+        get start() { return modules.start && capture && allowed() ? (channelId: string, source: import("./capture").CaptureSource, sound: boolean) => {
             if (!allowed() || SelectedChannelStore.getVoiceChannelId() !== channelId || ApplicationStreamingStore.getCurrentUserActiveStream()) throw new Error("Ses odası veya yayın durumu değişti");
             const channel = ChannelStore.getChannel(channelId);
-            return modules.start!(channel.guild_id ?? null,channelId,source);
+            return modules.start!(channel.guild_id ?? null,channelId,source,sound);
         } : undefined; }
     };
 }
@@ -197,7 +199,7 @@ async function command(message: any) {
         case "stream_sources":
             if (typeof message.data?.open !== "boolean") throw new Error("Kaynak seçimi geçersiz");
             if (message.data.open) await streamControls.catalog.open(streamProvider()); else streamControls.catalog.clear(); break;
-        case "stream_start": case "stream_source": case "stream_stop": case "stream_quality": case "stream_fps":
+        case "stream_start": case "stream_source": case "stream_audio": case "stream_stop": case "stream_quality": case "stream_fps":
             await streamControls.execute(streamProvider(),message.action,message.data); break;
         case "auto_update": Settings.autoUpdate = message.data?.enabled === true; break;
         case "vencord_update":

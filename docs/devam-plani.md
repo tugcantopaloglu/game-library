@@ -50,6 +50,8 @@ Kullanıcının isteğiyle bundan sonraki doğrulama değişen işlevlere odakla
 - [x] `043d41f`: Hesap bazında 50 favori oda, native oda araması/seçimi, boş ve erişilemeyen oda durumları.
 - [x] `3fce705`: Native yayın paneli, yeteneğe bağlı durdurma ve mevcut yayın için kalite/FPS istekleri; gerçek durum geri okunmadan başarı gösterilmez.
 - [ ] Güncel Discord ortamında bu yeni akışların canlı uyumu.
-- [ ] Yayın başlatma, yeni kaynak seçimi ve yayın sesi değişimi için istemci adapter'ı. Bu ortamda kullanılabilir canlı Discord/Vencord oturumu bulunmadığından çağrı sözleşmeleri doğrulanamadı; yetenekler kapalı.
+- [x] `92c2620`: Native kaynak seçici ve mevcut ses odasında yayın başlatma adaptörü.
+- [x] `1b01334`: Açık yayının kaynağını değiştirme ve değişen oturum/kaynak seçimini reddetme.
+- [x] Kaynak desteğine göre yayın sesini açma/kapatma ve başlatmada ses tercihi. İstemci action biçimi kaynak kodundan incelendi; gerçek yayın kabulü bekliyor.
 
-Ayrıntılar [Discord geliştirme kaydında](discord-gelistirme-20261013.md). Yalnızca değişen işlevlere yönelik kısa kontroller yapıldı; yeni RAM/CPU veya uzun kararlılık sonucu yoktur.
+Ayrıntılar [Discord geliştirme kaydında](discord-gelistirme-20261013.md) ve [yayın kontrolleri kaydında](yayin-kontrolleri-20261013.md). Yalnızca değişen işlevlere yönelik kısa kontroller yapıldı; yeni RAM/CPU veya uzun kararlılık sonucu yoktur.

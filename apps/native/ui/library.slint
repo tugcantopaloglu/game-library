@@ -127,6 +127,10 @@ export component LibraryWindow inherits Window {
     in property <bool> can-stream-fps;
     in property <bool> can-stream-start;
     in property <bool> can-stream-source;
+    in property <bool> can-stream-audio;
+    in property <bool> stream-audio-enabled;
+    in property <[bool]> stream-source-audio-capabilities;
+    in-out property <bool> stream-start-audio;
     in property <bool> can-stream-sources;
     in property <[string]> stream-source-names;
     in property <int> stream-source-revision;
@@ -231,8 +235,9 @@ export component LibraryWindow inherits Window {
     callback stream-fps(string,int);
     callback stream-stop(string);
     callback stream-catalog(bool);
-    callback stream-start(string,int,int);
-    callback stream-source(string,string,int,int);
+    callback stream-start(string,int,int,bool);
+    callback change-stream-audio(string,bool);
+    callback change-stream-source(string,string,int,int);
     callback bridge-action(string,string);
     callback installer(int,int);
     callback prepare-bridge;
@@ -503,13 +508,15 @@ export component LibraryWindow inherits Window {
                             Caption { text: "FPS"; horizontal-stretch: 0; font-size: 12px; }
                             if stream-fps-options.length > 0: ComboBox { width: 120px; model: stream-fps-options; current-index <=> stream-fps-index; enabled: can-stream-fps; selected(value) => { root.stream-fps(stream-key,stream-fps-index); } }
                             if stream-fps-options.length == 0: Caption { text: "Bilinmiyor"; font-size: 12px; horizontal-stretch: 0; }
-                            Caption { text: "Yayın sesi · " + stream-audio; font-size: 12px; horizontal-stretch: 0; }
+                            if can-stream-audio: Action { text: "Yayın sesi · " + stream-audio; ghost: true; enabled: !stream-pending; clicked => { root.change-stream-audio(stream-key,!stream-audio-enabled); } }
+                            if !can-stream-audio: Caption { text: "Yayın sesi · " + stream-audio; font-size: 12px; horizontal-stretch: 0; }
                             Rectangle { horizontal-stretch: 1; background: transparent; }
                         }
                         if stream-source-picker: HorizontalLayout { spacing: 10px;
-                            ComboBox { horizontal-stretch: 1; model: stream-source-names; current-index <=> stream-source-index; enabled: !stream-pending && !stream-source-pending; }
+                            ComboBox { horizontal-stretch: 1; model: stream-source-names; current-index <=> stream-source-index; enabled: !stream-pending && !stream-source-pending; selected(value) => { stream-start-audio = false; } }
+                            if !stream-active: CheckBox { text: "Sesi paylaş"; checked <=> stream-start-audio; enabled: stream-source-index >= 0 && stream-source-index < stream-source-audio-capabilities.length && stream-source-audio-capabilities[stream-source-index] && !stream-pending; }
                             Action { text: "Yenile"; ghost: true; enabled: !stream-pending && !stream-source-pending; clicked => { root.stream-catalog(true); } }
-                            Action { text: stream-active ? "Değiştir" : "Başlat"; enabled: (stream-active ? can-stream-source : can-stream-start) && stream-source-index >= 0 && !stream-source-pending; clicked => { if stream-active { root.stream-source(stream-key,stream-source-channel,stream-source-revision,stream-source-index); } else { root.stream-start(stream-source-channel,stream-source-revision,stream-source-index); } } }
+                            Action { text: stream-active ? "Değiştir" : "Başlat"; enabled: (stream-active ? can-stream-source : can-stream-start) && stream-source-index >= 0 && !stream-source-pending; clicked => { if stream-active { root.change-stream-source(stream-key,stream-source-channel,stream-source-revision,stream-source-index); } else { root.stream-start(stream-source-channel,stream-source-revision,stream-source-index,stream-start-audio); } } }
                         }
                         if stream-source-picker && stream-source-error != "": Caption { text: stream-source-error; font-size: 11px; }
                         Caption { text: !bridge-connected ? "Discord bağlantısı bekleniyor." : !stream-known ? "Discord yayın verisi okunamadı." : stream-pending ? "Discord'dan sonuç bekleniyor…" : stream-result != "" ? stream-result : stream-source-picker && stream-source-names.length == 0 ? "Paylaşılabilecek kaynak yok. Listeyi yenileyebilirsin." : stream-active ? "Yayın ayarları Discord'dan okunuyor." : can-stream-start ? "Paylaşılacak pencereyi veya ekranı seç." : "Yayın için Discord'da bir ses odasına bağlan."; font-size: 11px; }
