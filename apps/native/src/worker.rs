@@ -480,15 +480,29 @@ fn bridge_status(
         .map(|bridge| bridge.snapshot())
         .unwrap_or_else(|| serde_json::json!({"connected":false,"status":"Yerel bağlantı kapalı"}));
     let connected = snapshot["connected"] == true;
-    let favorites = snapshot["accountId"].as_str()
-        .and_then(|account|store.friend_favorites(account).ok()).unwrap_or_default();
-    let can_favorite = connected && snapshot["accountId"].as_str()
-        .is_some_and(|account|store.friend_favorites(account).is_ok());
-    let now_ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
-        .map(|time|time.as_millis() as u64).unwrap_or_default();
+    let favorites = snapshot["accountId"]
+        .as_str()
+        .and_then(|account| store.friend_favorites(account).ok())
+        .unwrap_or_default();
+    let can_favorite = connected
+        && snapshot["accountId"]
+            .as_str()
+            .is_some_and(|account| store.friend_favorites(account).is_ok());
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|time| time.as_millis() as u64)
+        .unwrap_or_default();
     let total = snapshot["friends"].as_array().map(Vec::len).unwrap_or(0);
-    let favorite_count = snapshot["friends"].as_array().into_iter().flatten()
-        .filter(|friend|friend["id"].as_str().is_some_and(|id|favorites.iter().any(|saved|saved==id))).count();
+    let favorite_count = snapshot["friends"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|friend| {
+            friend["id"]
+                .as_str()
+                .is_some_and(|id| favorites.iter().any(|saved| saved == id))
+        })
+        .count();
     let friends = crate::social::friends(&snapshot, &favorites, query, now_ms);
     let mut lines = vec![snapshot["status"]
         .as_str()
@@ -503,9 +517,12 @@ fn bridge_status(
     }
     ui.upgrade_in_event_loop(move |ui| {
         ui.set_bridge_connected(connected);
+        ui.set_social_fixture(snapshot["fixture"] == true);
         ui.set_bridge_status(lines.join("\n").into());
         ui.set_can_favorite_friends(can_favorite);
-        ui.set_recent_conversations(connected && snapshot["capabilities"]["recent_conversations"] == true);
+        ui.set_recent_conversations(
+            connected && snapshot["capabilities"]["recent_conversations"] == true,
+        );
         ui.set_friend_count(if connected { total as i32 } else { 0 });
         ui.set_favorite_friend_count(if connected { favorite_count as i32 } else { 0 });
         let friends: Vec<SocialTile> = friends
@@ -1002,7 +1019,12 @@ pub fn start(
                     if !enabled {
                         bridge = None;
                     }
-                    bridge_status(if enabled { bridge.as_ref() } else { None }, &store, &social_query, &ui)
+                    bridge_status(
+                        if enabled { bridge.as_ref() } else { None },
+                        &store,
+                        &social_query,
+                        &ui,
+                    )
                 })(),
                 Command::BridgeRefresh => (|| {
                     if let Some(bridge) = &bridge {
@@ -1016,11 +1038,18 @@ pub fn start(
                             bridge
                                 .command("auto_update", serde_json::json!({"enabled":desired}))?;
                         }
-                        if snapshot["connected"] == true && snapshot["capabilities"]["favorite_friends"] == true {
+                        if snapshot["connected"] == true
+                            && snapshot["capabilities"]["favorite_friends"] == true
+                        {
                             if let Some(account) = snapshot["accountId"].as_str() {
-                                let favorites = store.friend_favorites(account).map_err(|error|error.to_string())?;
+                                let favorites = store
+                                    .friend_favorites(account)
+                                    .map_err(|error| error.to_string())?;
                                 if snapshot["favoriteIds"] != serde_json::json!(favorites) {
-                                    bridge.command("favorite_friends",serde_json::json!({"ids":favorites}))?;
+                                    bridge.command(
+                                        "favorite_friends",
+                                        serde_json::json!({"ids":favorites}),
+                                    )?;
                                 }
                             }
                         }
@@ -1028,16 +1057,30 @@ pub fn start(
                     bridge_status(bridge.as_ref(), &store, &social_query, &ui)
                 })(),
                 Command::SocialFilter(text, favorites_only) => {
-                    social_query = crate::social::Query {text:text.chars().take(256).collect(),favorites_only};
+                    social_query = crate::social::Query {
+                        text: text.chars().take(256).collect(),
+                        favorites_only,
+                    };
                     bridge_status(bridge.as_ref(), &store, &social_query, &ui)
                 }
                 Command::FriendFavorite(id, favorite) => (|| {
-                    let snapshot = bridge.as_ref().ok_or("Discord bağlantısını aç.")?.snapshot();
-                    if snapshot["connected"] != true || !snapshot["friends"].as_array().is_some_and(|friends|friends.iter().any(|friend|friend["id"]==id)) {
+                    let snapshot = bridge
+                        .as_ref()
+                        .ok_or("Discord bağlantısını aç.")?
+                        .snapshot();
+                    if snapshot["connected"] != true
+                        || !snapshot["friends"]
+                            .as_array()
+                            .is_some_and(|friends| friends.iter().any(|friend| friend["id"] == id))
+                    {
                         return Err("Arkadaş artık bağlı Discord listesinde değil".into());
                     }
-                    let account = snapshot["accountId"].as_str().ok_or("Arkadaş favorileri için köprüyü güncelle.")?;
-                    store.set_friend_favorite(account,&id,favorite).map_err(|error|error.to_string())?;
+                    let account = snapshot["accountId"]
+                        .as_str()
+                        .ok_or("Arkadaş favorileri için köprüyü güncelle.")?;
+                    store
+                        .set_friend_favorite(account, &id, favorite)
+                        .map_err(|error| error.to_string())?;
                     bridge_status(bridge.as_ref(), &store, &social_query, &ui)
                 })(),
                 Command::BridgeAction(action, data) => bridge

@@ -28,7 +28,7 @@ function snapshot() {
     const modules = actions();
     const selected = settings.store.selectedFriends.split(",").map(id => id.trim()).filter(id => /^\d{15,22}$/.test(id));
     const favorites = favoriteIds(settings.store.favoriteFriends);
-    const recencyAvailable = typeof ChannelStore.getDMFromUserId === "function" && typeof ReadStateStore.lastMessageId === "function";
+    const recencyAvailable = typeof ChannelStore.getDMFromUserId === "function" && typeof ReadStateStore?.lastMessageId === "function";
     const recent = RelationshipStore.getFriendIDs().filter(id => validId(id) && (selected.length === 0 || selected.includes(id))).slice(0, 2000).map(id => {
         const channel = recencyAvailable ? ChannelStore.getDMFromUserId(id) : undefined;
         return { id, lastMessageAt: channel ? lastMessageAt(ReadStateStore.lastMessageId(channel)) : null };

@@ -282,7 +282,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let auto_update_app = store.setting("auto_update_app")?.as_deref() == Some("true");
     let auto_update_vencord = store.setting("auto_update_vencord")?.as_deref() != Some("false");
     let ui = LibraryWindow::new()?;
-    ui.window().set_size(slint::LogicalSize::new(1360.0, 860.0));
+    ui.window().set_size(slint::LogicalSize::new(1280.0, 720.0));
     ui.set_steam_account_id(
         store
             .setting("steam_account_id")?
