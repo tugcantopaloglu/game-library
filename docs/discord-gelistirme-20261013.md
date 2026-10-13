@@ -11,3 +11,11 @@ Native işçi veri sürümü ve bağlantı durumu değişmemişse JSON kopyası,
 Kısa kontrol: iki Node önbellek/dinleyici testi ve dört Rust köprü testi geçti. 100 değişmeyen çağrıda her veri bölümü yalnızca bir kez okundu; yeniden bağlantı tam yenileme yaptı. Eklenti dosyaları resmi Vencord kaynağıyla yalnızca köprüye yönelik TypeScript kontrolünden geçti. Tam test paketi ve uzun kaynak ölçümü yapılmadı. Gerçek Discord kurulumu değiştirilmedi.
 
 Store sözleşmesi [Vencord FluxStore tiplerinde](https://github.com/Vendicated/Vencord/blob/main/packages/discord-types/src/stores/FluxStore.d.ts), ayar dinleyicileri [SettingsStore kaynağında](https://github.com/Vendicated/Vencord/blob/main/src/shared/SettingsStore.ts) tanımlıdır.
+
+## Favori odalar
+
+En fazla 50 ses odası Discord hesabına göre SQLite'ta takip edilir. Dolu odalar ve favoriler ayrı süzülür. Favori oda boşken listede kalır; silinen veya erişimi kaybolan oda kullanılamıyor olarak gösterilir ve takipten çıkarılabilir. Kişi sayısı bilinmiyorsa sıfır olarak gösterilmez.
+
+Oda seçici yalnızca açıldığında yerel Discord kanallarından görünür ses/stage odalarını arar; 100 sonuç ve 128 karakterlik arama sınırı vardır. Seçici kapanınca, Discord sayfasından çıkınca veya pencere tepsiye alınca katalog temizlenir. Görünürlük ve katılma izinleri ayrı denetlenir; izin değişikliği oda önbelleğini geçersiz kılar. Bildirim veya otomatik odaya katılma eklenmedi.
+
+Kısa kontrol: hesap ayrımı/yeniden açılış/50 oda sınırı için bir SQLite testi ve boş/erişilemeyen oda görünümü için bir native test geçti. Güncel köprü gerçek Vencord tipleriyle kontrol edildi. Canlı Discord oda işlemleri bu aşamada tetiklenmedi.

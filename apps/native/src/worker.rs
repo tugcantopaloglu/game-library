@@ -1,4 +1,4 @@
-use crate::{CollectionTile, CoverTile, GameTile, LibraryWindow, SocialTile};
+use crate::{CollectionTile, CoverTile, GameTile, LibraryWindow, RoomTile, SocialTile};
 use library_core::models::{Game, LibraryStatus, Source};
 use library_core::{launcher, sources, storage::Store};
 use platform_windows::shell::open_target;
@@ -55,6 +55,8 @@ pub enum Command {
     BridgeAction(String, serde_json::Value),
     SocialFilter(String, bool),
     FriendFavorite(String, bool),
+    RoomFilter(i32, String),
+    RoomFavorite(String, bool),
     Installer(crate::updates::InstallerAction, String),
     PrepareBridge,
     UpdateCheck,
@@ -504,6 +506,16 @@ fn bridge_status(
         })
         .count();
     let friends = crate::social::friends(&snapshot, &favorites, query, now_ms);
+    let room_favorites = snapshot["accountId"]
+        .as_str()
+        .and_then(|account| store.room_favorites(account).ok())
+        .unwrap_or_default();
+    let rooms = crate::social::rooms(&snapshot, &room_favorites, query);
+    let can_favorite_rooms =
+        connected && snapshot["capabilities"]["favorite_rooms"] == true && can_favorite;
+    let catalog_pending = connected
+        && query.room_mode == 2
+        && snapshot["roomCatalogQuery"].as_str() != Some(query.room_query.as_str());
     let mut lines = vec![snapshot["status"]
         .as_str()
         .unwrap_or("Vencord bekleniyor")
@@ -525,6 +537,11 @@ fn bridge_status(
         );
         ui.set_friend_count(if connected { total as i32 } else { 0 });
         ui.set_favorite_friend_count(if connected { favorite_count as i32 } else { 0 });
+        ui.set_can_favorite_rooms(can_favorite_rooms);
+        ui.set_can_room_catalog(connected && snapshot["capabilities"]["room_catalog"] == true);
+        ui.set_favorite_room_count(room_favorites.len() as i32);
+        ui.set_room_catalog_pending(catalog_pending);
+        ui.set_room_catalog_more(snapshot["roomCatalogMore"] == true);
         let friends: Vec<SocialTile> = friends
             .iter()
             .map(|friend| {
@@ -560,27 +577,31 @@ fn bridge_status(
                 }
             })
             .collect();
-        let rooms = if connected {
-            snapshot["rooms"].as_array().cloned().unwrap_or_default()
-        } else {
-            vec![]
-        };
-        let rooms: Vec<SocialTile> = rooms
+        let rooms: Vec<RoomTile> = rooms
             .iter()
-            .take(100)
-            .map(|room| SocialTile {
-                id: room["id"].as_str().unwrap_or("").into(),
-                name: room["name"].as_str().unwrap_or("Ses odası").into(),
-                subtitle: format!(
-                    "{} · {} kişi",
-                    room["guild"].as_str().unwrap_or(""),
-                    room["members"].as_u64().unwrap_or(0)
-                )
-                .into(),
-                initial: "#".into(),
-                online: true,
-                favorite: false,
-                recent: "".into(),
+            .map(|room| RoomTile {
+                id: room.id.as_str().into(),
+                name: room.name.as_str().into(),
+                subtitle: if !room.available {
+                    "Erişim yok veya oda silinmiş".into()
+                } else {
+                    let occupancy = room
+                        .members
+                        .map(|count| {
+                            if count == 0 {
+                                "Boş".to_string()
+                            } else {
+                                format!("{count} kişi")
+                            }
+                        })
+                        .unwrap_or("Durum bilinmiyor".into());
+                    format!("{} · {occupancy}", room.guild).into()
+                },
+                online: room.available && room.members.is_some_and(|count| count > 0),
+                favorite: room_favorites.contains(&room.id),
+                can_join: room.available
+                    && room.can_join
+                    && snapshot["capabilities"]["join_voice"] == true,
             })
             .collect();
         ui.set_friends(Rc::new(VecModel::from(friends)).into());
@@ -1064,16 +1085,40 @@ pub fn start(
                                 }
                             }
                         }
+                        if snapshot["connected"] == true
+                            && snapshot["capabilities"]["room_catalog"] == true
+                            && social_query.room_mode == 2
+                            && snapshot["roomCatalogQuery"].as_str()
+                                != Some(social_query.room_query.as_str())
+                        {
+                            bridge.command(
+                                "room_catalog",
+                                serde_json::json!({"query":social_query.room_query}),
+                            )?;
+                        }
+                        if snapshot["connected"] == true
+                            && snapshot["capabilities"]["favorite_rooms"] == true
+                        {
+                            if let Some(account) = snapshot["accountId"].as_str() {
+                                let rooms = store
+                                    .room_favorites(account)
+                                    .map_err(|error| error.to_string())?;
+                                if snapshot["favoriteRoomIds"] != serde_json::json!(rooms) {
+                                    bridge.command(
+                                        "favorite_rooms",
+                                        serde_json::json!({"ids":rooms}),
+                                    )?;
+                                }
+                            }
+                        }
                     }
                     bridge_status(bridge.as_ref(), &store, &social_query, &ui)?;
                     social_view = Some(next_view);
                     Ok(())
                 })(),
                 Command::SocialFilter(text, favorites_only) => {
-                    social_query = crate::social::Query {
-                        text: text.chars().take(256).collect(),
-                        favorites_only,
-                    };
+                    social_query.text = text.chars().take(256).collect();
+                    social_query.favorites_only = favorites_only;
                     bridge_status(bridge.as_ref(), &store, &social_query, &ui)
                 }
                 Command::FriendFavorite(id, favorite) => (|| {
@@ -1096,6 +1141,43 @@ pub fn start(
                         .set_friend_favorite(account, &id, favorite)
                         .map_err(|error| error.to_string())?;
                     bridge_status(bridge.as_ref(), &store, &social_query, &ui)
+                })(),
+                Command::RoomFilter(mode, text) => (|| {
+                    social_view = None;
+                    social_query.room_mode = mode.clamp(0, 2);
+                    social_query.room_query = text.chars().take(128).collect();
+                    if let Some(bridge) = bridge.as_ref() {
+                        if bridge.snapshot()["capabilities"]["room_catalog"] == true {
+                            bridge.command("room_catalog", serde_json::json!({"query":if social_query.room_mode == 2 {Some(&social_query.room_query)} else {None}}))?;
+                        }
+                    }
+                    bridge_status(bridge.as_ref(), &store, &social_query, &ui)
+                })(),
+                Command::RoomFavorite(id, favorite) => (|| {
+                    social_view = None;
+                    let bridge = bridge.as_ref().ok_or("Discord bağlantısını aç.")?;
+                    let snapshot = bridge.snapshot();
+                    if snapshot["connected"] != true
+                        || snapshot["capabilities"]["favorite_rooms"] != true
+                    {
+                        return Err("Oda takibi için köprüyü güncelle.".into());
+                    }
+                    let account = snapshot["accountId"]
+                        .as_str()
+                        .ok_or("Discord hesabı okunamadı")?;
+                    let known = ["rooms", "roomCatalog"].iter().any(|key| {
+                        snapshot[*key].as_array().is_some_and(|rows| {
+                            rows.iter()
+                                .any(|room| room["id"] == id && room["available"] != false)
+                        })
+                    });
+                    if favorite && !known {
+                        return Err("Oda artık erişilemiyor".into());
+                    }
+                    store
+                        .set_room_favorite(account, &id, favorite)
+                        .map_err(|error| error.to_string())?;
+                    bridge_status(Some(bridge), &store, &social_query, &ui)
                 })(),
                 Command::BridgeAction(action, data) => bridge
                     .as_ref()

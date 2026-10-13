@@ -6,6 +6,68 @@ use std::collections::HashSet;
 pub struct Query {
     pub text: String,
     pub favorites_only: bool,
+    pub room_mode: i32,
+    pub room_query: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Room {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub guild: String,
+    #[serde(default)]
+    pub members: Option<u64>,
+    #[serde(default = "yes")]
+    pub available: bool,
+    #[serde(default = "yes")]
+    pub can_join: bool,
+}
+
+fn yes() -> bool {
+    true
+}
+
+pub fn rooms(snapshot: &Value, favorites: &[String], query: &Query) -> Vec<Room> {
+    if snapshot["connected"] != true
+        || (query.room_mode == 2
+            && snapshot["roomCatalogQuery"].as_str() != Some(query.room_query.as_str()))
+    {
+        return vec![];
+    }
+    let mut seen = HashSet::new();
+    let mut rows: Vec<Room> = snapshot[if query.room_mode == 2 {
+        "roomCatalog"
+    } else {
+        "rooms"
+    }]
+    .as_array()
+    .into_iter()
+    .flatten()
+    .take(100)
+    .filter_map(|value| serde_json::from_value::<Room>(value.clone()).ok())
+    .filter(|room| {
+        (15..=22).contains(&room.id.len())
+            && room.id.bytes().all(|b| b.is_ascii_digit())
+            && room.id.parse::<u64>().is_ok_and(|id| id > 0)
+            && room.name.len() <= 512
+            && room.guild.len() <= 512
+            && seen.insert(room.id.clone())
+            && (query.room_mode != 1 || favorites.contains(&room.id))
+            && (query.room_mode != 0
+                || room.available && room.members.is_some_and(|count| count > 0))
+    })
+    .collect();
+    rows.sort_by(|a, b| {
+        favorites
+            .contains(&b.id)
+            .cmp(&favorites.contains(&a.id))
+            .then_with(|| a.guild.to_lowercase().cmp(&b.guild.to_lowercase()))
+            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+            .then_with(|| a.id.cmp(&b.id))
+    });
+    rows
 }
 
 #[derive(Deserialize)]
@@ -79,6 +141,48 @@ pub fn last_conversation(at: Option<u64>, now_ms: u64) -> String {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn followed_rooms_preserve_empty_and_unavailable_states() {
+        let snapshot = json!({"connected":true,"rooms":[
+            {"id":"123456789012345678","name":"Empty","members":0},
+            {"id":"223456789012345678","name":"Busy","members":2},
+            {"id":"323456789012345678","name":"Unavailable","members":null,"available":false,"canJoin":false}
+        ],"roomCatalogQuery":"other","roomCatalog":[]});
+        let favorites = vec!["123456789012345678".into(), "323456789012345678".into()];
+        assert_eq!(
+            rooms(&snapshot, &favorites, &Query::default())[0].name,
+            "Busy"
+        );
+        let followed = rooms(
+            &snapshot,
+            &favorites,
+            &Query {
+                room_mode: 1,
+                ..Query::default()
+            },
+        );
+        assert_eq!(followed.len(), 2);
+        assert_eq!(followed[0].members, Some(0));
+        assert_eq!(followed[1].members, None);
+        assert!(!followed[1].can_join);
+        assert!(rooms(
+            &snapshot,
+            &favorites,
+            &Query {
+                room_mode: 2,
+                room_query: "new".into(),
+                ..Query::default()
+            }
+        )
+        .is_empty());
+        assert!(rooms(
+            &json!({"connected":false,"rooms":snapshot["rooms"]}),
+            &favorites,
+            &Query::default()
+        )
+        .is_empty());
+    }
 
     #[test]
     fn friends_sort_by_last_conversation_and_filter_favorites_without_inventing_recency() {

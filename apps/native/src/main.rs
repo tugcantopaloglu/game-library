@@ -384,12 +384,20 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let weak = ui.as_weak();
     ui.on_hide_window(move || {
         if let Some(ui) = weak.upgrade() {
+            if ui.get_room_mode() == 2 {
+                ui.set_room_mode(1);
+                ui.invoke_room_filter(1, ui.get_room_query());
+            }
             let _ = ui.hide();
         }
     });
     let weak = ui.as_weak();
     ui.window().on_close_requested(move || {
         if let Some(ui) = weak.upgrade() {
+            if ui.get_room_mode() == 2 {
+                ui.set_room_mode(1);
+                ui.invoke_room_filter(1, ui.get_room_query());
+            }
             let _ = ui.hide();
         }
         slint::CloseRequestResponse::KeepWindowShown
@@ -496,6 +504,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     register_command!(on_bridge_action, (action,id) => Command::BridgeAction(action.into(),serde_json::json!({"id":id.as_str()})));
     register_command!(on_social_filter, (text,favorites) => Command::SocialFilter(text.into(),favorites));
     register_command!(on_friend_favorite, (id,favorite) => Command::FriendFavorite(id.into(),favorite));
+    register_command!(on_room_filter, (mode,text) => Command::RoomFilter(mode,text.into()));
+    register_command!(on_room_favorite, (id,favorite) => Command::RoomFavorite(id.into(),favorite));
     register_command!(on_update_check, () => Command::UpdateCheck);
     register_command!(on_prepare_bridge, () => Command::PrepareBridge);
     register_command!(on_artwork_key, (key) => Command::ArtworkKey(key.into()));

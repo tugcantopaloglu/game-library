@@ -3,6 +3,7 @@ import { Theme, Glyph, Action, Navigation, Field, Panel, Heading, Caption, Eyebr
 export struct CollectionTile { id: int, name: string, count: int }
 export struct CoverTile { title: string, url: string }
 export struct SocialTile { id: string, name: string, subtitle: string, initial: string, online: bool, favorite: bool, recent: string }
+export struct RoomTile { id: string, name: string, subtitle: string, online: bool, favorite: bool, can-join: bool }
 export struct GameTile { id: string, name: string, size: string, installed: bool, favorite: bool, artwork: image, has-artwork: bool, source: string, status-label: string }
 component GameCard inherits Rectangle {
     in property <GameTile> game;
@@ -131,6 +132,13 @@ export component LibraryWindow inherits Window {
     in property <int> favorite-friend-count;
     in-out property <string> friend-query;
     in-out property <bool> friend-favorites-only;
+    in property <bool> can-favorite-rooms;
+    in property <bool> can-room-catalog;
+    in property <int> favorite-room-count;
+    in property <bool> room-catalog-pending;
+    in property <bool> room-catalog-more;
+    in-out property <int> room-mode;
+    in-out property <string> room-query;
     in-out property <string> discord-target-id;
     in-out property <int> discord-branch;
     in-out property <bool> auto-update-app;
@@ -158,6 +166,7 @@ export component LibraryWindow inherits Window {
     in property <string> measurement-summary;
     in property <int> measurement-progress;
     in-out property <int> section;
+    changed section => { if section != 7 && room-mode == 2 { room-mode = 1; root.room-filter(1,room-query); } }
     in-out property <bool> installed-only;
     in-out property <string> query;
     in-out property <length> scroll-position;
@@ -190,6 +199,8 @@ export component LibraryWindow inherits Window {
     callback bridge-toggle(bool);
     callback social-filter(string,bool);
     callback friend-favorite(string,bool);
+    callback room-filter(int,string);
+    callback room-favorite(string,bool);
     callback bridge-action(string,string);
     callback installer(int,int);
     callback prepare-bridge;
@@ -218,7 +229,7 @@ export component LibraryWindow inherits Window {
     in property <string> completion-extra: "—";
     in property <string> completion-full: "—";
     in property <[SocialTile]> friends;
-    in property <[SocialTile]> rooms;
+    in property <[RoomTile]> rooms;
     in-out property <int> detail-tab;
     in-out property <int> detail-origin;
     function return-to-library() { section = detail-origin; root.refresh(query,section == 1,installed-only,offset,source-index); }
@@ -461,9 +472,23 @@ export component LibraryWindow inherits Window {
                         }
                         Rectangle { width: 1px; background: Theme.line; }
                         VerticalLayout { min-width: 0px; horizontal-stretch: 1; spacing: 10px;
-                            Heading { text: "Ses odaları"; height: 30px; }
-                            if rooms.length == 0: Caption { text: "Şu anda dolu oda görünmüyor."; font-size: 12px; }
-                            ListView { for room in rooms: PersonRow { name: room.name; subtitle: room.subtitle; initial: "#"; online: true; enabled: bridge-connected; clicked => { root.bridge-action("join_voice",room.id); } } }
+                            Heading { text: room-mode == 2 ? "Oda seç" : "Ses odaları"; height: 30px; }
+                            if room-mode != 2: HorizontalLayout { spacing: 4px;
+                                Tab { text: "Dolu"; active: room-mode == 0; clicked => { room-mode = 0; root.room-filter(0,room-query); } }
+                                Tab { text: "Favoriler · " + favorite-room-count; active: room-mode == 1; clicked => { room-mode = 1; root.room-filter(1,room-query); } }
+                                Rectangle { horizontal-stretch: 1; background: transparent; }
+                                if can-room-catalog: Action { text: ""; icon: 7; min-width: 30px; max-width: 30px; accessible-label: "Takip edilecek oda seç"; clicked => { room-mode = 2; root.room-filter(2,room-query); } }
+                            }
+                            if room-mode == 2: HorizontalLayout { spacing: 4px;
+                                Field { placeholder: "Sunucu veya oda ara"; text <=> room-query; edited => { root.room-filter(2,room-query); } }
+                                Action { text: "←"; min-width: 30px; max-width: 30px; accessible-label: "Favori odalara dön"; clicked => { room-mode = 1; root.room-filter(1,room-query); } }
+                            }
+                            if rooms.length == 0: Caption { text: !bridge-connected ? "Discord bağlantısı bekleniyor." : room-catalog-pending ? "Odalar yükleniyor…" : room-mode == 1 ? "Takip etmek için bir odayı yıldızla." : room-mode == 2 ? "Aramana uygun oda bulunamadı." : "Şu anda dolu oda görünmüyor."; font-size: 12px; }
+                            ListView { for room in rooms: PersonRow { name: room.name; subtitle: room.subtitle; initial: "#"; online: room.online; enabled: bridge-connected; can-join: room.can-join || room-mode == 2; browse: room-mode == 2; favorite: room.favorite; can-favorite: can-favorite-rooms;
+                                clicked => { if room-mode == 2 { root.room-favorite(room.id,!room.favorite); } else { root.bridge-action("join_voice",room.id); } }
+                                favorite-clicked => { root.room-favorite(room.id,!room.favorite); }
+                            } }
+                            if room-mode == 2 && room-catalog-more: Caption { text: "İlk 100 oda gösteriliyor. Aramanı daralt."; font-size: 11px; }
                         }
                     }
                     if bridge-connected && !recent-conversations: Caption { text: "Son konuşma sıralaması için GameLibraryBridge köprüsünü güncelle."; font-size: 11px; }

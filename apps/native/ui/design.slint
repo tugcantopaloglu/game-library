@@ -160,10 +160,16 @@ export component PersonRow inherits Rectangle {
     in property <string> initial;
     in property <bool> online;
     in property <bool> enabled: true;
+    in property <bool> can-join: true;
+    in property <bool> browse;
+    in property <bool> favorite;
+    in property <bool> can-favorite;
     callback clicked;
+    callback favorite-clicked;
     height: 56px; min-width: 0px;
     border-radius: 8px; background: touch.has-hover ? Theme.hover : transparent;
     border-width: keys.has-focus ? 1px : 0px; border-color: Theme.accent;
+    touch := TouchArea { enabled: root.enabled && root.can-join; mouse-cursor: pointer; clicked => { keys.focus(); root.clicked(); } }
     HorizontalLayout { padding: 10px; spacing: 12px;
         Rectangle { width: 34px; height: 34px; border-radius: 17px; background: Theme.accent-surface;
             Text { text: root.initial; color: Theme.accent; font-size: 13px; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
@@ -173,12 +179,12 @@ export component PersonRow inherits Rectangle {
             Text { text: root.name; color: Theme.text; font-size: 13px; overflow: elide; vertical-stretch: 0; }
             Text { text: root.subtitle; color: Theme.muted; font-size: 11px; overflow: elide; vertical-stretch: 0; }
         }
-        Glyph { kind: 10; }
+        Action { text: ""; icon: 1; selected: root.favorite; min-width: 30px; max-width: 30px; opacity: root.favorite ? 1 : touch.has-hover || keys.has-focus ? 0.7 : 0.25; enabled: root.enabled && root.can-favorite; accessible-label: root.favorite ? root.name + " takibi bırak" : root.name + " takip et"; clicked => { root.favorite-clicked(); } }
     }
     accessible-role: button; accessible-label: name; accessible-enabled: enabled; forward-focus: keys;
-    accessible-action-default => { if root.enabled { root.clicked(); } }
-    keys := FocusScope { enabled: root.enabled; key-pressed(event) => { if event.text == " " || event.text == "\n" { root.clicked(); return accept; } return reject; } }
-    touch := TouchArea { enabled: root.enabled; mouse-cursor: pointer; clicked => { keys.focus(); root.clicked(); } }
+    accessible-action-default => { if root.enabled && root.can-join { root.clicked(); } }
+    keys := FocusScope { enabled: root.enabled; key-pressed(event) => { if (event.text == " " || event.text == "\n") && root.can-join { root.clicked(); return accept; } if event.text == "f" && root.can-favorite { root.favorite-clicked(); return accept; } return reject; } }
+    ContextMenuArea { enabled: !root.browse; Menu { MenuItem { title: "Odaya katıl"; enabled: root.enabled && root.can-join; activated => { root.clicked(); } } MenuItem { title: root.favorite ? "Takibi bırak" : "Takip et"; enabled: root.enabled && root.can-favorite; activated => { root.favorite-clicked(); } } } }
 }
 
 export component FriendRow inherits Rectangle {

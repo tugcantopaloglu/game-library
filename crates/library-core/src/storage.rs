@@ -688,6 +688,41 @@ impl Store {
         )
     }
 
+    pub fn room_favorites(&self, account: &str) -> Result<Vec<String>> {
+        validate_discord_id(account)?;
+        let ids: Vec<String> = self
+            .setting(&format!("discord_room_favorites:{account}"))?
+            .map(|value| serde_json::from_str(&value))
+            .transpose()
+            .map_err(|_| LibraryError::Invalid("Oda favorileri okunamadı".into()))?
+            .unwrap_or_default();
+        if ids.len() > 50 || ids.iter().any(|id| validate_discord_id(id).is_err()) {
+            return Err(LibraryError::Invalid("Oda favorileri geçersiz".into()));
+        }
+        Ok(ids)
+    }
+
+    pub fn set_room_favorite(&self, account: &str, id: &str, favorite: bool) -> Result<()> {
+        validate_discord_id(id)?;
+        let mut ids = self.room_favorites(account)?;
+        ids.retain(|saved| saved != id);
+        if favorite {
+            if ids.len() >= 50 {
+                return Err(LibraryError::Invalid(
+                    "En fazla 50 oda takip edilebilir".into(),
+                ));
+            }
+            ids.push(id.to_string());
+        }
+        ids.sort();
+        ids.dedup();
+        self.set_setting(
+            &format!("discord_room_favorites:{account}"),
+            &serde_json::to_string(&ids)
+                .map_err(|error| LibraryError::Invalid(error.to_string()))?,
+        )
+    }
+
     pub fn set_favorite(&self, id: &str, favorite: bool) -> Result<()> {
         if self.connection.execute(
             "UPDATE games SET favorite=?1 WHERE id=?2",
