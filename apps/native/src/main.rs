@@ -5,6 +5,7 @@ mod bridge;
 mod completion;
 mod measurement;
 mod media;
+mod social;
 mod updates;
 mod validation;
 mod worker;
@@ -493,6 +494,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     register_command!(on_delete_collection, (id) => Command::CollectionDelete(id as i64));
     register_command!(on_collection_member, (id,collection,member) => Command::CollectionMember(id.into(),collection as i64,member));
     register_command!(on_bridge_action, (action,id) => Command::BridgeAction(action.into(),serde_json::json!({"id":id.as_str()})));
+    register_command!(on_social_filter, (text,favorites) => Command::SocialFilter(text.into(),favorites));
+    register_command!(on_friend_favorite, (id,favorite) => Command::FriendFavorite(id.into(),favorite));
     register_command!(on_update_check, () => Command::UpdateCheck);
     register_command!(on_prepare_bridge, () => Command::PrepareBridge);
     register_command!(on_artwork_key, (key) => Command::ArtworkKey(key.into()));

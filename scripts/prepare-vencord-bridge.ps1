@@ -22,7 +22,7 @@ if ($Update) {
 }
 $destination = Join-Path $SourceDirectory 'src\userplugins\gameLibraryBridge.desktop'
 New-Item -ItemType Directory -Path $destination -Force | Out-Null
-Copy-Item -LiteralPath (Join-Path $pluginDirectory 'index.ts'), (Join-Path $pluginDirectory 'native.ts') -Destination $destination -Force
+Copy-Item -LiteralPath (Join-Path $pluginDirectory 'index.ts'), (Join-Path $pluginDirectory 'native.ts'), (Join-Path $pluginDirectory 'social.ts') -Destination $destination -Force
 & pnpm --dir $SourceDirectory install --frozen-lockfile
 if ($LASTEXITCODE -ne 0) { throw 'Vencord dependency installation failed.' }
 & pnpm --dir $SourceDirectory testTsc

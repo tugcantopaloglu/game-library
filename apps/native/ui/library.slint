@@ -2,7 +2,7 @@ import { TextEdit, CheckBox, ListView, ScrollView, ComboBox, AboutSlint, Palette
 import { Theme, Glyph, Action, Navigation, Field, Panel, Heading, Caption, Eyebrow, Metric, Tab, PersonRow } from "design.slint";
 export struct CollectionTile { id: int, name: string, count: int }
 export struct CoverTile { title: string, url: string }
-export struct SocialTile { id: string, name: string, subtitle: string, initial: string, online: bool }
+export struct SocialTile { id: string, name: string, subtitle: string, initial: string, online: bool, favorite: bool, recent: string }
 export struct GameTile { id: string, name: string, size: string, installed: bool, favorite: bool, artwork: image, has-artwork: bool, source: string, status-label: string }
 component GameCard inherits Rectangle {
     in property <GameTile> game;
@@ -118,6 +118,12 @@ export component LibraryWindow inherits Window {
     in property <bool> muted;
     in property <bool> deafened;
     in property <string> bridge-status: "Yerel Discord/Vencord bağlantısı kapalı.";
+    in property <bool> can-favorite-friends;
+    in property <bool> recent-conversations;
+    in property <int> friend-count;
+    in property <int> favorite-friend-count;
+    in-out property <string> friend-query;
+    in-out property <bool> friend-favorites-only;
     in-out property <string> discord-target-id;
     in-out property <int> discord-branch;
     in-out property <bool> auto-update-app;
@@ -175,6 +181,8 @@ export component LibraryWindow inherits Window {
     callback delete-collection(int);
     callback collection-member(string,int,bool);
     callback bridge-toggle(bool);
+    callback social-filter(string,bool);
+    callback friend-favorite(string,bool);
     callback bridge-action(string,string);
     callback installer(int,int);
     callback prepare-bridge;

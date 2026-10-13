@@ -653,6 +653,41 @@ impl Store {
         Ok(())
     }
 
+    pub fn friend_favorites(&self, account: &str) -> Result<Vec<String>> {
+        validate_discord_id(account)?;
+        let ids: Vec<String> = self
+            .setting(&format!("discord_favorites:{account}"))?
+            .map(|value| serde_json::from_str(&value))
+            .transpose()
+            .map_err(|_| LibraryError::Invalid("Arkadaş favorileri okunamadı".into()))?
+            .unwrap_or_default();
+        if ids.len() > 200 || ids.iter().any(|id| validate_discord_id(id).is_err()) {
+            return Err(LibraryError::Invalid("Arkadaş favorileri geçersiz".into()));
+        }
+        Ok(ids)
+    }
+
+    pub fn set_friend_favorite(&self, account: &str, id: &str, favorite: bool) -> Result<()> {
+        validate_discord_id(id)?;
+        let mut ids = self.friend_favorites(account)?;
+        ids.retain(|saved| saved != id);
+        if favorite {
+            if ids.len() >= 200 {
+                return Err(LibraryError::Invalid(
+                    "En fazla 200 arkadaş favorilere eklenebilir".into(),
+                ));
+            }
+            ids.push(id.to_string());
+        }
+        ids.sort();
+        ids.dedup();
+        self.set_setting(
+            &format!("discord_favorites:{account}"),
+            &serde_json::to_string(&ids)
+                .map_err(|error| LibraryError::Invalid(error.to_string()))?,
+        )
+    }
+
     pub fn set_favorite(&self, id: &str, favorite: bool) -> Result<()> {
         if self.connection.execute(
             "UPDATE games SET favorite=?1 WHERE id=?2",
@@ -758,6 +793,16 @@ fn now_ms() -> i64 {
         .unwrap_or_default()
         .as_millis()
         .min(i64::MAX as u128) as i64
+}
+
+fn validate_discord_id(id: &str) -> Result<()> {
+    if !(15..=22).contains(&id.len())
+        || !id.bytes().all(|byte| byte.is_ascii_digit())
+        || !id.parse::<u64>().is_ok_and(|value| value > 0)
+    {
+        return Err(LibraryError::Invalid("Discord kimliği geçersiz".into()));
+    }
+    Ok(())
 }
 
 fn upgrade_user_data(connection: &mut Connection, path: &Path, backup: bool) -> Result<()> {

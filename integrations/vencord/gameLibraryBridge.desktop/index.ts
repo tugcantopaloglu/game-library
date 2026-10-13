@@ -3,12 +3,14 @@ import { definePluginSettings, Settings } from "@api/Settings";
 import { checkForUpdates, update } from "@utils/updater";
 import definePlugin, { OptionType, PluginNative } from "@utils/types";
 import { findByProps } from "@webpack";
-import { ApplicationStreamingStore, ChannelActionCreators, ChannelStore, GuildStore, MediaEngineStore, PresenceStore, RelationshipStore, SelectedChannelStore, UserStore, VoiceStateStore } from "@webpack/common";
+import { ApplicationStreamingStore, ChannelActionCreators, ChannelStore, GuildStore, MediaEngineStore, PresenceStore, ReadStateStore, RelationshipStore, SelectedChannelStore, UserStore, VoiceStateStore } from "@webpack/common";
+import { favoriteIds, lastMessageAt, validId, visibleFriends } from "./social";
 
 const Native = VencordNative.pluginHelpers.GameLibraryBridge as PluginNative<typeof import("./native")>;
 const settings = definePluginSettings({
     dataDirectory: { type: OptionType.STRING, description: "Game Library data directory. Leave empty for the default.", default: "" },
-    selectedFriends: { type: OptionType.STRING, description: "Selected friend IDs separated by commas; empty displays up to 50 friends.", default: "" }
+    selectedFriends: { type: OptionType.STRING, description: "Selected friend IDs separated by commas; empty displays recent friends.", default: "" },
+    favoriteFriends: { type: OptionType.STRING, description: "Favorite friends synchronized with Game Library.", default: "" }
 });
 let timer: ReturnType<typeof setInterval> | undefined;
 let busy = false;
@@ -25,9 +27,15 @@ function actions() {
 function snapshot() {
     const modules = actions();
     const selected = settings.store.selectedFriends.split(",").map(id => id.trim()).filter(id => /^\d{15,22}$/.test(id));
-    const friends = RelationshipStore.getFriendIDs().filter(id => selected.length === 0 || selected.includes(id)).slice(0, 50).map(id => {
+    const favorites = favoriteIds(settings.store.favoriteFriends);
+    const recencyAvailable = typeof ChannelStore.getDMFromUserId === "function" && typeof ReadStateStore.lastMessageId === "function";
+    const recent = RelationshipStore.getFriendIDs().filter(id => validId(id) && (selected.length === 0 || selected.includes(id))).slice(0, 2000).map(id => {
+        const channel = recencyAvailable ? ChannelStore.getDMFromUserId(id) : undefined;
+        return { id, lastMessageAt: channel ? lastMessageAt(ReadStateStore.lastMessageId(channel)) : null };
+    });
+    const friends = visibleFriends(recent, favorites).map(({id, lastMessageAt}) => {
         const user = UserStore.getUser(id);
-        return { id, name: user?.globalName || user?.username || id, status: PresenceStore.getStatus(id) || "unknown", activity: PresenceStore.getActivities(id).slice(0, 2).map(activity => activity.name).join(", ") };
+        return { id, lastMessageAt, name: (user?.globalName || user?.username || id).slice(0,64), status: PresenceStore.getStatus(id) || "unknown", activity: PresenceStore.getActivities(id).slice(0, 2).map(activity => activity.name).join(", ").slice(0,128) };
     });
     const rooms = Object.entries(VoiceStateStore.getAllVoiceStates()).flatMap(([guildId, states]) => {
         const counts = new Map<string, number>();
@@ -35,11 +43,11 @@ function snapshot() {
         return [...counts].map(([id, members]) => ({ id, name: ChannelStore.getChannel(id)?.name || id, guild: GuildStore.getGuild(guildId)?.name || "", members }));
     }).slice(0, 50);
     return { type: "snapshot", protocol: 1, version: 1, status: "Yerel Vencord bağlantısı açık", result,
-        friends, rooms, voiceChannel: SelectedChannelStore.getVoiceChannelId(),
+        friends, rooms, accountId: UserStore.getCurrentUser()?.id, favoriteIds: favorites, voiceChannel: SelectedChannelStore.getVoiceChannelId(),
         muted: MediaEngineStore.isSelfMute(), deafened: MediaEngineStore.isSelfDeaf(),
         stream: ApplicationStreamingStore.getCurrentUserActiveStream(),
         autoUpdate: Settings.autoUpdate,
-        capabilities: { open_dm: typeof ChannelActionCreators.openPrivateChannel === "function", mute: typeof modules.voice?.toggleSelfMute === "function", deafen: typeof modules.voice?.toggleSelfDeaf === "function", join_voice: typeof modules.channel?.selectVoiceChannel === "function", stream_stop: typeof modules.streaming?.stopStream === "function", stream_start: false, stream_source: false, stream_quality: false, stream_fps: false, stream_audio: false, vencord_update: true, auto_update: true }
+        capabilities: { recent_conversations: recencyAvailable, favorite_friends: true, open_dm: typeof ChannelActionCreators.openPrivateChannel === "function", mute: typeof modules.voice?.toggleSelfMute === "function", deafen: typeof modules.voice?.toggleSelfDeaf === "function", join_voice: typeof modules.channel?.selectVoiceChannel === "function", stream_stop: typeof modules.streaming?.stopStream === "function", stream_start: false, stream_source: false, stream_quality: false, stream_fps: false, stream_audio: false, vencord_update: true, auto_update: true }
     };
 }
 
@@ -47,6 +55,9 @@ async function command(message: any) {
     const modules = actions();
     const id = String(message.data?.id || "");
     switch (message.action) {
+        case "favorite_friends":
+            if (!Array.isArray(message.data?.ids) || message.data.ids.length > 200 || !message.data.ids.every(validId)) throw new Error("Arkadaş favorileri geçersiz");
+            settings.store.favoriteFriends = favoriteIds(message.data.ids.join(",")).join(","); break;
         case "mute": modules.voice.toggleSelfMute(); break;
         case "deafen": modules.voice.toggleSelfDeaf(); break;
         case "join_voice":

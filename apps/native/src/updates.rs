@@ -323,6 +323,11 @@ pub fn prepare_bridge(data: &Path) -> Result<String, String> {
         include_str!("../../../integrations/vencord/gameLibraryBridge.desktop/native.ts"),
     )
     .map_err(|error| error.to_string())?;
+    std::fs::write(
+        plugin.join("social.ts"),
+        include_str!("../../../integrations/vencord/gameLibraryBridge.desktop/social.ts"),
+    )
+    .map_err(|error| error.to_string())?;
     let script = directory.join("prepare.ps1");
     std::fs::write(
         &script,

@@ -62,7 +62,7 @@ export function poll() {
 
 export function snapshot(_: unknown, payload: unknown) {
     const text = JSON.stringify(payload);
-    if (connected && text.length < 256 * 1024) socket?.write(text + "\n");
+    if (connected && Buffer.byteLength(text, "utf8") + 1 <= 256 * 1024) socket?.write(text + "\n");
 }
 
 export function stop() {
