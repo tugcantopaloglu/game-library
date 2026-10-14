@@ -7,3 +7,6 @@ opt-level = "s"
 lto = "thin"
 codegen-units = 1
 strip = true
+
+[profile.release.package.game-library-native]
+codegen-units = 8

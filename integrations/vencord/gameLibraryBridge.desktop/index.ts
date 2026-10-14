@@ -7,7 +7,7 @@ import { BroadcastControls, BroadcastProvider, broadcastAdapter } from "./broadc
 import { ChatControls, ChatProvider, chatMessageAdapters, directMessageAdapter, discordFocusAdapter } from "./directMessage";
 import { findByCode, findByProps } from "@webpack";
 import { ApplicationStreamingStore, ChannelActionCreators, ChannelStore, GuildStore, MediaEngineStore, MessageActions, MessageStore, PermissionStore, PermissionsBits, PresenceStore, ReadStateStore, RelationshipStore, SelectedChannelStore, SpotifyStore, UserStore, VoiceStateStore } from "@webpack/common";
-import { favoriteIds, lastMessageAt, validId, visibleFriends } from "./social";
+import { avatarUrl, favoriteIds, lastMessageAt, validId, visibleFriends } from "./social";
 import { SnapshotCache, StoreListeners, Section } from "./state";
 import { LiveStream, StreamControls, StreamProvider } from "./stream";
 import { mediaAdapter, startAdapter, stopAdapter } from "./streamAdapter";
@@ -43,19 +43,24 @@ function spotifyProvider(): SpotifyProvider {
     return {get account(){return UserStore.getCurrentUser()?.id;},store:SpotifyStore,friendIds:()=>RelationshipStore.getFriendIDs(),activities:id=>PresenceStore.getActivities(id),join:actions().listenAlong,openProfile:id=>{openUserProfile(id);},openExternal:async uri=>{await VencordNative.native.openExternal(uri);}};
 }
 let transportGeneration = -1;
+let runEpoch = 0;
+let refreshQueued = false;
+function scheduleRefresh() { if (!timer || refreshQueued) return; refreshQueued = true; setTimeout(() => { refreshQueued = false; void refresh(); }, 0); }
 const invalidateSettings = () => cache.invalidate("friends", "rooms", "controls");
 
 function resolveActions() {
+    const props=(...keys:string[])=>{try{return findByProps(...keys);}catch{return undefined;}};
+    const coded=(...parts:string[])=>{try{return findByCode(...parts);}catch{return undefined;}};
     return {
-        voice: findByProps("toggleSelfMute", "toggleSelfDeaf") as any,
-        channel: findByProps("selectVoiceChannel", "selectChannel") as any,
-        streaming: findByProps("stopStream") as any,
-        media: findByProps("setGoLiveSource", "setInputVolume", "setOutputVolume") as any,
-        presets: findByProps("PRESET_CUSTOM", "PRESET_VIDEO") as any,
-        listenAlong: listenAlongAdapter(findByCode("hasSpotifyAccount:", "sync_id", "Promise.reject", "openModalLazy")),
-        chatFocus: discordFocusAdapter(findByProps("focus", "restore", "minimize", "maximize")),
-        start: startAdapter(findByCode('type:"STREAM_START"', "streamType:", "guildId:", "channelId:")),
-        stop: stopAdapter(findByCode('type:"STREAM_STOP"', "streamKey:", "appContext:"))
+        voice: props("toggleSelfMute", "toggleSelfDeaf") as any,
+        channel: props("selectVoiceChannel", "selectChannel") as any,
+        streaming: props("stopStream") as any,
+        media: props("setGoLiveSource", "setInputVolume", "setOutputVolume") as any,
+        presets: props("PRESET_CUSTOM", "PRESET_VIDEO") as any,
+        listenAlong: listenAlongAdapter(coded("hasSpotifyAccount:", "sync_id", "Promise.reject", "openModalLazy")),
+        chatFocus: discordFocusAdapter(props("focus", "restore", "minimize", "maximize")),
+        start: startAdapter(coded("STREAM_START", "streamType", "guildId", "channelId")),
+        stop: stopAdapter(coded("STREAM_STOP", "streamKey", "appContext"))
     };
 }
 
@@ -68,6 +73,13 @@ function actions() {
 }
 
 function friendSnapshot() {
+    const voice=new Map<string,string>();
+    for (const states of Object.values(VoiceStateStore.getAllVoiceStates())) {
+        for (const state of Object.values(states)) {
+            const channel=state.channelId ? ChannelStore.getChannel(state.channelId) : undefined;
+            if (channel && PermissionStore.can(PermissionsBits.VIEW_CHANNEL,channel)) voice.set(state.userId,`${GuildStore.getGuild(channel.guild_id ?? "")?.name || ""} · ${channel.name || "Ses odası"}`.slice(0,128));
+        }
+    }
     const selected = settings.store.selectedFriends.split(",").map(id => id.trim()).filter(id => /^\d{15,22}$/.test(id));
     const favorites = favoriteIds(settings.store.favoriteFriends);
     const recencyAvailable = typeof ChannelStore.getDMFromUserId === "function" && typeof ReadStateStore?.lastMessageId === "function";
@@ -77,7 +89,8 @@ function friendSnapshot() {
     });
     const friends = visibleFriends(recent, favorites).map(({id, lastMessageAt}) => {
         const user = UserStore.getUser(id);
-        return { id, lastMessageAt, name: (user?.globalName || user?.username || id).slice(0,64), status: PresenceStore.getStatus(id) || "unknown", activity: PresenceStore.getActivities(id).slice(0, 2).map(activity => activity.name).join(", ").slice(0,128) };
+        const avatar = avatarUrl(id,user?.avatar,user?.discriminator);
+        return { id, lastMessageAt, avatarUrl:avatar, voiceChannel:voice.get(id) ?? "", name: (user?.globalName || user?.username || id).slice(0,64), status: PresenceStore.getStatus(id) || "unknown", activity: PresenceStore.getActivities(id).filter(activity=>activity.type===0).slice(0, 2).map(activity => activity.name).join(", ").slice(0,128) };
     });
     return { friends, accountId: UserStore.getCurrentUser()?.id, favoriteIds: favorites, recentConversations: recencyAvailable };
 }
@@ -117,16 +130,18 @@ function roomSnapshot() {
 function controlSnapshot() {
     const modules = actions();
     const streamControl = streamControls.state(streamProvider());
-    return { status: "Yerel Vencord bağlantısı açık", result, voiceChannel: SelectedChannelStore.getVoiceChannelId(),
+    return { status: "Discord köprüsü bağlı", bridgeBuild: "20261014.1", result, voiceChannel: SelectedChannelStore.getVoiceChannelId(),
+        diagnostics: {chatOpen:typeof chatProvider().openDm === "function",chatFetch:typeof chatProvider().fetch === "function",chatSend:typeof chatProvider().send === "function",streamStart:typeof modules.start === "function",streamStop:typeof modules.stop === "function",streamQuality:!!mediaAdapter(modules.media,modules.presets?.PRESET_CUSTOM),streamCapture:typeof DiscordNative?.desktopCapture?.getDesktopCaptureSources === "function"},
         muted: MediaEngineStore.isSelfMute(), deafened: MediaEngineStore.isSelfDeaf(),
         stream: streamControl.active ? {streamKey:streamControl.key} : null,
         streamControl, spotify:spotifyControls.state(spotifyProvider()),broadcastAudio:broadcastControls.state(broadcastProvider()),chat:chatControls.state(chatProvider()),
         autoUpdate: Settings.autoUpdate,
         capabilities: {
+            avatar_request:true,
             recent_conversations: typeof ChannelStore?.getDMFromUserId === "function" && typeof ReadStateStore?.lastMessageId === "function",
             favorite_friends: true, favorite_rooms: typeof PermissionStore?.can === "function", room_catalog: typeof ChannelStore?.getChannelIds === "function" && typeof PermissionStore?.can === "function",
             open_dm: typeof chatProvider().openDm === "function",
-            chat_open: typeof chatProvider().openDm === "function",chat_close:true,chat_refresh:typeof chatProvider().fetch === "function",chat_send:chatControls.state(chatProvider()).canSend,
+            chat_open: typeof chatProvider().openDm === "function" || typeof ChannelStore?.getDMFromUserId === "function",chat_close:true,chat_refresh:typeof chatProvider().fetch === "function",chat_send:chatControls.state(chatProvider()).canSend,
             mute: typeof modules.voice?.toggleSelfMute === "function", deafen: typeof modules.voice?.toggleSelfDeaf === "function", join_voice: typeof modules.channel?.selectVoiceChannel === "function",
             stream_inspect: typeof ApplicationStreamingStore?.getCurrentUserActiveStream === "function",
             stream_stop: streamControl.canStop, stream_start: streamControl.canStart, stream_sources: streamControl.canSources, stream_source: streamControl.canSource, stream_quality: streamControl.canQuality, stream_fps: streamControl.canFps, stream_audio: streamControl.canAudio,
@@ -151,7 +166,7 @@ function streamProvider(): StreamProvider {
         get known() { const account = UserStore.getCurrentUser()?.id, current = ApplicationStreamingStore.getCurrentUserActiveStream?.(); return !!account && (!current || current.ownerId === account); },
         read: () => {
             const account = UserStore.getCurrentUser()?.id;
-            const active = ApplicationStreamingStore.getCurrentUserActiveStream();
+            const active = ApplicationStreamingStore.getCurrentUserActiveStream?.();
             if (!active || active.ownerId !== account) return null;
             const rtc = ApplicationStreamingStore.getState?.().rtcStreams ?? {};
             const key = Object.keys(rtc).slice(0,100).find(key => {
@@ -187,17 +202,24 @@ function bindStores() {
         [SpotifyStore, ["controls"]],
         [MessageStore, ["controls"]],
         [ChannelStore, ["friends", "rooms", "controls"]], [GuildStore, ["rooms"]],
-        [VoiceStateStore, ["rooms", "controls"]], [PermissionStore, ["rooms", "controls"]], [MediaEngineStore, ["controls"]],
+        [VoiceStateStore, ["friends", "rooms", "controls"]], [PermissionStore, ["friends", "rooms", "controls"]], [MediaEngineStore, ["controls"]],
         [SelectedChannelStore, ["controls"]], [ApplicationStreamingStore, ["controls"]]
     ];
-    for (const [store, sections] of bindings) complete = listeners.bind(store, () => cache.invalidate(...sections)) && complete;
+    for (const [store, sections] of bindings) complete = listeners.bind(store, () => { cache.invalidate(...sections); scheduleRefresh(); }) && complete;
     return complete;
 }
 
 async function command(message: any) {
+    if (message.data?.accountId !== undefined && message.data.accountId !== UserStore.getCurrentUser()?.id) throw new Error("Discord hesabı değişti; işlemi güncel hesapta yeniden seç.");
     const modules = actions();
     const id = String(message.data?.id || "");
     switch (message.action) {
+        case "avatar_request": {
+            const account=UserStore.getCurrentUser()?.id;
+            const encoded=await Native.avatar(String(message.data?.url || ""));
+            if (account===UserStore.getCurrentUser()?.id) await Native.snapshot({type:"avatar",protocol:1,accountId:account,url:message.data.url,base64:encoded});
+            return;
+        }
         case "broadcast_audio": await broadcastControls.execute(broadcastProvider(),message.action,message.data); break;
         case "spotify_track": case "spotify_profile": case "spotify_join":
             await spotifyControls.execute(spotifyProvider(),message.action,message.data); break;
@@ -230,6 +252,34 @@ async function command(message: any) {
     result = "İşlem Discord'a iletildi; güncel durum bağlantıdan okunuyor.";
 }
 
+async function refresh() {
+            if (busy) return; busy = true;
+            try {
+                const pending = await Native.connectionState();
+                if (pending.connected) {
+                    if (transportGeneration !== pending.generation) {
+                        transportGeneration = pending.generation;
+                        catalogQuery = null;
+                        streamControls = new StreamControls();
+                        spotifyControls.clear();
+                        broadcastControls.clear();
+                        chatControls.clear();
+                        result = "";
+                        cache.invalidate();
+                    }
+                    const complete = bindStores();
+                    if (!complete && Date.now() - lastFallback >= 4000) { cache.invalidate(); lastFallback = Date.now(); }
+                    if (streamControls.waiting && streamControls.observe(streamProvider())) cache.invalidate("controls");
+                    if (spotifyControls.observe(spotifyProvider())) cache.invalidate("controls");
+                    if (broadcastControls.waiting && broadcastControls.observe(broadcastProvider())) cache.invalidate("controls");
+                    if (chatControls.observe(chatProvider())) cache.invalidate("controls");
+                    const packet = cache.packet(pending.generation, section => section === "friends" ? friendSnapshot() : section === "rooms" ? roomSnapshot() : controlSnapshot());
+                    if (!await Native.snapshot(packet)) cache.invalidate();
+                } else {streamControls.catalog.clear();spotifyControls.clear();broadcastControls.clear();chatControls.clear();}
+            } catch { result = "Discord sürümündeki bir yetenek kullanılamıyor"; cache.invalidate(); }
+            finally { busy = false; }
+}
+
 export default definePlugin({
     name: "GameLibraryBridge", description: "Local Game Library connection with bounded messages, selected friends and version-gated controls.",
     authors: [{ name: "Game Library", id: 0n }], settings,
@@ -249,42 +299,37 @@ export default definePlugin({
         SettingsStore.addChangeListener("autoUpdate", invalidateSettings);
         SettingsStore.addPrefixChangeListener("plugins.GameLibraryBridge", invalidateSettings);
         await Native.start(settings.store.dataDirectory);
-        timer = setInterval(async () => {
-            if (busy) return; busy = true;
-            try {
-                const pending = await Native.poll();
-                if (pending.connected) {
-                    if (transportGeneration !== pending.generation) {
-                        transportGeneration = pending.generation;
-                        catalogQuery = null;
-                        streamControls = new StreamControls();
-                        spotifyControls.clear();
-                        broadcastControls.clear();
-                        chatControls.clear();
-                        result = "";
-                        cache.invalidate();
-                    }
-                    const complete = bindStores();
-                    if (!complete && Date.now() - lastFallback >= 4000) { cache.invalidate(); lastFallback = Date.now(); }
-                    for (const message of pending.commands) {
-                        try { await command(message); } catch (error) {
-                            result = error instanceof Error ? error.message : "İşlem başarısız";
-                            if (String((message as any)?.action).startsWith("stream_")) streamControls.fail(result);
-                        }
-                        cache.invalidate("controls");
-                    }
-                    if (streamControls.waiting && streamControls.observe(streamProvider())) cache.invalidate("controls");
-                    if (spotifyControls.observe(spotifyProvider())) cache.invalidate("controls");
-                    if (broadcastControls.waiting && broadcastControls.observe(broadcastProvider())) cache.invalidate("controls");
-                    if (chatControls.observe(chatProvider())) cache.invalidate("controls");
-                    const packet = cache.packet(pending.generation, section => section === "friends" ? friendSnapshot() : section === "rooms" ? roomSnapshot() : controlSnapshot());
-                    if (!await Native.snapshot(packet)) cache.invalidate();
-                } else {streamControls.catalog.clear();spotifyControls.clear();broadcastControls.clear();chatControls.clear();}
-            } catch { result = "Discord sürümündeki bir yetenek kullanılamıyor"; cache.invalidate(); }
-            finally { busy = false; }
-        }, 1000);
+        const epoch = ++runEpoch;
+        let queued=0;
+        let queue=Promise.resolve();
+        const execute = async (message:any) => {
+            if (epoch!==runEpoch) return;
+            try { await command(message); } catch (error) {
+                if (epoch!==runEpoch) return;
+                result = error instanceof Error ? error.message : "İşlem başarısız";
+                if (String(message?.action).startsWith("stream_")) streamControls.fail(result);
+            }
+            if (epoch===runEpoch) {cache.invalidate("controls");await refresh();}
+        };
+        timer = setInterval(refresh, 1000);
+        void refresh();
+        void (async () => {
+            while (epoch === runEpoch) {
+                const pending = await Native.waitCommands();
+                if (epoch !== runEpoch) break;
+                if (!pending.connected) continue;
+                await refresh();
+                for (const message of pending.commands) {
+                    if (["mute","deafen","avatar_request"].includes(String((message as any)?.action))) {void execute(message);continue;}
+                    if (queued>=16) {result="Discord işlem kuyruğu dolu; önceki işlemi bekle.";cache.invalidate("controls");continue;}
+                    queued++;
+                    queue=queue.then(()=>execute(message)).finally(()=>{queued--;});
+                }
+            }
+        })().catch(() => { result = "Discord komut bağlantısı kapandı; köprüyü yeniden etkinleştir."; cache.invalidate(); });
     },
     stop() {
+        runEpoch++;
         if (timer) clearInterval(timer);
         timer = undefined;
         listeners.clear();

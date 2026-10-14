@@ -80,6 +80,10 @@ pub struct Friend {
     #[serde(default)]
     pub activity: String,
     #[serde(default)]
+    pub avatar_url: String,
+    #[serde(default)]
+    pub voice_channel: String,
+    #[serde(default)]
     pub last_message_at: Option<u64>,
 }
 

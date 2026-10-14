@@ -22,3 +22,16 @@ test("incomplete or denied responses cannot erase an existing account library",a
     for(const data of [{response:{}},{response:{game_count:2,games:[]}},{status:401}]) assert.equal((await run(data).promise).kind,"request_failed");
     assert.equal((await run({response:{game_count:0}}).promise).kind,"games");
 });
+
+test("missing store token moves to the authenticated community games catalog",async()=>{
+    let destination;
+    const context={location:{protocol:"https:",hostname:"store.steampowered.com",assign:url=>destination=url},document:{getElementById:()=>({getAttribute:name=>JSON.stringify(name==="data-userinfo"?{logged_in:true,steamid:"76561198000000001"}:{})})}};
+    assert.equal((await vm.runInNewContext(source,context)).kind,"navigating");
+    assert.equal(destination,"https://steamcommunity.com/profiles/76561198000000001/games/?tab=all");
+});
+test("community fallback exports the complete own catalog and rejects another account",async()=>{
+    const context={location:{protocol:"https:",hostname:"steamcommunity.com",pathname:"/profiles/76561198000000001/games/"},g_steamID:"76561198000000001",rgGames:[{appid:"10",name:"Counter-Strike"},{appid:570,name:"Dota 2"}]};
+    assert.equal((await vm.runInNewContext(source,context)).response.game_count,2);
+    context.g_steamID="76561198000000002";
+    assert.equal((await vm.runInNewContext(source,context)).kind,"login_required");
+});

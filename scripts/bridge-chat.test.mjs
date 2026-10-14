@@ -43,6 +43,15 @@ test("message adapters use bounded fetch and four-argument native send with a no
     assert.throws(() => adapters.fetch(channelId, 1000), /geçersiz/);
 });
 
+test("formatted and wrapped Discord methods retain their named action contracts", async () => {
+    let received;
+    const open = directMessageAdapter({openPrivateChannel(options) { const { recipientIds } = options; received = recipientIds; }});
+    assert.equal(typeof open,"function"); await open(friend); assert.deepEqual(received,[friend]);
+    const adapted = chatMessageAdapters({fetchMessages(...args) {return args;},sendMessage(...args) {return args;}});
+    assert.equal(adapted.fetch(channelId,30)[0].channelId,channelId);
+    assert.equal(adapted.send(channelId,"hello",nonce)[3].nonce,nonce);
+});
+
 test("native focus wrapper preserves its verified window argument order", () => {
     const calls = [];
     const g = { window: { restore: id => calls.push(["restore",id]), focus: (force,id) => calls.push(["focus",force,id]) } };

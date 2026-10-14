@@ -152,7 +152,12 @@ pub fn epic(data: &Path) -> Result<EpicLibrary, String> {
     let output = data.join("integrations/legendary/library-result.json");
     let file = std::fs::File::create(&output).map_err(|error| error.to_string())?;
     let mut child = command(data)
-        .args(["list", "--json", "--include-non-installable"])
+        .args([
+            "list",
+            "--json",
+            "--include-non-installable",
+            "--force-refresh",
+        ])
         .stdin(std::process::Stdio::null())
         .stdout(file)
         .stderr(std::process::Stdio::null())

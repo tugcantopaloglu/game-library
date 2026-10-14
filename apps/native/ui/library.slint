@@ -4,8 +4,9 @@ import { Conversation, ChatMessageTile } from "chat.slint";
 export struct CollectionTile { id: int, name: string, count: int }
 export struct CoverTile { title: string, url: string }
 export struct MusicTile { user-id: string, name: string, title: string, artist: string, track-id: string, can-profile: bool, can-join: bool }
-export struct SocialTile { id: string, name: string, subtitle: string, initial: string, online: bool, favorite: bool, recent: string }
+export struct SocialTile { id: string, name: string, subtitle: string, initial: string, online: bool, favorite: bool, recent: string, avatar: image, has-avatar: bool, presence: string, voice: string, game: string }
 export struct RoomTile { id: string, name: string, subtitle: string, online: bool, favorite: bool, can-join: bool }
+export struct ExtensionTile { id: string, name: string, version: string, details: string, enabled: bool }
 export struct GameTile { id: string, name: string, size: string, installed: bool, favorite: bool, artwork: image, has-artwork: bool, source: string, status-label: string }
 component GameCard inherits Rectangle {
     in property <GameTile> game;
@@ -84,6 +85,15 @@ export component LibraryTray inherits SystemTrayIcon {
 }
 
 export component LibraryWindow inherits Window {
+    in property <[SocialTile]> followed-friends;
+    in property <string> avatar-status;
+    in-out property <bool> friends-panel-enabled: true;
+    callback friends-panel-toggle(bool);
+    private property <bool> compact-chat;
+    changed width => { compact-chat = root.width < 1280px; }
+    in property <[ExtensionTile]> extensions;
+    in property <string> extension-status: "Bir eklenti kur veya yerel oyun listesi örneğini ekle.";
+    callback extension-action(int,string);
     title: "Game Library";
     icon: @image-url("logos/game-library.png");
     preferred-width: 1280px; preferred-height: 720px;
@@ -207,7 +217,7 @@ export component LibraryWindow inherits Window {
     in property <[string]> stream-fps-options;
     in-out property <int> stream-resolution-index;
     in-out property <int> stream-fps-index;
-    in-out property <bool> stream-panel;
+    in-out property <bool> stream-panel: true;
     in property <bool> muted;
     in property <bool> deafened;
     in property <string> bridge-status: "Yerel Discord/Vencord bağlantısı kapalı.";
@@ -330,7 +340,7 @@ export component LibraryWindow inherits Window {
     in-out property <bool> source-details;
     in-out property <bool> steam-advanced;
     in-out property <bool> discord-settings;
-    out property <int> grid-columns: root.width < 1100px ? 4 : root.width < 1280px ? 5 : 6;
+    out property <int> grid-columns: (root.width - (friends-panel-enabled ? 280px : 0px)) < 950px ? 3 : (root.width - (friends-panel-enabled ? 280px : 0px)) < 1100px ? 4 : (root.width - (friends-panel-enabled ? 280px : 0px)) < 1280px ? 5 : 6;
     property <length> card-width: (root.width - 184px - 48px - 16px - (grid-columns - 1) * 16px) / grid-columns;
     property <length> card-height: card-width * 1.5 + 58px;
     changed grid-columns => { if section < 2 { root.refresh(query,section == 1,installed-only,offset,source-index); } }
@@ -358,7 +368,7 @@ export component LibraryWindow inherits Window {
                 }
                 VerticalLayout { spacing: 4px;
                     Navigation { text: "Discord"; icon: 3; active: section == 7; clicked => { section = 7; } }
-                    Navigation { text: "Ayarlar"; icon: 4; active: section == 8 || section == 2 || (section >= 3 && section <= 5) || section == 10 || section == 11 || section == 12; clicked => { section = 8; } }
+                    Navigation { text: "Ayarlar"; icon: 4; active: section == 8 || section == 2 || (section >= 3 && section <= 5) || section >= 10; clicked => { section = 8; } }
                     Rectangle { height: 1px; background: Theme.line; }
                     HorizontalLayout { height: 38px; padding-left: 12px; spacing: 9px;
                         Rectangle { width: 6px; height: 6px; border-radius: 3px; background: bridge-connected ? Theme.positive : Theme.subtle; }
@@ -382,6 +392,7 @@ export component LibraryWindow inherits Window {
                             MenuItem { title: "Oyun ekle"; activated => { root.add-manual(); } }
                             MenuItem { title: scanning ? "Taramayı durdur" : "Oyunları tara"; activated => { if scanning { root.cancel-scan(); } else { root.scan(); } } }
                             MenuItem { title: "Kaynakları yönet"; activated => { section = 3; } }
+                            MenuItem { title: friends-panel-enabled ? "Arkadaş panelini gizle" : "Arkadaş panelini göster"; activated => { friends-panel-enabled = !friends-panel-enabled; root.friends-panel-toggle(friends-panel-enabled); } }
                             MenuSeparator {}
                             MenuItem { title: "Tepsiye al"; activated => { root.hide-window(); } }
                             MenuItem { title: "Hakkında"; activated => { root.about(); } }
@@ -399,13 +410,14 @@ export component LibraryWindow inherits Window {
                     Text { text: section == 0 ? (collection-id > 0 ? "Koleksiyon" : "Kütüphane") : section == 1 ? "Favoriler" : section == 6 ? "Koleksiyonlar" : section == 7 ? "Discord" : "Ayarlar"; color: Theme.text; font-size: 22px; font-weight: 600; vertical-stretch: 0; }
                     if section < 2: Caption { text: matched + " oyun"; font-size: 11px; }
                 }
-                if section == 8 || section == 2 || (section >= 3 && section <= 5) || section == 10 || section == 11 || section == 12: HorizontalLayout { spacing: 8px;
+                if section == 8 || section == 2 || (section >= 3 && section <= 5) || section >= 10: HorizontalLayout { spacing: 8px;
                     Tab { text: "Genel"; active: section == 8; clicked => { section = 8; } }
                     Tab { text: "Kaynaklar"; active: section >= 3 && section <= 5; clicked => { section = 3; } }
                     Tab { text: "Discord bağlantısı"; active: section == 10; clicked => { section = 10; } }
                     Tab { text: "Entegrasyonlar"; active: section == 11; clicked => { section = 11; } }
                     Tab { text: "Ağ erişimi"; active: section == 12; clicked => { section = 12; } }
                     Tab { text: "Performans"; active: section == 2; clicked => { section = 2; root.sample(); } }
+                    Tab { text: "Eklentiler"; active: section == 13; clicked => { section = 13; root.extension-action(0,""); } }
                     Rectangle { horizontal-stretch: 1; background: transparent; }
                 }
                 if section < 2: VerticalLayout { spacing: 18px;
@@ -549,31 +561,36 @@ export component LibraryWindow inherits Window {
                 if section == 7: VerticalLayout { spacing: 14px;
                     HorizontalLayout { height: 34px; spacing: 10px;
                         Rectangle { width: 6px; height: 6px; border-radius: 3px; background: bridge-connected ? Theme.positive : Theme.subtle; }
-                        Caption { text: social-fixture ? "Örnek veri" : bridge-connected ? "Bağlı" : bridge-enabled ? "Bağlantı bekleniyor" : "Çevrimdışı"; font-size: 12px; }
+                        Caption { text: social-fixture ? "Örnek veri" : bridge-connected ? "Discord köprüsü bağlı" : bridge-enabled ? "Discord bağlantısı bekleniyor" : "Discord bağlantısı kapalı"; font-size: 12px; }
                         Rectangle { horizontal-stretch: 1; background: transparent; }
                         if !bridge-enabled: Action { text: "Bağlan"; clicked => { bridge-enabled = true; root.bridge-toggle(true); } }
-                        if can-mute: Action { text: ""; icon: 14; danger: muted; min-width: 32px; max-width: 32px; accessible-label: muted ? "Mikrofonu aç" : "Mikrofonu sustur"; clicked => { root.bridge-action("mute",""); } }
-                        if can-deafen: Action { text: ""; icon: 15; danger: deafened; min-width: 32px; max-width: 32px; accessible-label: deafened ? "Sesi aç" : "Sesi kapat"; clicked => { root.bridge-action("deafen",""); } }
-                        if can-inspect-stream: Action { text: "Yayın"; ghost: true; clicked => { stream-panel = !stream-panel; } }
+                        Action { text: "Yayın"; ghost: true; clicked => { stream-panel = !stream-panel; } }
                         Action { text: ""; icon: 4; min-width: 32px; max-width: 32px; accessible-label: "Discord bağlantı ayarları"; clicked => { section = 10; } }
+                    }
+                    HorizontalLayout { spacing: 8px;
+                        Action { text: muted ? "Mikrofonu aç" : "Mikrofonu kapat"; icon: 14; danger: muted; enabled: can-mute; clicked => { root.bridge-action("mute",""); } }
+                        Action { text: deafened ? "Sesi aç" : "Sesi kapat"; icon: 15; danger: deafened; enabled: can-deafen; clicked => { root.bridge-action("deafen",""); } }
+                        Rectangle { horizontal-stretch: 1; background: transparent; }
                     }
                     if stream-panel: Panel { VerticalLayout { padding: 16px; spacing: 10px;
                         HorizontalLayout { spacing: 12px;
                             Heading { text: !stream-known ? "Yayın durumu bilinmiyor" : stream-active ? "Yayındasın" : "Yayın yok"; }
                             if stream-active: Caption { text: stream-source; font-size: 12px; overflow: elide; }
                             Rectangle { horizontal-stretch: 1; background: transparent; }
-                            if can-stream-sources && (!stream-active || can-stream-source): Action { text: stream-source-picker ? "Vazgeç" : stream-active ? "Kaynak" : "Kaynak seç"; ghost: true; enabled: !stream-pending; clicked => { stream-source-picker = !stream-source-picker; root.stream-catalog(stream-source-picker); } }
-                            if can-stop-stream: Action { text: "Durdur"; danger: true; clicked => { root.stream-stop(stream-key); } }
+                            Action { text: stream-source-picker ? "Vazgeç" : stream-active ? "Kaynak" : "Kaynak seç"; ghost: true; enabled: can-stream-sources && (!stream-active || can-stream-source) && !stream-pending; clicked => { stream-source-picker = !stream-source-picker; root.stream-catalog(stream-source-picker); } }
+                            Action { text: "Başlat"; accent: true; enabled: can-stream-start && !stream-pending; clicked => { stream-source-picker = true; root.stream-catalog(true); } }
+                            Action { text: "Durdur"; danger: true; enabled: can-stop-stream; clicked => { root.stream-stop(stream-key); } }
                         }
-                        if stream-active: HorizontalLayout { spacing: 10px;
-                            Caption { text: "Kalite"; horizontal-stretch: 0; font-size: 12px; }
-                            if stream-resolutions.length > 0: ComboBox { width: 120px; model: stream-resolutions; current-index <=> stream-resolution-index; enabled: can-stream-quality; selected(value) => { root.stream-quality(stream-key,stream-resolution-index); } }
-                            if stream-resolutions.length == 0: Caption { text: "Bilinmiyor"; font-size: 12px; horizontal-stretch: 0; }
+                        HorizontalLayout { spacing: 10px;
+                            Caption { text: "Çözünürlük"; horizontal-stretch: 0; font-size: 12px; }
+                            ComboBox { width: 130px; model: stream-resolutions.length > 0 ? stream-resolutions : ["Yayın bekleniyor"]; current-index <=> stream-resolution-index; enabled: can-stream-quality; selected(value) => { root.stream-quality(stream-key,stream-resolution-index); } }
                             Caption { text: "FPS"; horizontal-stretch: 0; font-size: 12px; }
-                            if stream-fps-options.length > 0: ComboBox { width: 120px; model: stream-fps-options; current-index <=> stream-fps-index; enabled: can-stream-fps; selected(value) => { root.stream-fps(stream-key,stream-fps-index); } }
-                            if stream-fps-options.length == 0: Caption { text: "Bilinmiyor"; font-size: 12px; horizontal-stretch: 0; }
+                            ComboBox { width: 100px; model: stream-fps-options.length > 0 ? stream-fps-options : ["—"]; current-index <=> stream-fps-index; enabled: can-stream-fps; selected(value) => { root.stream-fps(stream-key,stream-fps-index); } }
+                            Rectangle { horizontal-stretch: 1; background: transparent; }
+                        }
+                        HorizontalLayout { spacing: 10px;
                             if can-stream-audio: Action { text: "Yayın sesi · " + stream-audio; ghost: true; enabled: !stream-pending; clicked => { root.change-stream-audio(stream-key,!stream-audio-enabled); } }
-                            if !can-stream-audio: Caption { text: "Yayın sesi · " + stream-audio; font-size: 12px; horizontal-stretch: 0; }
+                            if !can-stream-audio: Caption { text: "Yayın sesi · " + (stream-audio == "" ? "Bilinmiyor" : stream-audio); font-size: 12px; horizontal-stretch: 0; }
                             Rectangle { horizontal-stretch: 1; background: transparent; }
                         }
                         if stream-source-picker: HorizontalLayout { spacing: 10px;
@@ -586,7 +603,7 @@ export component LibraryWindow inherits Window {
                         Caption { text: !bridge-connected ? "Discord bağlantısı bekleniyor." : !stream-known ? "Discord yayın verisi okunamadı." : stream-pending ? "Discord'dan sonuç bekleniyor…" : stream-result != "" ? stream-result : stream-source-picker && stream-source-names.length == 0 ? "Paylaşılabilecek kaynak yok. Listeyi yenileyebilirsin." : stream-active ? "Yayın ayarları Discord'dan okunuyor." : can-stream-start ? "Paylaşılacak pencereyi veya ekranı seç." : "Yayın için Discord'da bir ses odasına bağlan."; font-size: 11px; }
                     } }
                     HorizontalLayout { spacing: 24px;
-                        VerticalLayout { min-width: chat-active ? 240px : 0px; max-width: chat-active ? 330px : 4096px; horizontal-stretch: chat-active ? 1 : 2; spacing: 10px;
+                        if !chat-active || !compact-chat: VerticalLayout { min-width: chat-active ? 240px : 0px; max-width: chat-active ? 330px : 4096px; horizontal-stretch: chat-active ? 1 : 2; spacing: 10px;
                             HorizontalLayout { spacing: 6px;
                                 Tab { text: "Arkadaşlar · " + friend-count; active: !friend-favorites-only; clicked => { friend-favorites-only = false; root.social-filter(friend-query,false); } }
                                 Tab { text: "Favoriler · " + favorite-friend-count; active: friend-favorites-only; clicked => { friend-favorites-only = true; root.social-filter(friend-query,true); } }
@@ -594,7 +611,7 @@ export component LibraryWindow inherits Window {
                                 Caption { text: recent-conversations ? "Son konuşma" : ""; font-size: 11px; horizontal-stretch: 0; }
                             }
                             if friends.length == 0: Caption { text: !bridge-connected ? "Discord bağlantısı kurulduğunda arkadaşların burada görünür." : friend-favorites-only ? "Bir arkadaşını yıldızla favorilere ekle." : "Aramana uygun arkadaş bulunamadı."; }
-                            ListView { for friend in friends: FriendRow { name: friend.name; subtitle: friend.subtitle; initial: friend.initial; online: friend.online; recent: friend.recent; favorite: friend.favorite; can-favorite: can-favorite-friends; enabled: bridge-connected;
+                            ListView { for friend in friends: FriendRow { name: friend.name; subtitle: friend.subtitle; initial: friend.initial; online: friend.online; recent: friend.recent; favorite: friend.favorite; can-favorite: can-favorite-friends; enabled: bridge-connected; avatar: friend.avatar; has-avatar: friend.has-avatar; presence: friend.presence; voice: friend.voice;
                                 clicked => { if chat-user-id != friend.id { chat-draft = ""; chat-sent-nonce = ""; } chat-active = true; chat-user-id = friend.id; chat-name = friend.name; chat-channel-id = ""; root.chat-action("chat_open",friend.id,"",""); }
                                 favorite-clicked => { root.friend-favorite(friend.id,!friend.favorite); }
                             } }
@@ -718,6 +735,32 @@ export component LibraryWindow inherits Window {
                     } }
                     Rectangle { vertical-stretch: 1; background: transparent; }
                 } }
+                if section == 13: ScrollView { VerticalLayout { spacing: 16px;
+                    Panel { vertical-stretch: 0; VerticalLayout { padding: 20px; spacing: 12px;
+                        Heading { text: "Eklentiler"; }
+                        Caption { text: "Kaynak ve kapak sağlayıcılarını paket olarak ekle. Etkinleştirdiğin eklentiler yalnız Çalıştır seçildiğinde ayrı süreçte açılır."; }
+                        Caption { text: "Yalnız güvendiğin eklenti paketlerini etkinleştir. Eklentiler Windows kullanıcı yetkilerinle çalışır."; font-size: 11px; }
+                        HorizontalLayout { spacing: 8px;
+                            Action { text: "Paket kur"; accent: true; enabled: !integration-busy; clicked => { root.extension-action(1,""); } }
+                            Action { text: "Örnek eklenti ekle"; enabled: !integration-busy; clicked => { root.extension-action(7,""); } }
+                            Action { text: "Yenile"; ghost: true; clicked => { root.extension-action(0,""); } }
+                            Rectangle { horizontal-stretch: 1; background: transparent; }
+                        }
+                        Caption { text: extension-status; font-size: 12px; }
+                    } }
+                    for extension in extensions: Panel { vertical-stretch: 0; VerticalLayout { padding: 18px; spacing: 10px;
+                        HorizontalLayout { spacing: 10px; Heading { text: extension.name; } Caption { text: extension.version; horizontal-stretch: 0; } Rectangle { horizontal-stretch: 1; background: transparent; } Caption { text: extension.enabled ? "Etkin" : "Kapalı"; horizontal-stretch: 0; } }
+                        Caption { text: extension.details; font-size: 11px; }
+                        HorizontalLayout { spacing: 8px;
+                            Action { text: extension.enabled ? "Devre dışı bırak" : "Etkinleştir"; enabled: !integration-busy; clicked => { root.extension-action(extension.enabled ? 3 : 2,extension.id); } }
+                            Action { text: "Klasör ekle"; enabled: !integration-busy; clicked => { root.extension-action(5,extension.id); } }
+                            Action { text: "Çalıştır"; accent: true; enabled: extension.enabled && !integration-busy; clicked => { root.extension-action(4,extension.id); } }
+                            Rectangle { horizontal-stretch: 1; background: transparent; }
+                            Action { text: "Kaldır"; danger: true; ghost: true; enabled: !integration-busy; clicked => { root.extension-action(6,extension.id); } }
+                        }
+                    } }
+                    Rectangle { vertical-stretch: 1; background: transparent; }
+                } }
                 if section == 8: ScrollView { VerticalLayout { spacing: 18px;
                     Panel { VerticalLayout { padding: 22px; spacing: 14px;
                         HorizontalLayout { Heading { text: "Game Library"; } Rectangle { horizontal-stretch: 1; background: transparent; } Caption { text: "Sürüm 0.1.0 · Windows"; horizontal-stretch: 0; } }
@@ -749,6 +792,23 @@ export component LibraryWindow inherits Window {
                     } }
                     Rectangle { vertical-stretch: 1; background: transparent; }
                 }
+            }
+        }
+        if friends-panel-enabled: Rectangle { width: 280px; horizontal-stretch: 0; background: Theme.surface;
+            VerticalLayout { padding: 14px; spacing: 12px;
+                HorizontalLayout { Heading { text: "Takip ettiklerin"; } Rectangle { horizontal-stretch: 1; background: transparent; } Action { text: "×"; ghost: true; min-width: 28px; max-width: 28px; accessible-label: "Arkadaş panelini gizle"; clicked => { friends-panel-enabled = false; root.friends-panel-toggle(false); } } }
+                Caption { text: social-fixture ? "Örnek kişiler · görsel doğrulama" : !bridge-enabled ? "Discord bağlantısı kapalı" : bridge-connected ? "Discord bağlı · güncel durum" : "Discord bekleniyor · durum güncel değil"; font-size: 11px; color: bridge-connected ? Theme.positive : Theme.muted; }
+                if !bridge-enabled: Action { text: "Discord'a bağlan"; accent: true; clicked => { bridge-enabled = true; root.bridge-toggle(true); } }
+                if avatar-status != "": Caption { text: avatar-status; font-size: 11px; }
+                if followed-friends.length == 0: Caption { text: "Discord'da arkadaşlarını yıldızla. Oyun ve ses odası durumları burada görünür."; font-size: 12px; }
+                ListView { for friend in followed-friends: FriendRow {
+                    name: friend.name; subtitle: bridge-connected ? (friend.presence == "online" ? "Çevrimiçi" : friend.presence == "idle" ? "Boşta" : friend.presence == "dnd" ? "Rahatsız etmeyin" : friend.presence == "offline" ? "Çevrimdışı" : "Durum bilinmiyor") : "Son bilinen durum · bağlantı kapalı"; voice: bridge-connected ? friend.voice : ""; game: bridge-connected ? friend.game : "";
+                    avatar: friend.avatar; has-avatar: friend.has-avatar; initial: friend.initial; online: bridge-connected && friend.online; presence: bridge-connected ? friend.presence : "unknown";
+                    favorite: true; can-favorite: can-favorite-friends && bridge-connected; enabled: bridge-connected;
+                    clicked => { section = 7; if chat-user-id != friend.id {chat-draft = "";chat-sent-nonce = "";} chat-active = true; chat-user-id = friend.id; chat-name = friend.name; chat-channel-id = ""; root.chat-action("chat_open",friend.id,"",""); }
+                    favorite-clicked => { root.friend-favorite(friend.id,false); }
+                } }
+                Action { text: "Arkadaşları yönet"; ghost: true; clicked => { section = 7; } }
             }
         }
     }

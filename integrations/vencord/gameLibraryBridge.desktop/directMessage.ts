@@ -31,7 +31,7 @@ function text(value: unknown, maximum: number) {
 /** Current public Discord client takes an options object, never a bare user ID. */
 export function directMessageAdapter(value: unknown): ChatProvider["openDm"] {
     const actions = object(value), method = actions?.openPrivateChannel;
-    if (typeof method !== "function" || !["recipientIds:", "navigateToChannel:", "joinCall:", "_getRecipients"].every(part => code(method).includes(part))) return undefined;
+    if (typeof method !== "function" || !/\brecipientIds\b/.test(code(method))) return undefined;
     return userId => {
         if (!validId(userId)) throw new Error("Discord arkadaşı geçersiz");
         return method.call(actions, { recipientIds: [userId], joinCall: false, joinCallVideo: false, navigateToChannel: true });
@@ -41,8 +41,8 @@ export function directMessageAdapter(value: unknown): ChatProvider["openDm"] {
 /** Preserve Discord's own fetch/send paths, moderation and account credentials. */
 export function chatMessageAdapters(value: unknown): Pick<ChatProvider, "fetch" | "send"> {
     const actions = object(value), fetch = actions?.fetchMessages, send = actions?.sendMessage;
-    const fetchSupported = typeof fetch === "function" && ["channelId:", "limit:", "LOAD_MESSAGES_SUCCESS"].every(part => code(fetch).includes(part));
-    const sendSupported = typeof send === "function" && ["nonce", "_sendMessage", "whenReady"].every(part => code(send).includes(part));
+    const fetchSupported = typeof fetch === "function";
+    const sendSupported = typeof send === "function";
     return {
         fetch: fetchSupported ? (channelId, limit) => {
             if (!validId(channelId) || limit !== CHAT_MESSAGE_LIMIT) throw new Error("Sohbet yenileme isteği geçersiz");

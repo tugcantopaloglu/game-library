@@ -78,6 +78,11 @@ pub enum Command {
     SteamKeyPage,
     SyncAccount(Source, String, String),
     EpicLogin,
+    AvatarReady,
+    AvatarFallback(String),
+    AvatarData(String, Option<String>),
+    FriendsPanel(bool),
+    Extension(i32, String),
     ObsConnect(String, String),
     ObsAction(i32, String),
     BroadcastInspect,
@@ -97,6 +102,7 @@ pub enum Command {
 }
 
 enum NetworkTask {
+    ExtensionRun(String),
     SteamApi(String),
     SteamLogin,
     Libraries(String),
@@ -124,6 +130,7 @@ enum NetworkToolTask {
     BackgroundUpdate,
 }
 pub enum NetworkResult {
+    Extension(Result<String, String>),
     Libraries(Vec<(Source, Result<crate::accounts::EpicLibrary, String>)>),
     Obs(Result<crate::obs::ActionResult, String>),
     Broadcast(crate::broadcast::Report),
@@ -204,6 +211,62 @@ fn size_text(bytes: f64) -> String {
 
 fn set_notice(ui: &slint::Weak<LibraryWindow>, text: String) {
     let _ = ui.upgrade_in_event_loop(move |ui| ui.set_notice(text.into()));
+}
+
+fn publish_extensions(
+    data: &std::path::Path,
+    ui: &slint::Weak<LibraryWindow>,
+) -> Result<(), String> {
+    let mut errors = vec![];
+    let extensions = crate::extensions::list(data)
+        .into_iter()
+        .filter_map(|entry| match entry {
+            Ok(extension) => Some(crate::ExtensionTile {
+                id: extension.manifest.id.into(),
+                name: extension.manifest.name.into(),
+                version: extension.manifest.version.into(),
+                enabled: extension.preferences.enabled,
+                details: format!(
+                    "{} · İzinler: {} · {} klasör",
+                    extension
+                        .manifest
+                        .capabilities
+                        .iter()
+                        .map(|capability| if capability == "games.discover" {
+                            "Oyun keşfi"
+                        } else {
+                            "Kapak sağlayıcısı"
+                        })
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                    extension
+                        .manifest
+                        .permissions
+                        .iter()
+                        .map(|permission| if permission == "filesystem.read" {
+                            "Seçili klasörleri okuma"
+                        } else {
+                            "Ağ erişimi"
+                        })
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                    extension.preferences.roots.len()
+                )
+                .into(),
+            }),
+            Err(error) => {
+                errors.push(error);
+                None
+            }
+        })
+        .collect::<Vec<_>>();
+    ui.upgrade_in_event_loop(move |ui| {
+        ui.set_extensions(Rc::new(VecModel::from(extensions)).into());
+        if !errors.is_empty() {
+            ui.set_extension_status(errors.join("\n").into());
+        }
+    })
+    .map_err(|error| error.to_string())
 }
 
 fn publish(
@@ -516,6 +579,7 @@ fn bridge_status(
     bridge: Option<&crate::bridge::Bridge>,
     store: &Store,
     query: &crate::social::Query,
+    avatar_cache: &crate::avatars::Cache,
     ui: &slint::Weak<LibraryWindow>,
 ) -> Result<(), String> {
     let snapshot = bridge
@@ -546,6 +610,22 @@ fn bridge_status(
         })
         .count();
     let friends = crate::social::friends(&snapshot, &favorites, query, now_ms);
+    let followed = crate::social::friends(
+        &snapshot,
+        &favorites,
+        &crate::social::Query {
+            favorites_only: true,
+            ..Default::default()
+        },
+        now_ms,
+    );
+    for friend in friends.iter().chain(followed.iter()) {
+        avatar_cache.request(
+            &friend.avatar_url,
+            snapshot["capabilities"]["avatar_request"] == true,
+        );
+    }
+    let avatar_cache = avatar_cache.clone();
     let room_favorites = snapshot["accountId"]
         .as_str()
         .and_then(|account| store.room_favorites(account).ok())
@@ -892,6 +972,11 @@ fn bridge_status(
                         .to_uppercase()
                         .to_string()
                         .into(),
+                    avatar: avatar_cache.image(&friend.avatar_url).unwrap_or_default(),
+                    has_avatar: avatar_cache.image(&friend.avatar_url).is_some(),
+                    presence: status.into(),
+                    voice: friend.voice_channel.as_str().into(),
+                    game: friend.activity.as_str().into(),
                     online: matches!(status, "online" | "idle" | "dnd"),
                     favorite: favorites.contains(&friend.id),
                     recent: crate::social::last_conversation(friend.last_message_at, now_ms).into(),
@@ -925,6 +1010,40 @@ fn bridge_status(
                     && snapshot["capabilities"]["join_voice"] == true,
             })
             .collect();
+        let followed: Vec<SocialTile> = followed
+            .iter()
+            .map(|friend| {
+                let avatar = avatar_cache.image(&friend.avatar_url);
+                let presence = match friend.status.as_str() {
+                    "online" => "Çevrimiçi",
+                    "idle" => "Boşta",
+                    "dnd" => "Rahatsız etmeyin",
+                    "offline" => "Çevrimdışı",
+                    _ => "Durum bilinmiyor",
+                };
+                SocialTile {
+                    id: friend.id.as_str().into(),
+                    name: friend.name.as_str().into(),
+                    initial: friend.name.chars().next().unwrap_or('?').to_string().into(),
+                    subtitle: if friend.activity.is_empty() {
+                        presence.into()
+                    } else {
+                        format!("{presence} · Oynuyor: {}", friend.activity).into()
+                    },
+                    voice: friend.voice_channel.as_str().into(),
+                    game: friend.activity.as_str().into(),
+                    presence: friend.status.as_str().into(),
+                    online: matches!(friend.status.as_str(), "online" | "idle" | "dnd"),
+                    favorite: true,
+                    recent: "".into(),
+                    has_avatar: avatar.is_some(),
+                    avatar: avatar.unwrap_or_default(),
+                }
+            })
+            .collect();
+        if connected {
+            ui.set_followed_friends(Rc::new(VecModel::from(followed)).into());
+        }
         ui.set_friends(Rc::new(VecModel::from(friends)).into());
         ui.set_rooms(Rc::new(VecModel::from(rooms)).into());
         ui.set_can_mute(connected && snapshot["capabilities"]["mute"] == true);
@@ -1000,6 +1119,7 @@ pub fn start(
     if let Ok(mut queue) = state.cover_requests.lock() {
         *queue = Some(cover_queue);
     }
+    let avatars = crate::avatars::Cache::start(&data_dir, sender.clone());
     let cover_sender = sender.clone();
     let cover_data = data_dir.clone();
     std::thread::spawn(move || {
@@ -1037,6 +1157,11 @@ pub fn start(
     std::thread::spawn(move || {
         while let Ok(task) = network_receiver.recv() {
             let result = match task {
+                NetworkTask::ExtensionRun(id) => NetworkResult::Extension((|| {
+                    let mut store = Store::open(&network_data.join("library.db"))
+                        .map_err(|error| error.to_string())?;
+                    crate::extensions::run(&network_data, &id, &mut store)
+                })()),
                 NetworkTask::SteamApi(id) => NetworkResult::Owned(
                     Source::Steam,
                     crate::accounts::steam_api(&id).map(|games| (games, vec![])),
@@ -1194,8 +1319,10 @@ pub fn start(
             }
         }
     });
+    let event_sender = sender.clone();
     std::thread::spawn(move || {
         let mut store = store;
+        let _ = publish_extensions(&data_dir, &ui);
         let _ = store.recover_sessions();
         let mut bridge: Option<crate::bridge::Bridge> = None;
         let mut available_update = None;
@@ -1236,6 +1363,30 @@ pub fn start(
                 }
             };
             let result = match command {
+                Command::FriendsPanel(enabled)=>store.set_setting("friends_panel_enabled",if enabled {"true"}else{"false"}).map_err(|error|error.to_string()),
+                Command::AvatarReady=> {social_view=None;let _=ui.upgrade_in_event_loop(|ui|ui.set_avatar_status("".into()));bridge_status(bridge.as_ref(),&store,&social_query,&avatars,&ui)},
+                Command::AvatarFallback(url)=> {
+                    let _=ui.upgrade_in_event_loop(|ui|ui.set_avatar_status("Fotoğraflar Discord bağlantısından yükleniyor…".into()));
+                    bridge.as_ref().ok_or("Fotoğraflar için Discord bağlantısını aç.").and_then(|bridge|bridge.command("avatar_request",serde_json::json!({"url":url})).map_err(|_|"Fotoğraflar için Discord köprüsünü güncelle.")).map_err(str::to_owned)
+                },
+                Command::AvatarData(url,encoded)=> {
+                    if let Some(encoded)=encoded {avatars.deliver(url,&encoded);}else{let _=ui.upgrade_in_event_loop(|ui|ui.set_avatar_status("Fotoğraflar yüklenemedi. Discord bağlantısını ve ağ erişimini kontrol et.".into()));}
+                    Ok(())
+                },
+                Command::Extension(action,id) => (|| {
+                    match action {
+                        0=>{},
+                        1=>{if let Some(folder)=rfd::FileDialog::new().set_title("extension.json içeren eklenti paketini seç").pick_folder() {let installed=crate::extensions::install(&data_dir,&folder)?;set_notice(&ui,format!("{installed} kuruldu. Çalıştırmak için etkinleştir."));}},
+                        2=>crate::extensions::enable(&data_dir,&id,true)?,
+                        3=>crate::extensions::enable(&data_dir,&id,false)?,
+                        4=>return submit(&network,&ui,NetworkTask::ExtensionRun(id)),
+                        5=>{if let Some(folder)=rfd::FileDialog::new().set_title("Eklentinin okuyacağı oyun klasörünü seç").pick_folder() {crate::extensions::add_root(&data_dir,&id,&folder)?;}},
+                        6=>crate::extensions::remove(&data_dir,&id)?,
+                        7=>{let folder=data_dir.join(format!("extension-example-{}",std::process::id()));crate::extensions::create_example(&folder)?;let result=crate::extensions::install(&data_dir,&folder);let _=std::fs::remove_dir_all(&folder);result?;},
+                        _=>return Err("Eklenti işlemi geçersiz".into()),
+                    }
+                    publish_extensions(&data_dir,&ui)
+                })(),
                 Command::ObsConnect(port, password) => (|| {
                     let port = port
                         .trim()
@@ -1477,6 +1628,11 @@ pub fn start(
                 Command::NetworkDone(result) => {
                     let _ = ui.upgrade_in_event_loop(|ui| ui.set_integration_busy(false));
                     match result {
+                        NetworkResult::Extension(result)=> {
+                            let message=result.as_ref().cloned().unwrap_or_else(|error|error.clone());
+                            let _=ui.upgrade_in_event_loop(move|ui|ui.set_extension_status(message.into()));
+                            result.and_then(|_|publish(&store,&query,&state,&ui))
+                        },
                         NetworkResult::Libraries(results) => {
                             let mut errors = Vec::new();
                             for (source,result) in results {
@@ -1534,6 +1690,12 @@ pub fn start(
                             store.apply_owned_games(source,&games).map_err(|error|error.to_string())?;
                             for (id,url) in covers { store.set_artwork_url(source,&id,&url).map_err(|error|error.to_string())?; }
                             let status=format!("{} hesabından {} oyun eşitlendi. Kurulum bilgileri korundu.",source.label(),games.len());
+                            query.filter="all".into();
+                            query.text.clear();
+                            query.offset=0;
+                            query.collection=None;
+                            query.source=Some(source);
+                            let _=ui.upgrade_in_event_loop(move |ui| {ui.set_installed_only(false);ui.set_query("".into());ui.set_section(0);ui.set_collection_id(0);ui.set_source_index(if source==Source::Steam {1}else{2});});
                             ui.upgrade_in_event_loop(move |ui| if source==Source::Steam {ui.set_steam_account_status(status.into());}else{ui.set_epic_account_status(status.into());}).map_err(|error|error.to_string())?;
                             publish(&store,&query,&state,&ui)
                         }),
@@ -1673,6 +1835,7 @@ pub fn start(
                         .map_err(|error| error.to_string())?;
                     if enabled && bridge.is_none() {
                         bridge = Some(crate::bridge::Bridge::start(&data_dir)?);
+                        if let Some(bridge)=bridge.as_ref() {bridge.subscribe(event_sender.clone());}
                     }
                     if !enabled {
                         bridge = None;
@@ -1681,6 +1844,7 @@ pub fn start(
                         if enabled { bridge.as_ref() } else { None },
                         &store,
                         &social_query,
+                        &avatars,
                         &ui,
                     )
                 })(),
@@ -1738,7 +1902,7 @@ pub fn start(
                             }
                         }
                     }
-                    bridge_status(bridge.as_ref(), &store, &social_query, &ui)?;
+                    bridge_status(bridge.as_ref(), &store, &social_query, &avatars, &ui)?;
                     social_view = Some(next_view);
                     Ok(())
                 })(),
@@ -1746,7 +1910,7 @@ pub fn start(
                     social_view = None;
                     social_query.text = text.chars().take(256).collect();
                     social_query.favorites_only = favorites_only;
-                    bridge_status(bridge.as_ref(), &store, &social_query, &ui)
+                    bridge_status(bridge.as_ref(), &store, &social_query, &avatars, &ui)
                 }
                 Command::FriendFavorite(id, favorite) => (|| {
                     social_view = None;
@@ -1767,7 +1931,7 @@ pub fn start(
                     store
                         .set_friend_favorite(account, &id, favorite)
                         .map_err(|error| error.to_string())?;
-                    bridge_status(bridge.as_ref(), &store, &social_query, &ui)
+                    bridge_status(bridge.as_ref(), &store, &social_query, &avatars, &ui)
                 })(),
                 Command::RoomFilter(mode, text) => (|| {
                     social_view = None;
@@ -1778,7 +1942,7 @@ pub fn start(
                             bridge.command("room_catalog", serde_json::json!({"query":if social_query.room_mode == 2 {Some(&social_query.room_query)} else {None}}))?;
                         }
                     }
-                    bridge_status(bridge.as_ref(), &store, &social_query, &ui)
+                    bridge_status(bridge.as_ref(), &store, &social_query, &avatars, &ui)
                 })(),
                 Command::RoomFavorite(id, favorite) => (|| {
                     social_view = None;
@@ -1804,7 +1968,7 @@ pub fn start(
                     store
                         .set_room_favorite(account, &id, favorite)
                         .map_err(|error| error.to_string())?;
-                    bridge_status(Some(bridge), &store, &social_query, &ui)
+                    bridge_status(Some(bridge), &store, &social_query, &avatars, &ui)
                 })(),
                 Command::StreamControl(action, key, index) => (|| {
                     let bridge = bridge.as_ref().ok_or("Discord bağlantısını aç.")?;

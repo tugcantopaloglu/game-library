@@ -14,6 +14,8 @@ let directory = "";
 let enabled = false;
 let generation = 0;
 let attempt = 0;
+let waiting: ((value: ReturnType<typeof poll>) => void) | undefined;
+function notifyCommands() { const resolve=waiting; waiting=undefined; resolve?.(poll()); }
 
 function reconnect() {
     if (!enabled || socket) return;
@@ -39,7 +41,7 @@ function reconnect() {
                 try {
                     const message = JSON.parse(line);
                     if (message.type === "welcome" && message.protocol === 1) { connected = true; generation++; }
-                    if (connected && message.type === "command" && commands.length < 16) commands.push(message);
+                    if (connected && message.type === "command" && commands.length < 16) { commands.push(message); if (waiting) notifyCommands(); }
                 } catch { connection.destroy(); }
             }
         });
@@ -48,6 +50,7 @@ function reconnect() {
         connection.on("close", () => {
             if (socket !== connection) return;
             connected = false; socket = undefined; commands = [];
+            notifyCommands();
             if (enabled) retry = setTimeout(reconnect, 3000);
         });
     } catch { if (enabled) retry = setTimeout(reconnect, 3000); }
@@ -62,6 +65,36 @@ export function poll() {
     const pending = commands; commands = [];
     return { connected, generation, commands: pending };
 }
+export function connectionState() { return {connected,generation}; }
+
+let avatarJobs=0;
+let avatarQueue:Promise<unknown>=Promise.resolve();
+export function avatar(_:unknown,address:string) {
+    if (avatarJobs>=64) return Promise.resolve(null);
+    avatarJobs++;
+    const task=avatarQueue.then(()=>fetchAvatar(address));
+    avatarQueue=task.catch(()=>null);
+    return task.finally(()=>{avatarJobs--;});
+}
+async function fetchAvatar(address:string) {
+    if (!enabled || !connected) return null;
+    try {
+        const url=new URL(address);
+        if (url.protocol!=="https:" || url.hostname!=="cdn.discordapp.com" || url.username || url.password || url.port || !/^\/(avatars|embed\/avatars)\//.test(url.pathname) || address.length>512) return null;
+        const {net}=await import("electron");
+        const response=await net.fetch(url.href,{credentials:"omit",redirect:"error",signal:AbortSignal.timeout(8000)});
+        if (!response.ok || !response.body) return null;
+        const reader=response.body.getReader(); const chunks:Buffer[]=[]; let size=0;
+        while (true) {const value=await reader.read();if(value.done)break;size+=value.value.byteLength;if(size>65536){await reader.cancel();return null;}chunks.push(Buffer.from(value.value));}
+        return Buffer.concat(chunks).toString("base64");
+    } catch {return null;}
+}
+
+export function waitCommands() {
+    if (commands.length) return Promise.resolve(poll());
+    if (waiting) notifyCommands();
+    return new Promise<ReturnType<typeof poll>>(resolve => { waiting=resolve; });
+}
 
 export function snapshot(_: unknown, payload: unknown) {
     if (!connected || !socket || socket.writableLength > 256 * 1024) return false;
@@ -73,6 +106,7 @@ export function snapshot(_: unknown, payload: unknown) {
 
 export function stop() {
     enabled = false; connected = false; commands = [];
+    notifyCommands();
     if (retry) clearTimeout(retry);
     if (heartbeat) clearInterval(heartbeat);
     retry = undefined; heartbeat = undefined;

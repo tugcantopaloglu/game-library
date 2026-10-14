@@ -237,7 +237,10 @@ impl Drop for Browser {
 fn trusted_page(address: &str) -> bool {
     url::Url::parse(address).is_ok_and(|url| {
         url.scheme() == "https"
-            && url.host_str() == Some("store.steampowered.com")
+            && matches!(
+                url.host_str(),
+                Some("store.steampowered.com" | "steamcommunity.com")
+            )
             && url.username().is_empty()
             && url.password().is_none()
             && url.port_or_known_default() == Some(443)
@@ -274,7 +277,15 @@ pub fn probe(data: &Path) -> Result<Value, String> {
             std::thread::sleep(Duration::from_millis(500));
             continue;
         }
-        let value = browser.evaluate()?;
+        let value = match browser.evaluate() {
+            Ok(value) => value,
+            Err(_) if Instant::now() < deadline => {
+                browser.socket = None;
+                std::thread::sleep(Duration::from_millis(500));
+                continue;
+            }
+            Err(error) => return Err(error),
+        };
         if value["kind"] != "waiting" {
             return Ok(
                 json!({"browserTransport":true,"steamPageStatus":value["kind"],"credentialsExported":false}),
@@ -295,13 +306,22 @@ pub fn library(data: &Path, interactive: bool) -> Result<Vec<Game>, String> {
             std::thread::sleep(Duration::from_millis(500));
             continue;
         }
-        let value = browser.evaluate()?;
+        let value = match browser.evaluate() {
+            Ok(value) => value,
+            Err(_) if Instant::now() < deadline => {
+                browser.socket = None;
+                std::thread::sleep(Duration::from_millis(500));
+                continue;
+            }
+            Err(error) => return Err(error),
+        };
         match value["kind"].as_str() {
             Some("games") => {
                 let (id,games)=parse_catalog(&value)?;
                 std::fs::write(data.join("integrations/steam/connection.json"),json!({"steamid":id,"games":games.len()}).to_string()).map_err(|_|"Steam bağlantı bilgisi kaydedilemedi")?;
                 return Ok(games);
             },
+            Some("navigating") => { browser.socket = None; std::thread::sleep(Duration::from_millis(500)); },
             Some("waiting" | "login_required") if interactive => {std::thread::sleep(Duration::from_secs(1));},
             Some("waiting") => {std::thread::sleep(Duration::from_millis(500));},
             Some("login_required") => return Err("Steam oturumu sona erdi; Steam'e bağlan ile yeniden giriş yap. Önceki oyunlar korundu.".into()),

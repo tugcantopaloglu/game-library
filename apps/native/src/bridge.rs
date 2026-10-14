@@ -67,11 +67,12 @@ impl LiveState {
 
 pub struct Bridge {
     state: Arc<Mutex<LiveState>>,
-    commands: mpsc::SyncSender<Value>,
+    commands: Arc<Mutex<Option<TcpStream>>>,
     stop: Arc<AtomicBool>,
     address: std::net::SocketAddr,
     config: std::path::PathBuf,
     token: String,
+    notifications: Arc<Mutex<Option<mpsc::SyncSender<crate::worker::Command>>>>,
 }
 
 fn read_message(reader: &mut BufReader<TcpStream>) -> Result<Value, String> {
@@ -109,7 +110,10 @@ impl Bridge {
             "Vencord köprüsü bekleniyor",
         )));
         let state_copy = state.clone();
-        let (commands, receiver) = mpsc::sync_channel(16);
+        let commands = Arc::new(Mutex::new(None));
+        let connection_writer = commands.clone();
+        let notifications = Arc::new(Mutex::new(None::<mpsc::SyncSender<crate::worker::Command>>));
+        let changed = notifications.clone();
         std::thread::spawn(move || {
             for stream in listener.incoming() {
                 if stopping.load(Ordering::Relaxed) {
@@ -135,7 +139,10 @@ impl Bridge {
                         return Err("Köprü kimliği veya sürümü uyumsuz".into());
                     }
                     write_message(&mut stream, &json!({"type":"welcome","protocol":PROTOCOL}))?;
-                    while receiver.try_recv().is_ok() {}
+                    *connection_writer
+                        .lock()
+                        .map_err(|_| "Köprü yazıcısı açılamadı")? =
+                        Some(stream.try_clone().map_err(|error| error.to_string())?);
                     loop {
                         if stopping.load(Ordering::Relaxed) {
                             break;
@@ -156,6 +163,44 @@ impl Bridge {
                                         state.value["connected"] = json!(true);
                                         state.received_at = Some(Instant::now());
                                         state.change = state.change.wrapping_add(1);
+                                        if let Ok(listener) = changed.lock() {
+                                            if let Some(listener) = listener.as_ref() {
+                                                let _ = listener.try_send(
+                                                    crate::worker::Command::BridgeRefresh,
+                                                );
+                                            }
+                                        }
+                                    }
+                                } else if value["type"] == "avatar" && value["protocol"] == PROTOCOL
+                                {
+                                    if let Ok(state) = state_copy.lock() {
+                                        let url =
+                                            value["url"].as_str().filter(|url| url.len() <= 512);
+                                        let encoded = value["base64"]
+                                            .as_str()
+                                            .filter(|encoded| encoded.len() <= 90000)
+                                            .map(str::to_owned);
+                                        if let Some(url) = url.filter(|url| {
+                                            state.value["accountId"] == value["accountId"]
+                                                && state.value["friends"].as_array().is_some_and(
+                                                    |friends| {
+                                                        friends.iter().any(|friend| {
+                                                            friend["avatarUrl"] == *url
+                                                        })
+                                                    },
+                                                )
+                                        }) {
+                                            if let Ok(listener) = changed.lock() {
+                                                if let Some(listener) = listener.as_ref() {
+                                                    let _ = listener.try_send(
+                                                        crate::worker::Command::AvatarData(
+                                                            url.into(),
+                                                            encoded,
+                                                        ),
+                                                    );
+                                                }
+                                            }
+                                        }
                                     }
                                 } else if value["type"] == "snapshot_unchanged" {
                                     if let Ok(mut state) = state_copy.lock() {
@@ -167,13 +212,19 @@ impl Bridge {
                             }
                             Err(_) => break,
                         }
-                        while let Ok(command) = receiver.try_recv() {
-                            write_message(&mut stream, &command)?;
+                        if let Some(writer) = connection_writer
+                            .lock()
+                            .map_err(|_| "Köprü yazıcısı açılamadı")?
+                            .as_mut()
+                        {
+                            write_message(writer, &json!({"type":"ping"}))?;
                         }
-                        write_message(&mut stream, &json!({"type":"ping"}))?;
                     }
                     Ok(())
                 })();
+                if let Ok(mut writer) = connection_writer.lock() {
+                    *writer = None;
+                }
                 let status = result.err().unwrap_or_else(|| {
                     "Discord bağlantısı kapandı. Güncel köprü ve açık Discord bekleniyor.".into()
                 });
@@ -181,6 +232,11 @@ impl Bridge {
                     let change = state.change.wrapping_add(1);
                     *state = LiveState::disconnected(&status);
                     state.change = change;
+                }
+                if let Ok(listener) = changed.lock() {
+                    if let Some(listener) = listener.as_ref() {
+                        let _ = listener.try_send(crate::worker::Command::BridgeRefresh);
+                    }
                 }
             }
         });
@@ -191,6 +247,7 @@ impl Bridge {
             address,
             config: directory.join("bridge.json"),
             token: owner_token,
+            notifications,
         })
     }
 
@@ -201,6 +258,12 @@ impl Bridge {
             .unwrap_or_else(|_| json!({"connected":false}))
     }
 
+    pub fn subscribe(&self, sender: mpsc::SyncSender<crate::worker::Command>) {
+        if let Ok(mut notifications) = self.notifications.lock() {
+            *notifications = Some(sender);
+        }
+    }
+
     pub fn view_token(&self) -> (u64, bool) {
         self.state
             .lock()
@@ -208,14 +271,24 @@ impl Bridge {
             .unwrap_or((0, false))
     }
 
-    pub fn command(&self, action: &str, data: Value) -> Result<(), String> {
+    pub fn command(&self, action: &str, mut data: Value) -> Result<(), String> {
         let snapshot = self.snapshot();
         if snapshot["connected"] != true || snapshot["capabilities"][action] != true {
             return Err("Bu işlem bağlı Discord/Vencord sürümünde desteklenmiyor".into());
         }
-        self.commands
-            .try_send(json!({"type":"command","action":action,"data":data}))
-            .map_err(|_| "Discord işlem kuyruğu dolu".into())
+        if let Some(account) = snapshot["accountId"].as_str() {
+            if let Some(data) = data.as_object_mut() {
+                data.entry("accountId").or_insert_with(|| json!(account));
+            }
+        }
+        let mut writer = self
+            .commands
+            .lock()
+            .map_err(|_| "Köprü yazıcısı açılamadı")?;
+        write_message(
+            writer.as_mut().ok_or("Discord bağlantısı kapandı")?,
+            &json!({"type":"command","action":action,"data":data}),
+        )
     }
 }
 
@@ -235,6 +308,33 @@ impl Drop for Bridge {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn commands_do_not_wait_for_another_snapshot_or_heartbeat() {
+        let directory = tempfile::tempdir().unwrap();
+        let bridge = Bridge::start(directory.path()).unwrap();
+        let config: Value = serde_json::from_slice(
+            &std::fs::read(directory.path().join("integrations/vencord/bridge.json")).unwrap(),
+        )
+        .unwrap();
+        let mut stream =
+            TcpStream::connect(("127.0.0.1", config["port"].as_u64().unwrap() as u16)).unwrap();
+        stream
+            .set_read_timeout(Some(Duration::from_millis(500)))
+            .unwrap();
+        let mut reader = BufReader::new(stream.try_clone().unwrap());
+        write_message(
+            &mut stream,
+            &json!({"type":"hello","protocol":1,"token":config["token"]}),
+        )
+        .unwrap();
+        assert_eq!(read_message(&mut reader).unwrap()["type"], "welcome");
+        write_message(&mut stream,&json!({"type":"snapshot","protocol":1,"version":1,"capabilities":{"mute":true},"friends":[],"rooms":[]})).unwrap();
+        assert_eq!(read_message(&mut reader).unwrap()["type"], "ping");
+        let started = Instant::now();
+        bridge.command("mute", json!({})).unwrap();
+        assert_eq!(read_message(&mut reader).unwrap()["action"], "mute");
+        assert!(started.elapsed() < Duration::from_millis(500));
+    }
     #[test]
     fn unchanged_confirmation_requires_the_current_snapshot_revision() {
         let now = Instant::now();

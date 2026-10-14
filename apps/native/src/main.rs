@@ -1,10 +1,12 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod accounts;
+mod avatars;
 mod bridge;
 mod broadcast;
 mod chat;
 mod completion;
+mod extensions;
 mod measurement;
 mod media;
 mod network_tools;
@@ -87,6 +89,14 @@ fn show(ui: &LibraryWindow) {
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     let started = std::time::Instant::now();
     let args: Vec<String> = std::env::args().collect();
+    if args.iter().any(|arg| arg == "--extension-example") {
+        extensions::example_process()?;
+        return Ok(());
+    }
+    if let Some(directory) = argument_value(&args, "--create-extension-example") {
+        extensions::create_example(Path::new(&directory))?;
+        return Ok(());
+    }
     if args.iter().any(|arg| arg == "--benchmark")
         && args.iter().any(|arg| arg == "--lifecycle-test")
     {
@@ -101,6 +111,26 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         });
     std::fs::create_dir_all(&data_dir)?;
     let data_dir = std::fs::canonicalize(data_dir)?;
+    if let Some(action) = argument_value(&args, "--extension-command") {
+        let id = argument_value(&args, "--extension-id").unwrap_or_default();
+        let message=match action.as_str() {
+            "install"=>extensions::install(&data_dir,Path::new(&argument_value(&args,"--folder").ok_or("Eklenti klasörü eksik")?))?,
+            "enable"=>{extensions::enable(&data_dir,&id,true)?;"Etkinleştirildi".into()},
+            "disable"=>{extensions::enable(&data_dir,&id,false)?;"Devre dışı".into()},
+            "root"=>{extensions::add_root(&data_dir,&id,Path::new(&argument_value(&args,"--folder").ok_or("Oyun klasörü eksik")?))?;"Klasör eklendi".into()},
+            "remove"=>{extensions::remove(&data_dir,&id)?;"Kaldırıldı".into()},
+            "run"=>{let mut store=Store::open(&data_dir.join("library.db"))?;extensions::run(&data_dir,&id,&mut store)?},
+            "list"=>serde_json::to_string(&extensions::list(&data_dir).into_iter().map(|entry|match entry {Ok(extension)=>serde_json::json!({"id":extension.manifest.id,"enabled":extension.preferences.enabled,"roots":extension.preferences.roots.len()}),Err(error)=>serde_json::json!({"error":error})}).collect::<Vec<_>>())?,
+            _=>return Err("Eklenti işlemi geçersiz".into()),
+        };
+        if let Some(output) = argument_value(&args, "--output") {
+            std::fs::write(
+                output,
+                serde_json::to_vec_pretty(&serde_json::json!({"success":true,"message":message}))?,
+            )?;
+        }
+        return Ok(());
+    }
     if let Some(output) = argument_value(&args, "--data-directory-report") {
         std::fs::write(
             output,
@@ -147,7 +177,20 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
     if args.iter().any(|argument| argument == "--open-epic-login") {
-        accounts::login_epic(&data_dir)?;
+        let (games, covers) = accounts::login_epic(&data_dir)?;
+        let mut store = Store::open(&data_dir.join("library.db"))?;
+        store.apply_owned_games(Source::Epic, &games)?;
+        for (id, url) in covers {
+            store.set_artwork_url(Source::Epic, &id, &url)?;
+        }
+        if let Some(output) = argument_value(&args, "--output") {
+            std::fs::write(
+                output,
+                serde_json::to_vec_pretty(
+                    &serde_json::json!({"source":"epic","ownedGames":games.len(),"saved":true}),
+                )?,
+            )?;
+        }
         return Ok(());
     }
     if let Some(action) = argument_value(&args, "--vencord-action") {
@@ -316,6 +359,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let bridge_enabled = store.setting("bridge_enabled")?.as_deref() == Some("true");
     let auto_update_app = store.setting("auto_update_app")?.as_deref() == Some("true");
     let ui = LibraryWindow::new()?;
+    ui.set_friends_panel_enabled(
+        store.setting("friends_panel_enabled")?.as_deref() != Some("false"),
+    );
     ui.window().set_size(slint::LogicalSize::new(1280.0, 720.0));
     ui.set_steam_account_id(
         store
@@ -551,6 +597,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     register_command!(on_collection_member, (id,collection,member) => Command::CollectionMember(id.into(),collection as i64,member));
     register_command!(on_bridge_action, (action,id) => Command::BridgeAction(action.into(),serde_json::json!({"id":id.as_str()})));
     register_command!(on_chat_action, (action,user,channel,content) => Command::Chat(action.into(),user.into(),channel.into(),content.into()));
+    register_command!(on_extension_action, (action,id) => Command::Extension(action,id.into()));
+    register_command!(on_friends_panel_toggle, (enabled) => Command::FriendsPanel(enabled));
     register_command!(on_social_filter, (text,favorites) => Command::SocialFilter(text.into(),favorites));
     register_command!(on_friend_favorite, (id,favorite) => Command::FriendFavorite(id.into(),favorite));
     register_command!(on_room_filter, (mode,text) => Command::RoomFilter(mode,text.into()));
@@ -690,6 +738,46 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             ]))
             .into(),
         );
+    }
+    if args.iter().any(|argument| argument == "--friends-fixture") {
+        ui.set_social_fixture(true);
+        let avatar = slint::Image::load_from_path(Path::new("apps/native/ui/logos/discord.png"))?;
+        let friends = vec![
+            SocialTile {
+                id: "223456789012345678".into(),
+                name: "Örnek oyuncu".into(),
+                subtitle: "Çevrimiçi · Oynuyor: VALORANT".into(),
+                voice: "Oyun ekibi · Genel".into(),
+                game: "VALORANT".into(),
+                presence: "online".into(),
+                initial: "Ö".into(),
+                online: true,
+                favorite: true,
+                recent: "".into(),
+                avatar: avatar.clone(),
+                has_avatar: true,
+            },
+            SocialTile {
+                id: "323456789012345678".into(),
+                name: "Örnek arkadaş".into(),
+                subtitle: "Boşta".into(),
+                voice: "".into(),
+                game: "".into(),
+                presence: "idle".into(),
+                initial: "Ö".into(),
+                online: true,
+                favorite: true,
+                recent: "".into(),
+                avatar,
+                has_avatar: true,
+            },
+        ];
+        ui.set_friends(std::rc::Rc::new(slint::VecModel::from(friends.clone())).into());
+        ui.set_followed_friends(std::rc::Rc::new(slint::VecModel::from(friends)).into());
+        ui.set_bridge_connected(true);
+        ui.set_friend_count(2);
+        ui.set_favorite_friend_count(2);
+        ui.set_notice("Görsel doğrulama · Örnek kişiler, gerçek Discord oturumu değil.".into());
     }
     if let Some(tab) = argument_value(&args, "--detail-tab") {
         ui.set_detail_tab(tab.parse()?);
@@ -832,6 +920,9 @@ fn main() {
                 || argument == "--completion-for"
                 || argument == "--steam-browser-probe"
                 || argument == "--open-steam-login"
+                || argument == "--extension-example"
+                || argument == "--create-extension-example"
+                || argument == "--extension-command"
         }) {
             rfd::MessageDialog::new()
                 .set_title("Game Library")

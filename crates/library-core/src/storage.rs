@@ -298,6 +298,46 @@ impl Store {
         self.connection.query_row("SELECT id,app_id,name,library_path,install_path,installed,favorite,size_bytes,artwork_path,source,source_id,launch_json FROM library_games WHERE id=?1", [id], row_game).map_err(Into::into)
     }
 
+    pub fn apply_extension_games(&mut self, plugin: &str, games: &[Game]) -> Result<()> {
+        if plugin.is_empty()
+            || plugin.len() > 64
+            || !plugin.bytes().all(|byte| {
+                byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'-' | b'.')
+            })
+            || games.len() > 2000
+        {
+            return Err(LibraryError::Invalid(
+                "Eklenti oyun listesi geçersiz".into(),
+            ));
+        }
+        let library = format!("extension://{plugin}");
+        let prefix = format!("extension:{plugin}:");
+        let transaction = self.connection.transaction()?;
+        transaction.execute(
+            "UPDATE games SET installed=0 WHERE source='manual' AND library_path=?1",
+            params![library],
+        )?;
+        let mut seen = std::collections::HashSet::new();
+        for game in games {
+            if game.source != Source::Manual
+                || game.library_path != library
+                || !game.id.starts_with(&prefix)
+                || !game.source_id.starts_with(&format!("{plugin}:"))
+                || game.name.trim().is_empty()
+                || game.name.len() > 512
+                || !seen.insert(&game.id)
+                || !matches!(game.launch, crate::models::LaunchTarget::Manual { .. })
+            {
+                return Err(LibraryError::Invalid("Eklenti oyun kaydı geçersiz".into()));
+            }
+            let launch = serde_json::to_string(&game.launch)
+                .map_err(|error| LibraryError::Invalid(error.to_string()))?;
+            transaction.execute("INSERT INTO games(id,app_id,name,search_name,library_path,install_path,installed,size_bytes,artwork_path,source,source_id,launch_json) VALUES(?1,0,?2,?3,?4,?5,?6,0,NULL,'manual',?7,?8) ON CONFLICT(id) DO UPDATE SET name=excluded.name,search_name=excluded.search_name,install_path=excluded.install_path,installed=excluded.installed,launch_json=excluded.launch_json",params![game.id,game.name,game.name.to_lowercase(),library,game.install_path,game.installed,game.source_id,launch])?;
+        }
+        transaction.commit()?;
+        Ok(())
+    }
+
     pub fn apply_owned_games(&mut self, source: Source, games: &[Game]) -> Result<()> {
         self.connection.execute_batch(
             "CREATE INDEX IF NOT EXISTS games_source_id ON games(source,source_id);",

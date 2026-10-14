@@ -46,15 +46,15 @@ export component Action inherits Rectangle {
     border-width: keys.has-focus ? 1px : 0px;
     border-color: keys.has-focus ? Theme.accent : Theme.line;
     background: !enabled ? transparent : accent ? (touch.has-hover ? #e0eaf1 : Theme.accent) : touch.has-hover ? Theme.hover : transparent;
-    opacity: enabled ? 1 : 0.45;
+    opacity: enabled ? 1 : 0.6;
     forward-focus: keys;
     accessible-role: button; accessible-label: text; accessible-enabled: enabled;
     accessible-action-default => { if root.enabled { root.clicked(); } }
     content := HorizontalLayout {
         x: 0px; y: 0px; width: root.width; height: root.height;
         alignment: center; spacing: 8px;
-        if icon >= 0: Glyph { kind: root.icon; filled: root.selected; ink: root.accent ? #211b35 : root.danger ? #e1a1a7 : root.selected ? Theme.accent : Theme.muted; }
-        Text { text: root.text; color: root.accent ? #211b35 : root.danger ? #e1a1a7 : Theme.text; font-size: 13px; font-weight: root.accent ? 600 : 400; vertical-alignment: center; vertical-stretch: 0; }
+        if icon >= 0: Glyph { kind: root.icon; filled: root.selected; ink: root.accent && root.enabled ? #211b35 : root.danger ? #e1a1a7 : root.selected ? Theme.accent : Theme.muted; }
+        Text { text: root.text; color: root.accent && root.enabled ? #211b35 : root.danger ? #e1a1a7 : Theme.text; font-size: 13px; font-weight: root.accent ? 600 : 400; vertical-alignment: center; vertical-stretch: 0; }
     }
     keys := FocusScope {
         enabled: root.enabled;
@@ -194,6 +194,11 @@ export component PersonRow inherits Rectangle {
 }
 
 export component FriendRow inherits Rectangle {
+    in property <string> game;
+    in property <image> avatar;
+    in property <bool> has-avatar;
+    in property <string> presence;
+    in property <string> voice;
     in property <string> name;
     in property <string> subtitle;
     in property <string> initial;
@@ -204,20 +209,25 @@ export component FriendRow inherits Rectangle {
     in property <bool> enabled: true;
     callback clicked;
     callback favorite-clicked;
-    height: 58px; min-width: 0px;
+    height: game != "" ? (voice == "" ? 90px : 104px) : voice == "" ? 58px : 74px; min-width: 0px;
     border-radius: 6px; background: touch.has-hover ? Theme.hover : transparent;
     forward-focus: keys;
-    accessible-role: button; accessible-label: name + (favorite ? " · favori" : ""); accessible-enabled: enabled;
+    accessible-role: button; accessible-label: name + " · " + subtitle + " · " + voice + (favorite ? " · favori" : ""); accessible-enabled: enabled;
     accessible-action-default => { if root.enabled { root.clicked(); } }
     touch := TouchArea { enabled: root.enabled; mouse-cursor: pointer; clicked => { keys.focus(); root.clicked(); } }
     HorizontalLayout { padding: 10px; spacing: 12px;
         Rectangle { width: 32px; height: 32px; border-radius: 16px; background: Theme.accent-surface;
-            Text { text: root.initial; color: Theme.accent; font-size: 13px; horizontal-alignment: center; vertical-alignment: center; }
-            Rectangle { x: 24px; y: 24px; width: 8px; height: 8px; border-radius: 4px; background: root.online ? Theme.positive : Theme.subtle; border-width: 2px; border-color: Theme.surface; }
+            Rectangle { width: 32px; height: 32px; border-radius: 16px; clip: true; background: transparent;
+                if root.has-avatar: Image { width: parent.width; height: parent.height; source: root.avatar; image-fit: ImageFit.cover; }
+                if !root.has-avatar: Text { text: root.initial; color: Theme.accent; font-size: 13px; horizontal-alignment: center; vertical-alignment: center; }
+            }
+            Rectangle { x: 24px; y: 24px; width: 8px; height: 8px; border-radius: 4px; background: root.presence == "idle" ? #f0b232 : root.presence == "dnd" ? #ed4245 : root.online ? Theme.positive : Theme.subtle; border-width: 2px; border-color: Theme.surface; }
         }
         VerticalLayout { spacing: 3px;
             Text { text: root.name; color: Theme.text; font-size: 13px; overflow: elide; vertical-stretch: 0; }
             Text { text: root.subtitle; color: Theme.muted; font-size: 11px; overflow: elide; vertical-stretch: 0; }
+            if root.game != "": Text { text: "Oynuyor · " + root.game; color: Theme.muted; font-size: 11px; wrap: word-wrap; vertical-stretch: 0; }
+            if root.voice != "": Text { text: "Ses · " + root.voice; color: Theme.accent; font-size: 10px; overflow: elide; vertical-stretch: 0; }
         }
         Text { text: root.recent; color: Theme.subtle; font-size: 11px; horizontal-stretch: 0; vertical-alignment: center; }
         Action { text: ""; icon: 1; selected: root.favorite; min-width: 30px; max-width: 30px; ghost: true; opacity: root.favorite ? 1 : touch.has-hover || keys.has-focus ? 0.7 : 0.25; enabled: root.can-favorite; accessible-label: root.favorite ? root.name + " favorilerden çıkar" : root.name + " favoriye ekle"; clicked => { root.favorite-clicked(); } }

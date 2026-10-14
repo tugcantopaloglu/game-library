@@ -1,6 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { favoriteIds, lastMessageAt, visibleFriends } from "../integrations/vencord/gameLibraryBridge.desktop/social.ts";
+import { avatarUrl, favoriteIds, lastMessageAt, visibleFriends } from "../integrations/vencord/gameLibraryBridge.desktop/social.ts";
+
+test("avatar URLs preserve custom images and both Discord default avatar schemes",()=>{
+    const id="223456789012345678";
+    assert.equal(avatarUrl(id,"a_abcdef","0"),`https://cdn.discordapp.com/avatars/${id}/a_abcdef.png?size=64`);
+    assert.equal(avatarUrl(id,null,"1234"),"https://cdn.discordapp.com/embed/avatars/4.png");
+    assert.equal(avatarUrl(id,null,"0"),`https://cdn.discordapp.com/embed/avatars/${Number((BigInt(id)>>22n)%6n)}.png`);
+    assert.equal(avatarUrl("bad","abc","0"),"");
+    assert.equal(new URL(avatarUrl(id,"../secret","0")).hostname,"cdn.discordapp.com");
+});
 
 test("conversation times come from valid message snowflakes", () => {
     const now = 1800000000000;

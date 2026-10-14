@@ -3,6 +3,19 @@ import test from "node:test";
 import { StreamControls } from "../integrations/vencord/gameLibraryBridge.desktop/stream.ts";
 import { CaptureCatalog, sources } from "../integrations/vencord/gameLibraryBridge.desktop/capture.ts";
 import { mediaAdapter, startAdapter } from "../integrations/vencord/gameLibraryBridge.desktop/streamAdapter.ts";
+import { stopAdapter } from "../integrations/vencord/gameLibraryBridge.desktop/streamAdapter.ts";
+
+test("Discord action recognition tolerates formatting and default parameters", () => {
+    let received;
+    function start(guildId,channelId,options = {}) { const event={type:'STREAM_START',streamType: 'guild',guildId,channelId};received=[event,options]; }
+    startAdapter(start)("guild","room",{id:"screen:0:0",name:"Screen"});
+    assert.equal(received[1].sourceId,"screen:0:0");
+    const media={setGoLiveSource(options) {const event={type:'MEDIA_ENGINE_SET_GO_LIVE_SOURCE',qualityOptions: options.qualityOptions};received=options;return event;}};
+    mediaAdapter(media,3)({desktopSource:{id:"screen:0:0",soundshareId:null},quality:{resolution:720,frameRate:30}},"stream");
+    assert.equal(received.desktopSettings.sourceId,"screen:0:0");
+    stopAdapter(function stop(streamKey) {received={type:'STREAM_STOP', streamKey};})("live");
+    assert.equal(received.streamKey,"live");
+});
 import { encodeSnapshot } from "../integrations/vencord/gameLibraryBridge.desktop/state.ts";
 
 function fixture() {
