@@ -6,6 +6,8 @@ Bilgisayardaki oyunları tek yerde toplayan, yerel verilerle çalışan masaüst
 
 ## Proje durumu
 
+14 Ekim 2026 yerel devamı: güncel uygulama/köprü eşleşmesiyle gerçek Discord oturumunda 32 arkadaş ve 2 ses odası okundu. Arkadaş paneli açıkken kart taşması, düşük çözünürlüklü kapak decode'u ve küçük/kayık durum noktaları düzeltildi. Vencord lazy modül uyumu onarıldı; Discord'da arkadaşa tıklamadan son 30 mesaj yüklendi ve gönderme kullanılabilirliği doğrulandı. Gerçek mesaj gönderimi henüz test edilmedi. [Doğrulama ayrıntıları](docs/duzeltmeler-20261014.md).
+
 14 Ekim 2026: eski executable'ın son sohbet kodunu içermediği doğrulandı. Discord komutları olayla iletiliyor; favori arkadaş paneli, profil görselleri ve yerel eklenti yöneticisi eklendi. Steam/Epic eşitleme yolları düzeltildi. Canlı Discord ve tam hesap listesi kabulü hâlâ bekliyor. [Düzeltmeler ve sınırlar](docs/duzeltmeler-20261014.md), [eklenti sözleşmesi](docs/eklenti-sistemi.md).
 
 13 Ekim 2026 entegrasyon düzeltmesi: Discord'un kurulu köprüsü onarıldı ve canlı olarak 32 arkadaş/1 ses odası okundu. Steam/Epic ana bağlantı akışında anahtar/kod kopyalamadan resmi giriş penceresi ve otomatik hesap eşitlemesi var. OBS, RTX/NVIDIA Broadcast ve Spotify panelleri, isteğe bağlı Cloudflare DNS/GoodbyeDPI ve resmi paket güncellemesi eklendi. On marka/uygulama simgesi ChatGPT resim üretimiyle yenilendi. Gerçek hesap listesi, yayın/kayıt ve ağ değişikliği kabul sınırları [güncel doğrulama kaydında](docs/entegrasyonlar-20261013.md).

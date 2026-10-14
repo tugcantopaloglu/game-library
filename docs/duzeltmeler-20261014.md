@@ -19,3 +19,15 @@ Bu çalışma ortamında Discord/Vencord kurulumu ve Steam/Epic hesap oturumu bu
 Gerçek CDN denemesinde `cdn.discordapp.com` TLS bağlantısı hem native istemcide hem PowerShell/Python'da başarısız oldu. Güncel köprüde avatarlar Discord'un Electron ağ yolundan istenir; yalnız PNG/JPEG görsel verisi sınırlı paketle native decode işçisine aktarılır. Mevcut oturum/yol sorunu uygulamanın ayrı HTTP istemcisini etkilediğinde bu yol Discord'un kendi erişimini kullanır. Bütün yollar başarısızsa sağ panel açık bir fotoğraf yükleme uyarısı gösterir; ağ ayarları otomatik değiştirilmez. Bu ortamda gerçek Discord hesabı olmadığı için Electron yolu canlı doğrulanamadı.
 
 Legendary `--force-refresh` ve liste seçenekleri [upstream CLI](https://github.com/legendary-gl/legendary/blob/master/legendary/cli.py) üzerinden kontrol edildi; resmi Windows yardımcı dosyası yayımlanan SHA-256 ile indirilip seçenekleri gerçek executable'dan okundu.
+
+## Yerel Windows oturumunda devam doğrulaması
+
+Güncel uygulama ve Vencord köprüsü aynı kaynakla derlenip eşlendi; kurulu köprü dosyaları yedeklendi ve hash'leri karşılaştırıldı. Discord yeniden açıldıktan sonra 32 arkadaş ve 2 ses odası, native arayüzde bağlantı ve ses kontrolü kullanılabilirliği doğrulandı. Önceki ortamda canlı oturum bulunmamasıyla ilgili sınır bu yerel Windows kontrolü için geçerli değildir.
+
+Arkadaş paneli açıkken kart genişliği hesabı panelin 280 pikselini çıkarmıyordu. Kartlar artık kullanılabilir alana göre hesaplanır. Kapak decode sınırı 180×270 yerine 480×720 oldu; Lanczos3 küçültmesi kullanılır, küçük kaynak görseller büyütülmez. Dosya ve decode bellek sınırları korunur. Arkadaş ve oda durum noktaları büyütüldü, avatarın sağ alt köşesine bağlandı; bağlantı noktaları 10 piksel ve esnemeyen boyutlara sahip.
+
+Sohbet adaptörü Vencord'un `proxyLazy` fonksiyon biçimindeki modül nesnelerini reddediyordu. Yalnız istemci action adaptörleri bu nesneleri kabul eder; komut ve mesaj verilerinin nesne doğrulaması korunur. Regresyon testi gerçek callable proxy biçimini kapsar. Canlı kontrolde Discord'da arkadaşa tıklamadan bir birebir görüşmenin son 30 mesajı yüklendi ve `canSend: true` gözlendi. Kontrol sırasında mesaj gönderilmedi; gerçek gönderim/nonce geri okuma kabulü ayrıca bekliyor.
+
+18 sohbet testi, kapak boyut/dosya sınırı testi ve Vencord tip kontrolü geçti. Bu oturumda `snyk_code_scan` aracı sunulmadığından istenen Snyk taraması yapılamadı. Önceki RAM/CPU ölçümleri daha yüksek çözünürlüklü kapaklar için geçerli kabul edilmez.
+
+Release derlemesi tamamlandı. 540 kayıtlı kopya profille 960/1280 piksel ve %150 ölçekli 1920×1080 görüntüler incelendi; arkadaş paneli açıkken üç/dört sütun taşmıyor. Son bağlantı noktası metinle aynı satır merkezinde. Görseller örnek arkadaş içerir; gerçek sohbet kabulü ayrı `artifacts/ui-chat-fix-20261014/chat-live.json` kaydındadır.

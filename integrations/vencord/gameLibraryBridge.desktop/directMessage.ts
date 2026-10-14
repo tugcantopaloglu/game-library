@@ -22,6 +22,10 @@ export interface ChatProvider {
 function object(value: unknown): Fields | undefined {
     return value !== null && typeof value === "object" && !Array.isArray(value) ? value as Fields : undefined;
 }
+// Vencord lazy webpack exports proxy a function even when the module is an object.
+function actionsObject(value: unknown): Fields | undefined {
+    return typeof value === "function" ? value as unknown as Fields : object(value);
+}
 function code(value: unknown): string { return typeof value === "function" ? Function.prototype.toString.call(value) : ""; }
 function read<T>(operation: () => T, fallback: T): T { try { return operation(); } catch { return fallback; } }
 function text(value: unknown, maximum: number) {
@@ -30,7 +34,7 @@ function text(value: unknown, maximum: number) {
 
 /** Current public Discord client takes an options object, never a bare user ID. */
 export function directMessageAdapter(value: unknown): ChatProvider["openDm"] {
-    const actions = object(value), method = actions?.openPrivateChannel;
+    const actions = actionsObject(value), method = actions?.openPrivateChannel;
     if (typeof method !== "function" || !/\brecipientIds\b/.test(code(method))) return undefined;
     return userId => {
         if (!validId(userId)) throw new Error("Discord arkadaşı geçersiz");
@@ -40,7 +44,7 @@ export function directMessageAdapter(value: unknown): ChatProvider["openDm"] {
 
 /** Preserve Discord's own fetch/send paths, moderation and account credentials. */
 export function chatMessageAdapters(value: unknown): Pick<ChatProvider, "fetch" | "send"> {
-    const actions = object(value), fetch = actions?.fetchMessages, send = actions?.sendMessage;
+    const actions = actionsObject(value), fetch = actions?.fetchMessages, send = actions?.sendMessage;
     const fetchSupported = typeof fetch === "function";
     const sendSupported = typeof send === "function";
     return {

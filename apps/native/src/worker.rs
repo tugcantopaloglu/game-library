@@ -194,7 +194,12 @@ fn thumbnail(path: &str) -> Option<(u32, u32, Vec<u8>)> {
     limits.max_image_height = Some(4096);
     limits.max_alloc = Some(64 * 1024 * 1024);
     reader.limits(limits);
-    let resized = reader.decode().ok()?.thumbnail(180, 270).into_rgba8();
+    let decoded = reader.decode().ok()?;
+    let resized = if decoded.width() > 480 || decoded.height() > 720 {
+        decoded.resize(480, 720, image::imageops::FilterType::Lanczos3)
+    } else {
+        decoded
+    }.into_rgba8();
     Some((resized.width(), resized.height(), resized.into_raw()))
 }
 
@@ -2226,8 +2231,8 @@ mod tests {
             .save(&valid)
             .unwrap();
         let (width, height, pixels) = thumbnail(valid.to_str().unwrap()).unwrap();
-        assert_eq!((width, height), (180, 270));
-        assert_eq!(pixels.len(), 180 * 270 * 4);
+        assert_eq!((width, height), (480, 720));
+        assert_eq!(pixels.len(), 480 * 720 * 4);
         let oversized = directory.path().join("large.png");
         std::fs::File::create(&oversized)
             .unwrap()

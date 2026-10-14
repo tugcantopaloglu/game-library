@@ -341,7 +341,7 @@ export component LibraryWindow inherits Window {
     in-out property <bool> steam-advanced;
     in-out property <bool> discord-settings;
     out property <int> grid-columns: (root.width - (friends-panel-enabled ? 280px : 0px)) < 950px ? 3 : (root.width - (friends-panel-enabled ? 280px : 0px)) < 1100px ? 4 : (root.width - (friends-panel-enabled ? 280px : 0px)) < 1280px ? 5 : 6;
-    property <length> card-width: (root.width - 184px - 48px - 16px - (grid-columns - 1) * 16px) / grid-columns;
+    property <length> card-width: (root.width - 184px - 48px - 16px - (friends-panel-enabled ? 280px : 0px) - (grid-columns - 1) * 16px) / grid-columns;
     property <length> card-height: card-width * 1.5 + 58px;
     changed grid-columns => { if section < 2 { root.refresh(query,section == 1,installed-only,offset,source-index); } }
     init => { Palette.color-scheme = ColorScheme.dark; }
@@ -371,7 +371,9 @@ export component LibraryWindow inherits Window {
                     Navigation { text: "Ayarlar"; icon: 4; active: section == 8 || section == 2 || (section >= 3 && section <= 5) || section >= 10; clicked => { section = 8; } }
                     Rectangle { height: 1px; background: Theme.line; }
                     HorizontalLayout { height: 38px; padding-left: 12px; spacing: 9px;
-                        Rectangle { width: 6px; height: 6px; border-radius: 3px; background: bridge-connected ? Theme.positive : Theme.subtle; }
+                        Rectangle { width: 10px; horizontal-stretch: 0; background: transparent;
+                            Rectangle { y: (parent.height - self.height) / 2; width: 10px; height: 10px; border-radius: 5px; background: bridge-connected ? Theme.positive : Theme.subtle; }
+                        }
                         Text { text: bridge-connected ? "Discord bağlı" : "Yerel kütüphane"; color: Theme.subtle; font-size: 11px; vertical-alignment: center; }
                     }
                 }
@@ -560,7 +562,9 @@ export component LibraryWindow inherits Window {
                 }
                 if section == 7: VerticalLayout { spacing: 14px;
                     HorizontalLayout { height: 34px; spacing: 10px;
-                        Rectangle { width: 6px; height: 6px; border-radius: 3px; background: bridge-connected ? Theme.positive : Theme.subtle; }
+                        Rectangle { width: 10px; horizontal-stretch: 0; background: transparent;
+                            Rectangle { y: (parent.height - self.height) / 2; width: 10px; height: 10px; border-radius: 5px; background: bridge-connected ? Theme.positive : Theme.subtle; }
+                        }
                         Caption { text: social-fixture ? "Örnek veri" : bridge-connected ? "Discord köprüsü bağlı" : bridge-enabled ? "Discord bağlantısı bekleniyor" : "Discord bağlantısı kapalı"; font-size: 12px; }
                         Rectangle { horizontal-stretch: 1; background: transparent; }
                         if !bridge-enabled: Action { text: "Bağlan"; clicked => { bridge-enabled = true; root.bridge-toggle(true); } }

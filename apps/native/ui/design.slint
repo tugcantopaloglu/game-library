@@ -177,9 +177,9 @@ export component PersonRow inherits Rectangle {
     border-width: keys.has-focus ? 1px : 0px; border-color: Theme.accent;
     touch := TouchArea { enabled: root.enabled && root.can-join; mouse-cursor: pointer; clicked => { keys.focus(); root.clicked(); } }
     HorizontalLayout { padding: 10px; spacing: 12px;
-        Rectangle { width: 34px; height: 34px; border-radius: 17px; background: Theme.accent-surface;
+        Rectangle { width: 34px; height: 34px; horizontal-stretch: 0; vertical-stretch: 0; border-radius: 17px; background: Theme.accent-surface;
             Text { text: root.initial; color: Theme.accent; font-size: 13px; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
-            Rectangle { x: 25px; y: 25px; width: 9px; height: 9px; border-radius: 5px; border-width: 2px; border-color: Theme.surface; background: root.online ? Theme.positive : Theme.subtle; }
+            Rectangle { x: parent.width - self.width; y: parent.height - self.height; width: 13px; height: 13px; border-radius: 6.5px; border-width: 2px; border-color: Theme.surface; background: root.online ? Theme.positive : Theme.subtle; }
         }
         VerticalLayout { spacing: 3px;
             Text { text: root.name; color: Theme.text; font-size: 13px; overflow: elide; vertical-stretch: 0; }
@@ -216,12 +216,12 @@ export component FriendRow inherits Rectangle {
     accessible-action-default => { if root.enabled { root.clicked(); } }
     touch := TouchArea { enabled: root.enabled; mouse-cursor: pointer; clicked => { keys.focus(); root.clicked(); } }
     HorizontalLayout { padding: 10px; spacing: 12px;
-        Rectangle { width: 32px; height: 32px; border-radius: 16px; background: Theme.accent-surface;
+        Rectangle { width: 32px; height: 32px; horizontal-stretch: 0; vertical-stretch: 0; border-radius: 16px; background: Theme.accent-surface;
             Rectangle { width: 32px; height: 32px; border-radius: 16px; clip: true; background: transparent;
                 if root.has-avatar: Image { width: parent.width; height: parent.height; source: root.avatar; image-fit: ImageFit.cover; }
                 if !root.has-avatar: Text { text: root.initial; color: Theme.accent; font-size: 13px; horizontal-alignment: center; vertical-alignment: center; }
             }
-            Rectangle { x: 24px; y: 24px; width: 8px; height: 8px; border-radius: 4px; background: root.presence == "idle" ? #f0b232 : root.presence == "dnd" ? #ed4245 : root.online ? Theme.positive : Theme.subtle; border-width: 2px; border-color: Theme.surface; }
+            Rectangle { x: parent.width - self.width; y: parent.height - self.height; width: 12px; height: 12px; border-radius: 6px; background: root.presence == "idle" ? #f0b232 : root.presence == "dnd" ? #ed4245 : root.online ? Theme.positive : Theme.subtle; border-width: 2px; border-color: Theme.surface; }
         }
         VerticalLayout { spacing: 3px;
             Text { text: root.name; color: Theme.text; font-size: 13px; overflow: elide; vertical-stretch: 0; }

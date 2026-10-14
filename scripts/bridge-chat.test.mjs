@@ -52,6 +52,24 @@ test("formatted and wrapped Discord methods retain their named action contracts"
     assert.equal(adapted.send(channelId,"hello",nonce)[3].nonce,nonce);
 });
 
+test("Vencord callable lazy module proxies expose chat fetch, send and open", async () => {
+    const calls = [];
+    const module = {
+        fetchMessages(options) { calls.push(["fetch", options]); },
+        sendMessage(...args) { calls.push(["send", ...args]); },
+        openPrivateChannel({recipientIds}) { calls.push(["open", recipientIds]); }
+    };
+    const lazy = new Proxy(function () {}, {get: (_, key) => module[key]});
+    const adapters = chatMessageAdapters(lazy);
+    await adapters.fetch(channelId, 30);
+    await adapters.send(channelId, "hello", nonce);
+    await directMessageAdapter(lazy)(friend);
+    assert.equal(calls[0][1].channelId, channelId);
+    assert.equal(calls[1][1], channelId);
+    assert.equal(calls[1][4].nonce, nonce);
+    assert.deepEqual(calls[2], ["open", [friend]]);
+});
+
 test("native focus wrapper preserves its verified window argument order", () => {
     const calls = [];
     const g = { window: { restore: id => calls.push(["restore",id]), focus: (force,id) => calls.push(["focus",force,id]) } };
