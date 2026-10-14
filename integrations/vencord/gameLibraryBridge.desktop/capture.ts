@@ -7,14 +7,24 @@ export interface CaptureProvider {
     audioSupported?: (id: string) => boolean;
 }
 
+/** Zero-sized enumeration keeps native capture IDs and drops preview payloads. */
+export function nativeCaptureAdapter(engine: any): CaptureProvider["listSources"] {
+    if (typeof engine?.getScreenPreviews !== "function" || typeof engine?.getWindowPreviews !== "function") return undefined;
+    return async () => {
+        const groups = await Promise.all([engine.getScreenPreviews(0, 0), engine.getWindowPreviews(0, 0)]);
+        if (groups.some(group => !Array.isArray(group))) throw new Error("Discord kaynak listesi okunamadı");
+        return groups.flatMap(group => group.slice(0, 1000).map((source: any) => ({id: source?.id, name: source?.name})));
+    };
+}
+
 export function sources(value: unknown): CaptureSource[] {
     if (!Array.isArray(value)) throw new Error("Discord kaynak listesi okunamadı");
     const result: CaptureSource[] = [];
     const seen = new Set<string>();
     for (const source of value.slice(0, 2000)) {
-        if (!source || typeof source.id !== "string" || !/^(window|screen):\d+:\d+$/.test(source.id) || source.id.length > 128 || seen.has(source.id)) continue;
+        if (!source || typeof source.id !== "string" || !/^(?:(window|screen):\d+(?::\d+)?|(window|screen)-handle:\d+)$/.test(source.id) || source.id.length > 128 || seen.has(source.id)) continue;
         seen.add(source.id);
-        result.push({id:source.id,name:String(source.name || (source.id.startsWith("screen:") ? "Ekran" : "Pencere")).toWellFormed().slice(0,128),kind:source.id.startsWith("screen:") ? "screen" : "window"});
+        result.push({id:source.id,name:String(source.name || (source.id.startsWith("screen") ? "Ekran" : "Pencere")).toWellFormed().slice(0,128),kind:source.id.startsWith("screen") ? "screen" : "window"});
         if (result.length === 100) break;
     }
     return result.sort((a,b)=>a.kind.localeCompare(b.kind) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id));

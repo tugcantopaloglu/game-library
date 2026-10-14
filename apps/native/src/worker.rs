@@ -832,7 +832,9 @@ fn bridge_status(
             .into(),
         );
         ui.set_stream_pending(stream.pending);
-        ui.set_stream_result(stream.result.into());
+        ui.set_stream_result(if connected && snapshot["bridgeBuild"] != "20261014.2" {
+            "Yayın kontrolleri için hazırlanan güncelleme bu Discord oturumunda henüz etkin değil.".into()
+        } else { stream.result.into() });
         ui.set_can_stream_start(
             connected && snapshot["capabilities"]["stream_start"] == true && !stream.pending,
         );
@@ -854,16 +856,14 @@ fn bridge_status(
         );
         ui.set_stream_source_channel(stream.source_channel.into());
         ui.set_stream_source_pending(stream.source_pending);
-        ui.set_stream_source_audio_capabilities(
-            Rc::new(VecModel::from(
-                stream
-                    .sources
-                    .iter()
-                    .map(|source| source.audio_available)
-                    .collect::<Vec<_>>(),
-            ))
-            .into(),
-        );
+        ui.set_stream_source_audio_capabilities(reconcile_model(
+            ui.get_stream_source_audio_capabilities(),
+            stream
+                .sources
+                .iter()
+                .map(|source| source.audio_available)
+                .collect::<Vec<_>>(),
+        ));
         ui.set_can_stream_audio(
             connected
                 && snapshot["capabilities"]["stream_audio"] == true
@@ -872,26 +872,24 @@ fn bridge_status(
         );
         ui.set_stream_audio_enabled(stream.audio == Some(true));
         ui.set_stream_source_error(stream.source_error.into());
-        ui.set_stream_source_names(
-            Rc::new(VecModel::from(
-                stream
-                    .sources
-                    .iter()
-                    .map(|source| {
-                        slint::SharedString::from(format!(
-                            "{} · {}",
-                            if source.kind == "screen" {
-                                "Ekran"
-                            } else {
-                                "Pencere"
-                            },
-                            source.name
-                        ))
-                    })
-                    .collect::<Vec<_>>(),
-            ))
-            .into(),
-        );
+        ui.set_stream_source_names(reconcile_model(
+            ui.get_stream_source_names(),
+            stream
+                .sources
+                .iter()
+                .map(|source| {
+                    slint::SharedString::from(format!(
+                        "{} · {}",
+                        if source.kind == "screen" {
+                            "Ekran"
+                        } else {
+                            "Pencere"
+                        },
+                        source.name
+                    ))
+                })
+                .collect::<Vec<_>>(),
+        ));
         if !connected || stream.pending {
             ui.set_stream_source_picker(false);
         }
@@ -927,32 +925,30 @@ fn bridge_status(
                 .map(|index| index as i32)
                 .unwrap_or(-1),
         );
-        ui.set_stream_resolutions(
-            Rc::new(VecModel::from(
-                stream
-                    .resolutions
-                    .iter()
-                    .map(|value| {
-                        slint::SharedString::from(if *value == 0 {
-                            "Kaynak".into()
-                        } else {
-                            format!("{value}p")
-                        })
+        ui.set_stream_resolution_values(reconcile_model(ui.get_stream_resolution_values(), stream.resolutions.iter().map(|value| *value as i32).collect()));
+        ui.set_stream_fps_values(reconcile_model(ui.get_stream_fps_values(), stream.fps_options.iter().map(|value| *value as i32).collect()));
+        ui.set_stream_resolutions(reconcile_model(
+            ui.get_stream_resolutions(),
+            stream
+                .resolutions
+                .iter()
+                .map(|value| {
+                    slint::SharedString::from(if *value == 0 {
+                        "Kaynak".into()
+                    } else {
+                        format!("{value}p")
                     })
-                    .collect::<Vec<_>>(),
-            ))
-            .into(),
-        );
-        ui.set_stream_fps_options(
-            Rc::new(VecModel::from(
-                stream
-                    .fps_options
-                    .iter()
-                    .map(|value| slint::SharedString::from(format!("{value} FPS")))
-                    .collect::<Vec<_>>(),
-            ))
-            .into(),
-        );
+                })
+                .collect::<Vec<_>>(),
+        ));
+        ui.set_stream_fps_options(reconcile_model(
+            ui.get_stream_fps_options(),
+            stream
+                .fps_options
+                .iter()
+                .map(|value| slint::SharedString::from(format!("{value} FPS")))
+                .collect::<Vec<_>>(),
+        ));
         ui.set_can_stream_quality(
             connected
                 && snapshot["capabilities"]["stream_quality"] == true

@@ -10,7 +10,8 @@ import { ApplicationStreamingStore, ChannelActionCreators, ChannelStore, GuildSt
 import { avatarUrl, favoriteIds, lastMessageAt, validId, visibleFriends } from "./social";
 import { SnapshotCache, StoreListeners, Section } from "./state";
 import { LiveStream, StreamControls, StreamProvider } from "./stream";
-import { mediaAdapter, startAdapter, stopAdapter } from "./streamAdapter";
+import { currentStreamKey, mediaAdapter, qualityAdapter, startAdapter, stopAdapter } from "./streamAdapter";
+import { nativeCaptureAdapter } from "./capture";
 
 const Native = VencordNative.pluginHelpers.GameLibraryBridge as PluginNative<typeof import("./native")>;
 const settings = definePluginSettings({
@@ -60,7 +61,8 @@ function resolveActions() {
         listenAlong: listenAlongAdapter(coded("hasSpotifyAccount:", "sync_id", "Promise.reject", "openModalLazy")),
         chatFocus: discordFocusAdapter(props("focus", "restore", "minimize", "maximize")),
         start: startAdapter(coded("STREAM_START", "streamType", "guildId", "channelId")),
-        stop: stopAdapter(coded("STREAM_STOP", "streamKey", "appContext"))
+        stop: stopAdapter(coded("STREAM_STOP", "streamKey", "appContext")),
+        quality: qualityAdapter(coded("canStreamWithSettings", "guildPremiumTier", "canStreamQuality"), props("PRESET_CUSTOM", "PRESET_VIDEO")?.PRESET_CUSTOM)
     };
 }
 
@@ -130,7 +132,7 @@ function roomSnapshot() {
 function controlSnapshot() {
     const modules = actions();
     const streamControl = streamControls.state(streamProvider());
-    return { status: "Discord köprüsü bağlı", bridgeBuild: "20261014.1", result, voiceChannel: SelectedChannelStore.getVoiceChannelId(),
+    return { status: "Discord köprüsü bağlı", bridgeBuild: "20261014.2", result, voiceChannel: SelectedChannelStore.getVoiceChannelId(),
         diagnostics: {chatOpen:typeof chatProvider().openDm === "function",chatFetch:typeof chatProvider().fetch === "function",chatSend:typeof chatProvider().send === "function",streamStart:typeof modules.start === "function",streamStop:typeof modules.stop === "function",streamQuality:!!mediaAdapter(modules.media,modules.presets?.PRESET_CUSTOM),streamCapture:typeof DiscordNative?.desktopCapture?.getDesktopCaptureSources === "function"},
         muted: MediaEngineStore.isSelfMute(), deafened: MediaEngineStore.isSelfDeaf(),
         stream: streamControl.active ? {streamKey:streamControl.key} : null,
@@ -153,8 +155,9 @@ function controlSnapshot() {
 function streamProvider(): StreamProvider {
     const modules = actions();
     const write = mediaAdapter(modules.media,modules.presets?.PRESET_CUSTOM);
-    const capture = typeof DiscordNative !== "undefined" && typeof DiscordNative.desktopCapture?.getDesktopCaptureSources === "function" ?
-        () => DiscordNative.desktopCapture.getDesktopCaptureSources({types:["screen","window"],thumbnailSize:{width:0,height:0},fetchWindowIcons:false}) : undefined;
+    const nativeCapture = nativeCaptureAdapter(MediaEngineStore.getMediaEngine?.());
+    const capture = nativeCapture ?? (typeof DiscordNative !== "undefined" && typeof DiscordNative.desktopCapture?.getDesktopCaptureSources === "function" ?
+        () => DiscordNative.desktopCapture.getDesktopCaptureSources({types:["screen","window"],thumbnailSize:{width:0,height:0},fetchWindowIcons:false}) : undefined);
     const allowed = () => {
         const id = SelectedChannelStore.getVoiceChannelId();
         const channel = id ? ChannelStore.getChannel(id) : undefined;
@@ -168,11 +171,7 @@ function streamProvider(): StreamProvider {
             const account = UserStore.getCurrentUser()?.id;
             const active = ApplicationStreamingStore.getCurrentUserActiveStream?.();
             if (!active || active.ownerId !== account) return null;
-            const rtc = ApplicationStreamingStore.getState?.().rtcStreams ?? {};
-            const key = Object.keys(rtc).slice(0,100).find(key => {
-                const stream = ApplicationStreamingStore.getActiveStreamForStreamKey?.(key);
-                return stream?.ownerId === account && stream.channelId === active.channelId;
-            });
+            const key = currentStreamKey(active, account);
             const source = MediaEngineStore.getGoLiveSource?.();
             const context = MediaEngineStore.getGoLiveContext?.();
             const validSource = !!source && typeof source.desktopSource?.id === "string" && source.desktopSource.id.length <= 256
@@ -183,9 +182,15 @@ function streamProvider(): StreamProvider {
             return {key:key && key.length <= 256 ? key : "",source:validSource ? source : null,context:context === "stream" ? "stream" : "default",sourceName: (metadata?.sourceName ?? "").slice(0,128)} as LiveStream;
         },
         setSource: write,
+        qualityAllowed: modules.quality ? (resolution, fps) => {
+            const user = UserStore.getCurrentUser(), id = SelectedChannelStore.getVoiceChannelId();
+            const channel = id ? ChannelStore.getChannel(id) : undefined;
+            const guild = channel?.guild_id ? GuildStore.getGuild(channel.guild_id) : undefined;
+            return modules.quality!(resolution, fps, user, guild?.premiumTier, channel);
+        } : undefined,
         stop: modules.stop,
         listSources: capture,
-        audioSupported: id => id.startsWith("screen:") ? MediaEngineStore.supportsScreenSoundshare?.() === true : id.startsWith("window:") && MediaEngineStore.supports?.("SOUNDSHARE") === true,
+        audioSupported: id => id.startsWith("screen") ? MediaEngineStore.supportsScreenSoundshare?.() === true : id.startsWith("window") && MediaEngineStore.supports?.("SOUNDSHARE") === true,
         get start() { return modules.start && capture && allowed() ? (channelId: string, source: import("./capture").CaptureSource, sound: boolean) => {
             if (!allowed() || SelectedChannelStore.getVoiceChannelId() !== channelId || ApplicationStreamingStore.getCurrentUserActiveStream()) throw new Error("Ses odası veya yayın durumu değişti");
             const channel = ChannelStore.getChannel(channelId);

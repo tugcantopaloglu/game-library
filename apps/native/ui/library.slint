@@ -217,6 +217,8 @@ export component LibraryWindow inherits Window {
     in property <string> stream-result;
     in property <[string]> stream-resolutions;
     in property <[string]> stream-fps-options;
+    in property <[int]> stream-resolution-values;
+    in property <[int]> stream-fps-values;
     in-out property <int> stream-resolution-index;
     in-out property <int> stream-fps-index;
     in-out property <bool> stream-panel: true;
@@ -596,9 +598,9 @@ export component LibraryWindow inherits Window {
                         }
                         HorizontalLayout { spacing: 10px;
                             Caption { text: "Çözünürlük"; horizontal-stretch: 0; font-size: 12px; }
-                            ComboBox { width: 130px; model: stream-resolutions.length > 0 ? stream-resolutions : ["Yayın bekleniyor"]; current-index <=> stream-resolution-index; enabled: can-stream-quality; selected(value) => { root.stream-quality(stream-key,stream-resolution-index); } }
+                            ComboBox { width: 130px; model: stream-resolutions.length > 0 ? stream-resolutions : ["Yayın bekleniyor"]; current-index <=> stream-resolution-index; enabled: can-stream-quality; selected(value) => { if stream-resolution-index >= 0 && stream-resolution-index < stream-resolution-values.length { root.stream-quality(stream-key,stream-resolution-values[stream-resolution-index]); } } }
                             Caption { text: "FPS"; horizontal-stretch: 0; font-size: 12px; }
-                            ComboBox { width: 100px; model: stream-fps-options.length > 0 ? stream-fps-options : ["—"]; current-index <=> stream-fps-index; enabled: can-stream-fps; selected(value) => { root.stream-fps(stream-key,stream-fps-index); } }
+                            ComboBox { width: 100px; model: stream-fps-options.length > 0 ? stream-fps-options : ["—"]; current-index <=> stream-fps-index; enabled: can-stream-fps; selected(value) => { if stream-fps-index >= 0 && stream-fps-index < stream-fps-values.length { root.stream-fps(stream-key,stream-fps-values[stream-fps-index]); } } }
                             Rectangle { horizontal-stretch: 1; background: transparent; }
                         }
                         HorizontalLayout { spacing: 10px;

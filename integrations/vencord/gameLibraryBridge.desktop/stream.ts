@@ -14,10 +14,12 @@ export interface StreamProvider extends CaptureProvider {
     setSource?: (source: NonNullable<LiveStream["source"]>, context: LiveStream["context"], sound?: boolean) => unknown;
     stop?: (key: string) => unknown;
     start?: (channel: string, source: CaptureSource, sound: boolean) => unknown;
+    qualityAllowed?: (resolution: number, fps: number) => boolean;
 }
 
 export class StreamControls {
-    private pending: {key:string; account:string; channel:string; sourceId:string; action:string; value:number; expires:number; before:LiveStream | null} | undefined;
+    private pending: {key:string; account:string; channel:string; sourceId:string; sourceName?:string; action:string; value:number; expires:number; before:LiveStream | null} | undefined;
+    private sourceLabel: {key:string; id:string; name:string} | undefined;
     readonly catalog = new CaptureCatalog();
     private result = "";
     private knownKey = "";
@@ -28,6 +30,7 @@ export class StreamControls {
 
     state(provider: StreamProvider) {
         const live = provider.read();
+        if (this.sourceLabel && (live?.key !== this.sourceLabel.key || live.source?.desktopSource.id !== this.sourceLabel.id)) this.sourceLabel = undefined;
         if (live?.key !== this.knownKey) {
             this.knownKey = live?.key ?? "";
             this.maxResolution = 720; this.maxFps = 30;
@@ -36,16 +39,16 @@ export class StreamControls {
             this.maxResolution = Math.max(this.maxResolution,live.source.quality.resolution);
             this.maxFps = Math.max(this.maxFps,live.source.quality.frameRate);
         }
-        const resolutions = live?.source ? [...new Set([480,720,1080,1440,2160,4320,live.source.quality.resolution])].filter(value=>value<=this.maxResolution).sort((a,b)=>a-b) : [];
-        const fpsOptions = live?.source ? [...new Set([15,30,60,120,live.source.quality.frameRate])].filter(value=>value<=this.maxFps).sort((a,b)=>a-b) : [];
+        const resolutions = live?.source ? [...new Set([0,480,720,1080,1440,live.source.quality.resolution])].filter(value=>provider.qualityAllowed ? provider.qualityAllowed(value,live.source!.quality.frameRate) : value === live.source!.quality.resolution || value > 0 && value<=this.maxResolution).sort((a,b)=>a-b) : [];
+        const fpsOptions = live?.source ? [...new Set([5,15,30,60,live.source.quality.frameRate])].filter(value=>provider.qualityAllowed ? provider.qualityAllowed(live.source!.quality.resolution,value) : value<=this.maxFps).sort((a,b)=>a-b) : [];
         const writable = provider.known !== false && !!live?.key && !!live.source && typeof provider.setSource === "function";
         return {
             known: provider.known !== false,
-            active: !!live, key: live?.key ?? "", sourceName: live?.sourceName ?? "", sourceId: live?.source?.desktopSource.id ?? "",
+            active: !!live, key: live?.key ?? "", sourceName: this.sourceLabel?.name ?? live?.sourceName ?? "", sourceId: live?.source?.desktopSource.id ?? "",
             resolution: live?.source?.quality.resolution ?? null, fps: live?.source?.quality.frameRate ?? null,
             audio: live?.source ? live.source.desktopSource.soundshareId != null : null,
             resolutions, fpsOptions, pending: !!this.pending, result: this.result,
-            canStop: !!live?.key && typeof provider.stop === "function", canQuality: writable, canFps: writable,
+            canStop: !!live?.key && typeof provider.stop === "function", canQuality: writable && resolutions.length > 0, canFps: writable && fpsOptions.length > 0,
             canStart: provider.known !== false && !!provider.account && !!provider.channel && !live && !!provider.start && !!provider.listSources,
             canSources: !!provider.listSources && !!provider.account && !!provider.channel,
             canSource: writable && !!provider.listSources && !!provider.account && !!provider.channel,
@@ -67,6 +70,7 @@ export class StreamControls {
             this.result = "Kaynak doğrulanıyor…";
             try {
                 const source = await this.catalog.resolve(provider,data.sourceRevision,data.sourceId,now);
+                this.pending!.sourceName = source.name;
                 if (provider.known === false || provider.account !== account || provider.channel !== channel || provider.read()) throw new Error("Ses odası veya yayın durumu değişti");
                 if (audio && !source.audioAvailable) throw new Error("Bu kaynak yayın sesi paylaşımını desteklemiyor");
                 await bounded(()=>provider.start!(channel!,source,audio));
@@ -83,6 +87,7 @@ export class StreamControls {
             this.result = "Kaynak doğrulanıyor…";
             try {
                 const selected = await this.catalog.resolve(provider,data.sourceRevision,data.sourceId,now);
+                this.pending!.sourceName = selected.name;
                 const current = provider.read();
                 if (provider.known === false || provider.account !== account || provider.channel !== channel || current?.key !== live.key || JSON.stringify(current.source) !== JSON.stringify(before.source)) throw new Error("Ses odası veya yayın kaynağı değişti");
                 if (before.source!.desktopSource.soundshareId != null && !selected.audioAvailable) throw new Error("Bu kaynak ses paylaşımını desteklemiyor; önce yayın sesini kapat");
@@ -100,7 +105,7 @@ export class StreamControls {
         } else if (action === "stream_quality" || action === "stream_fps") {
             value = action === "stream_quality" ? data.resolution : data.fps;
             const options = action === "stream_quality" ? state.resolutions : state.fpsOptions;
-            if (!state.canQuality || !Number.isInteger(value) || !options.includes(value)) throw new Error("Bu yayın ayarı kullanılamıyor");
+            if (!(action === "stream_quality" ? state.canQuality : state.canFps) || !Number.isInteger(value) || !options.includes(value)) throw new Error("Bu yayın ayarı kullanılamıyor");
         } else throw new Error("Yayın kontrolü bu istemcide desteklenmiyor");
         this.pending = {key:live.key,account:provider.account ?? "",channel:provider.channel ?? "",sourceId:"",action,value,expires:now+5000,before:{...live,source:live.source ? {...live.source,desktopSource:{...live.source.desktopSource},quality:{...live.source.quality}} : null}};
         this.result = "Discord'dan sonuç bekleniyor…";
@@ -129,7 +134,7 @@ export class StreamControls {
         }
         const live = provider.read();
         if (pending.action === "stream_start") {
-            if (live?.key && live.source?.desktopSource.id === pending.sourceId && Number(live.source.desktopSource.soundshareId != null) === pending.value) { this.pending = undefined; this.result = "Yayın başlatıldığı doğrulandı"; return true; }
+            if (live?.key && live.source?.desktopSource.id === pending.sourceId && Number(live.source.desktopSource.soundshareId != null) === pending.value) { this.sourceLabel = {key:live.key,id:pending.sourceId,name:pending.sourceName ?? live.sourceName}; this.pending = undefined; this.result = "Yayın başlatıldığı doğrulandı"; return true; }
             if (live?.key && live.source && live.source.desktopSource.id !== pending.sourceId) { this.pending = undefined; this.result = "Başka bir yayın başladı; önceki işlem iptal edildi"; return true; }
             if (now >= pending.expires) { this.pending = undefined; this.result = "Discord yayının başladığını doğrulamadı"; return true; }
             return false;
@@ -140,14 +145,12 @@ export class StreamControls {
         const confirmed = pending.action === "stream_stop" ? !live : live?.key === pending.key &&
             (pending.action === "stream_source" ? live.source?.desktopSource.id === pending.sourceId : pending.action === "stream_audio" ? !!live.source && Number(live.source.desktopSource.soundshareId != null) === pending.value :
             (pending.action === "stream_quality" ? live.source?.quality.resolution : live.source?.quality.frameRate) === pending.value);
-        if (confirmed) { this.pending = undefined; this.result = "Yayın değişikliği doğrulandı"; return true; }
+        if (confirmed) { if (pending.action === "stream_source" && live) this.sourceLabel = {key:live.key,id:pending.sourceId,name:pending.sourceName ?? live.sourceName}; this.pending = undefined; this.result = "Yayın değişikliği doğrulandı"; return true; }
         if (live?.key !== pending.key) { this.pending = undefined; this.result = "Yayın değişti; önceki işlem iptal edildi"; return true; }
         if (now >= pending.expires) {
             this.pending = undefined;
             this.result = "Discord değişikliği doğrulamadı";
-            if (pending.action !== "stream_stop" && pending.before?.source) {
-                try { Promise.resolve(provider.setSource?.(pending.before.source,pending.before.context)).catch(()=>{}); } catch {}
-            }
+            // An unconfirmed command must not undo a later change made in Discord.
             return true;
         }
         return false;

@@ -23,3 +23,17 @@ Kısa kontrol: 12 köprü yayın testi, bir katalog/IPC bütçesi testi, üç na
 Commitler: başlatma `92c2620`, kaynak değiştirme `1b01334`, yayın sesi `ee7b5b9`. Node kontrolleri `node --import ./scripts/bridge-test-loader.mjs --test scripts/bridge-stream.test.mjs`, native istek kontrolleri `cargo test -p game-library-native stream::tests --locked` ile çalışır. Tam test paketi veya uzun performans testi çalıştırılmadı.
 
 Son release derlemesi `cargo build -p game-library-native --release --locked` ile tamamlandı. `target/release/game-library-native.exe` ve `target/release/game-library-native-next.exe` aynı güncel binary'yi içerir; SHA-256: `54EF034A1CEAFB020BFBA72122C85A1116230F568E7F085DBB9BFDF3454668F8`. Native uygulama ve köprü birlikte güncellenmelidir. Gerçek Discord hesabında yayın/ses işlemi veya kurulum değişikliği yapılmadı.
+
+## 14 Ekim 2026 — yayın kimliği ve native kaynaklar
+
+Gerçek açık oturumda ses bağlantısı ve aktif yayın okundu. Kaynak seçici yedi kaynak döndürdü; aktif kaynak `screen-handle:` biçimindeydi. Köprü ise aktif yayının anahtarını boş okuyordu; durdurma, kaynak değiştirme, kalite ve FPS kontrolleri bu yüzden kapalıydı. Okuma kontrolü sırasında yayın başlatma/durdurma veya kalite değişikliği yapılmadı.
+
+`20261014.2` köprü derlemesinde anahtar RTC snapshot'ından aranmaz; aktif yayının doğrulanan hesap/oda/sunucu alanları Discord'un guild/call anahtar sözleşmesiyle kodlanır. Başka hesaba ait veya bilinmeyen biçimli yayın kabul edilmez. [Discord istemci kodu](https://github.com/Discord-Datamining/Discord-Datamining/blob/master/current.js) ve kurulu Vencord tipleriyle sözleşme karşılaştırıldı.
+
+Kaynaklar mümkün olduğunda MediaEngine'in sıfır boyutlu ekran/pencere enumerasyonundan alınır; yalnız kimlik/ad aktarılır, preview URL'leri atılır. Native `screen-handle:` ve tek alanlı `window:` kimlikleri hem TypeScript hem Rust tarafında korunur. Eski Electron yakalama yolu yalnız native enumerasyon metotları bulunmuyorsa kullanılır. Katalog sürümü, oda/hesap ve kaynağın varlığı/adı yeniden doğrulanır. Kaynak değişikliği doğrulandıktan sonra seçilen kaynağın adı gösterilir.
+
+Kalite seçenekleri tanınan `canStreamWithSettings` istemci kontrolünden gelir. Çözünürlük/FPS birlikte değerlendirilir; önceki yayında gözlenen maksimum değer yeni seçenekleri sınırlamaz. Tanınmayan izin kontrolünde önceki muhafazakâr seçenekler korunur. Native UI liste indeksi yerine seçilen çözünürlük/FPS değerini gönderir; seçeneklerin sırası değişirse farklı bir ayar uygulanmaz. Seçici modelleri aynı model üzerinde güncellenir. Zaman aşımı önceki kaynağı/kaliteyi otomatik geri yazmaz; Discord'da sonradan yapılan ayar korunur. Gerçek durum geri okunmadan başarı gösterilmez.
+
+27 köprü/IPC testi, 5 native yayın isteği testi ve Vencord tip kontrolü geçti. Native handle'larla başlatma, kalite/FPS, kaynak değiştirme ve durdurma tek bir fixture akışında doğrulandı. Bu, yeni kodun gerçek yayında kabulü değildir.
+
+Kullanıcı Discord'un kapatılmamasını ve computer-use kullanılmamasını istedi; konsolla güncellemeyi de tercih etmedi. Discord süreçleri ve aktif oturum korunur. Derlenmiş köprü kurulu dosyalara yedekli olarak hazırlanır; çalışan renderer eski `20261014.1` kodunu kullanmaya devam eder. Yeni kod sonraki normal Discord açılışında yüklenir. Native panel, güncellemenin açık oturumda henüz etkin olmadığını bildirir. Canlı kaynak/başlat/durdur/kalite kabulü yeni köprü yüklendikten sonra bekliyor. Kayıtlar `artifacts/stream-fix-20261014/` altındadır. Snyk tarama aracı bu oturumda sunulmadı.

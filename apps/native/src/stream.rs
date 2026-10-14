@@ -33,6 +33,16 @@ pub struct View {
     pub source_error: String,
 }
 
+fn valid_source_id(id: &str, kind: &str) -> bool {
+    if !matches!(kind, "window" | "screen") || id.len() > 128 { return false; }
+    if let Some(handle) = id.strip_prefix(&format!("{kind}-handle:")) {
+        return !handle.is_empty() && handle.bytes().all(|byte| byte.is_ascii_digit()) && handle.parse::<u64>().is_ok();
+    }
+    let Some(suffix) = id.strip_prefix(&format!("{kind}:")) else { return false; };
+    let fields = suffix.split(':').collect::<Vec<_>>();
+    (1..=2).contains(&fields.len()) && fields.iter().all(|field| !field.is_empty() && field.bytes().all(|byte| byte.is_ascii_digit()) && field.parse::<u64>().is_ok())
+}
+
 pub fn view(snapshot: &Value) -> View {
     if snapshot["connected"] != true {
         return View::default();
@@ -47,10 +57,7 @@ pub fn view(snapshot: &Value) -> View {
     view.resolutions.truncate(8);
     view.fps_options.truncate(8);
     view.sources.retain(|source| {
-        source.id.len() <= 128
-            && !source.id.contains('\0')
-            && matches!(source.kind.as_str(), "window" | "screen")
-            && source.id.starts_with(&format!("{}:", source.kind))
+        valid_source_id(&source.id, &source.kind)
     });
     view.sources.truncate(100);
     view
@@ -93,7 +100,7 @@ pub fn selection_request(
     )
 }
 
-pub fn request(snapshot: &Value, action: &str, key: &str, index: i32) -> Result<Value, String> {
+pub fn request(snapshot: &Value, action: &str, key: &str, value: i32) -> Result<Value, String> {
     let view = view(snapshot);
     if snapshot["capabilities"][action] != true
         || !view.active
@@ -107,14 +114,14 @@ pub fn request(snapshot: &Value, action: &str, key: &str, index: i32) -> Result<
         "stream_quality" => &view.resolutions,
         "stream_fps" => &view.fps_options,
         "stream_stop" => return Ok(json!({"streamKey":key})),
-        "stream_audio" if matches!(index, 0 | 1) => {
-            return Ok(json!({"streamKey":key,"audio":index == 1}))
+        "stream_audio" if matches!(value, 0 | 1) => {
+            return Ok(json!({"streamKey":key,"audio":value == 1}))
         }
         _ => return Err("Desteklenmeyen yayın işlemi".into()),
     };
-    let value = usize::try_from(index)
+    let value = u32::try_from(value)
         .ok()
-        .and_then(|index| options.get(index))
+        .filter(|value| options.contains(value))
         .ok_or("Yayın seçeneği artık kullanılamıyor")?;
     Ok(if action == "stream_quality" {
         json!({"streamKey":key,"resolution":value})
@@ -130,10 +137,10 @@ mod tests {
     fn stream_requests_require_the_observed_key_capability_and_valid_option() {
         let snapshot = json!({"connected":true,"capabilities":{"stream_quality":true,"stream_fps":true,"stream_stop":true},"streamControl":{"active":true,"key":"live","resolutions":[480,720],"fpsOptions":[15,30]}});
         assert_eq!(
-            request(&snapshot, "stream_quality", "live", 1).unwrap()["resolution"],
+            request(&snapshot, "stream_quality", "live", 720).unwrap()["resolution"],
             720
         );
-        assert!(request(&snapshot, "stream_quality", "other", 1).is_err());
+        assert!(request(&snapshot, "stream_quality", "other", 720).is_err());
         assert!(request(&snapshot, "stream_fps", "live", -1).is_err());
         assert!(request(&snapshot, "stream_fps", "live", 2).is_err());
         assert!(request(&snapshot, "stream_start", "live", 0).is_err());
@@ -143,6 +150,28 @@ mod tests {
         let mut pending = snapshot;
         pending["streamControl"]["pending"] = json!(true);
         assert!(request(&pending, "stream_stop", "live", 0).is_err());
+    }
+
+    #[test]
+    fn changing_option_order_never_changes_the_requested_quality_value() {
+        let snapshot = json!({"connected":true,"capabilities":{"stream_quality":true,"stream_fps":true},"streamControl":{"active":true,"key":"live","resolutions":[0,480,720,1080],"fpsOptions":[5,15,30,60]}});
+        assert_eq!(request(&snapshot, "stream_quality", "live", 720).unwrap()["resolution"],720);
+        assert_eq!(request(&snapshot, "stream_fps", "live", 60).unwrap()["fps"],60);
+        assert!(request(&snapshot, "stream_quality", "live", 2).is_err());
+    }
+
+    #[test]
+    fn native_capture_handles_are_preserved_and_invalid_sources_are_rejected() {
+        let snapshot = json!({"connected":true,"streamControl":{"sources":[
+            {"id":"screen-handle:327932","name":"Screen 1","kind":"screen"},
+            {"id":"window:919562","name":"Window","kind":"window"},
+            {"id":"window:919562:1","name":"Legacy window","kind":"window"},
+            {"id":"screen-handle:bad","kind":"screen"},
+            {"id":"window:12:3:4","kind":"window"},
+            {"id":"file:///private","kind":"window"}
+        ]}});
+        assert_eq!(view(&snapshot).sources.len(),3);
+        assert_eq!(view(&snapshot).sources[0].id,"screen-handle:327932");
     }
 
     #[test]
