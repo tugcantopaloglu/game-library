@@ -12,6 +12,23 @@ use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{mpsc, Arc};
 
+fn reconcile_model<T: Clone + PartialEq + 'static>(model: ModelRc<T>, rows: Vec<T>) -> ModelRc<T> {
+    if let Some(current) = model.as_any().downcast_ref::<VecModel<T>>() {
+        if current.row_count() == rows.len() {
+            for (index, row) in rows.into_iter().enumerate() {
+                if current.row_data(index).as_ref() != Some(&row) {
+                    current.set_row_data(index, row);
+                }
+            }
+        } else {
+            current.set_vec(rows);
+        }
+        model
+    } else {
+        Rc::new(VecModel::from(rows)).into()
+    }
+}
+
 pub struct CoverRequest {
     game: Game,
     url: Option<String>,
@@ -341,7 +358,7 @@ fn publish(
     }
     let revision = query.revision;
     let matched = page.total;
-    let columns = query.columns.clamp(3, 6);
+    let columns = query.columns.clamp(3, 12);
     let state = state.clone();
     ui.upgrade_in_event_loop(move |ui| {
         if state.revision.load(Ordering::Relaxed) != revision {
@@ -659,6 +676,8 @@ fn bridge_status(
         let selected = ui.get_chat_user_id().as_str() == chat.user_id;
         let status = if !connected {
             "Discord bağlantısı kapalı. Yeniden bağlandığında arkadaşını seç.".into()
+        } else if ui.get_chat_active() && !selected {
+            "Birebir sohbet açılıyor…".into()
         } else if snapshot["capabilities"]["chat_open"] != true {
             "Yeni sohbet köprüsü için görüşmen bitince Discord'u tamamen kapatıp yeniden aç.".into()
         } else if chat.status.is_empty() {
@@ -675,7 +694,7 @@ fn bridge_status(
         if selected && !chat.name.is_empty() {
             ui.set_chat_name(chat.name.into());
         }
-        ui.set_chat_loading(selected && chat.loading);
+        ui.set_chat_loading(connected && ui.get_chat_active() && (!selected || chat.loading));
         ui.set_chat_pending(selected && chat.pending);
         ui.set_chat_can_send(selected && chat.can_send);
         ui.set_chat_can_open_discord(
@@ -696,21 +715,19 @@ fn bridge_status(
             ui.set_chat_draft("".into());
         }
         let messages = if selected { chat.messages } else { Vec::new() };
-        ui.set_chat_messages(
-            Rc::new(VecModel::from(
-                messages
-                    .into_iter()
-                    .map(|message| ChatMessageTile {
-                        id: message.id.into(),
-                        author: message.author.into(),
-                        content: message.content.into(),
-                        time: message.time.into(),
-                        own: message.own,
-                    })
-                    .collect::<Vec<_>>(),
-            ))
-            .into(),
-        );
+        ui.set_chat_messages(reconcile_model(
+            ui.get_chat_messages(),
+            messages
+                .into_iter()
+                .map(|message| ChatMessageTile {
+                    id: message.id.into(),
+                    author: message.author.into(),
+                    content: message.content.into(),
+                    time: message.time.into(),
+                    own: message.own,
+                })
+                .collect::<Vec<_>>(),
+        ));
         ui.set_can_broadcast_audio(connected && snapshot["broadcastAudio"]["canSelect"] == true);
         ui.set_broadcast_discord_status(
             format!(
@@ -1047,10 +1064,10 @@ fn bridge_status(
             })
             .collect();
         if connected {
-            ui.set_followed_friends(Rc::new(VecModel::from(followed)).into());
+            ui.set_followed_friends(reconcile_model(ui.get_followed_friends(), followed));
         }
-        ui.set_friends(Rc::new(VecModel::from(friends)).into());
-        ui.set_rooms(Rc::new(VecModel::from(rooms)).into());
+        ui.set_friends(reconcile_model(ui.get_friends(), friends));
+        ui.set_rooms(reconcile_model(ui.get_rooms(), rooms));
         ui.set_can_mute(connected && snapshot["capabilities"]["mute"] == true);
         ui.set_can_deafen(connected && snapshot["capabilities"]["deafen"] == true);
         ui.set_can_stop_stream(
@@ -2009,6 +2026,9 @@ pub fn start(
                     )?;
                     bridge.command(&action, request)?;
                     ui.upgrade_in_event_loop(move |ui| {
+                        if ui.get_chat_user_id().as_str() != user {
+                            return;
+                        }
                         if action == "chat_open" {
                             ui.set_chat_loading(true);
                             ui.set_chat_can_send(false);
@@ -2222,6 +2242,20 @@ pub fn start(
 #[cfg(test)]
 mod tests {
     use super::thumbnail;
+
+    #[test]
+    fn bridge_updates_preserve_row_models_across_unchanged_and_changed_data() {
+        use slint::{Model, ModelRc, VecModel};
+        let original: ModelRc<i32> = std::rc::Rc::new(VecModel::from(vec![1, 2])).into();
+        let unchanged = super::reconcile_model(original.clone(), vec![1, 2]);
+        assert_eq!(original, unchanged);
+        let changed = super::reconcile_model(unchanged, vec![1, 3]);
+        assert_eq!(original, changed);
+        assert_eq!(changed.row_data(1), Some(3));
+        let extended = super::reconcile_model(changed, vec![1, 3, 4]);
+        assert_eq!(original, extended);
+        assert_eq!(extended.row_count(), 3);
+    }
 
     #[test]
     fn local_artwork_is_resized_and_oversized_files_are_rejected() {

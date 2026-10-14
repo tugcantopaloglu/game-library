@@ -1,4 +1,4 @@
-import { ListView, TextEdit } from "std-widgets.slint";
+import { ScrollView, TextEdit } from "std-widgets.slint";
 import { Theme, Action, Field, Panel, Heading, Caption } from "design.slint";
 
 export struct ChatMessageTile {
@@ -19,7 +19,7 @@ component MessageRow inherits Rectangle {
 
     bubble := Panel {
         x: root.message.own ? 32px : 0px;
-        width: max(0px, parent.width - 32px);
+        width: max(0px, min(800px, parent.width - 32px));
         height: body.preferred-height + 51px;
         background: root.message.own ? Theme.accent-surface : Theme.surface;
         clip: true;
@@ -44,6 +44,8 @@ component MessageRow inherits Rectangle {
                     color: Theme.subtle;
                     font-size: 11px;
                     horizontal-stretch: 0;
+                    width: 46px;
+                    horizontal-alignment: right;
                     vertical-alignment: center;
                     accessible-label: "Mesaj zamanı " + root.message.time;
                 }
@@ -64,6 +66,8 @@ component MessageRow inherits Rectangle {
 
 export component Conversation inherits Rectangle {
     in property <string> friend-name;
+    in property <string> conversation-id;
+    in property <string> confirmed-nonce;
     in property <[ChatMessageTile]> messages;
     in property <string> status;
     in property <bool> loading;
@@ -89,7 +93,8 @@ export component Conversation inherits Rectangle {
     changed messages => {
         if root.follow-latest { root.scroll-to-latest(); }
     }
-    changed friend-name => { root.scroll-to-latest(); }
+    changed conversation-id => { root.scroll-to-latest(); }
+    changed confirmed-nonce => { if root.confirmed-nonce != "" { root.scroll-to-latest(); } }
     changed draft => {
         if root.draft.character-count <= 2000 { root.accepted-draft = root.draft; }
     }
@@ -145,10 +150,11 @@ export component Conversation inherits Rectangle {
             min-width: 0px;
             vertical-stretch: 1;
             background: transparent;
-            history := ListView {
+            history := ScrollView {
                 width: parent.width;
                 height: parent.height;
                 horizontal-scrollbar-policy: always-off;
+                accessible-role: list;
                 accessible-label: root.friend-name + " sohbet mesajları";
                 scrolled => {
                     root.follow-latest = self.content-y <= min(0px, self.visible-height - self.content-height) + 48px;
@@ -156,9 +162,14 @@ export component Conversation inherits Rectangle {
                 changed content-height => {
                     if root.follow-latest { root.scroll-to-latest(); }
                 }
-                for message in root.messages: MessageRow {
-                    width: history.visible-width;
-                    message: message;
+                changed visible-height => { if root.follow-latest { root.scroll-to-latest(); } }
+                VerticalLayout {
+                    spacing: 0px;
+                    for message in root.messages: MessageRow {
+                        width: history.visible-width;
+                        vertical-stretch: 0;
+                        message: message;
+                    }
                 }
             }
             if root.messages.length == 0: VerticalLayout {
@@ -197,7 +208,7 @@ export component Conversation inherits Rectangle {
             }
             key-pressed(event) => {
                 if event.text == "\n" && !event.modifiers.shift {
-                    if root.send-enabled { root.send(root.draft); }
+                    if root.send-enabled { root.scroll-to-latest(); root.send(root.draft); }
                     return accept;
                 }
                 if event.text == Key.Escape { root.close(); return accept; }
@@ -225,7 +236,7 @@ export component Conversation inherits Rectangle {
                 accent: true;
                 enabled: root.send-enabled;
                 accessible-label: root.friend-name + " kişisine mesaj gönder";
-                clicked => { root.send(root.draft); }
+                clicked => { root.scroll-to-latest(); root.send(root.draft); }
             }
         }
     }

@@ -738,6 +738,22 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             ]))
             .into(),
         );
+        if args.iter().any(|argument| argument == "--chat-scroll-fixture") {
+            ui.set_chat_messages(std::rc::Rc::new(slint::VecModel::from(
+                (1..=30).map(|index| ChatMessageTile {
+                    id: index.to_string().into(),
+                    author: if index % 2 == 0 { "Sen" } else { "Arkadaş" }.into(),
+                    content: if index == 30 {
+                        "SON MESAJ · Kaydırma doğrulaması".into()
+                    } else {
+                        format!("Mesaj {index} · {}", "Satır yüksekliği ve dar pencere kontrolü. ".repeat(index % 5 + 1)).into()
+                    },
+                    time: "21:12".into(),
+                    own: index % 2 == 0,
+                }).collect::<Vec<_>>()
+            )).into());
+            ui.set_chat_sent_nonce("fixture-confirmed".into());
+        }
     }
     if args.iter().any(|argument| argument == "--friends-fixture") {
         ui.set_social_fixture(true);

@@ -91,6 +91,7 @@ export component LibraryWindow inherits Window {
     callback friends-panel-toggle(bool);
     private property <bool> compact-chat;
     changed width => { compact-chat = root.width < 1280px; }
+    changed height => { if chat-active && root.height < 850px { stream-panel = false; } }
     in property <[ExtensionTile]> extensions;
     in property <string> extension-status: "Bir eklenti kur veya yerel oyun listesi örneğini ekle.";
     callback extension-action(int,string);
@@ -148,13 +149,14 @@ export component LibraryWindow inherits Window {
     in property <string> spotify-track-id;
     in property <[MusicTile]> music-friends;
     in-out property <bool> chat-active;
+    changed chat-active => { if chat-active && root.height < 850px { stream-panel = false; } }
     in-out property <string> chat-user-id;
     in-out property <string> chat-channel-id;
     in-out property <string> chat-name;
     in-out property <string> chat-draft;
     in property <[ChatMessageTile]> chat-messages;
     in property <string> chat-status: "Sohbet için bir arkadaş seç.";
-    in property <bool> chat-loading;
+    in-out property <bool> chat-loading;
     in property <bool> chat-pending;
     in property <bool> chat-can-send;
     in property <bool> chat-can-open-discord;
@@ -340,9 +342,16 @@ export component LibraryWindow inherits Window {
     in-out property <bool> source-details;
     in-out property <bool> steam-advanced;
     in-out property <bool> discord-settings;
-    out property <int> grid-columns: (root.width - (friends-panel-enabled ? 280px : 0px)) < 950px ? 3 : (root.width - (friends-panel-enabled ? 280px : 0px)) < 1100px ? 4 : (root.width - (friends-panel-enabled ? 280px : 0px)) < 1280px ? 5 : 6;
+    out property <int> grid-columns: max(3, min(12, floor((root.width - 184px - 48px - (friends-panel-enabled ? 280px : 0px)) / 192px)));
     property <length> card-width: (root.width - 184px - 48px - 16px - (friends-panel-enabled ? 280px : 0px) - (grid-columns - 1) * 16px) / grid-columns;
     property <length> card-height: card-width * 1.5 + 58px;
+    function open-conversation(id: string, name: string) {
+        section = 7;
+        if chat-active && chat-user-id == id && (chat-loading || chat-channel-id != "") { return; }
+        chat-draft = ""; chat-sent-nonce = ""; chat-channel-id = "";
+        chat-user-id = id; chat-name = name; chat-active = true; chat-loading = true;
+        root.chat-action("chat_open",id,"","");
+    }
     changed grid-columns => { if section < 2 { root.refresh(query,section == 1,installed-only,offset,source-index); } }
     init => { Palette.color-scheme = ColorScheme.dark; }
     app-keys := FocusScope {
@@ -616,7 +625,7 @@ export component LibraryWindow inherits Window {
                             }
                             if friends.length == 0: Caption { text: !bridge-connected ? "Discord bağlantısı kurulduğunda arkadaşların burada görünür." : friend-favorites-only ? "Bir arkadaşını yıldızla favorilere ekle." : "Aramana uygun arkadaş bulunamadı."; }
                             ListView { for friend in friends: FriendRow { name: friend.name; subtitle: friend.subtitle; initial: friend.initial; online: friend.online; recent: friend.recent; favorite: friend.favorite; can-favorite: can-favorite-friends; enabled: bridge-connected; avatar: friend.avatar; has-avatar: friend.has-avatar; presence: friend.presence; voice: friend.voice;
-                                clicked => { if chat-user-id != friend.id { chat-draft = ""; chat-sent-nonce = ""; } chat-active = true; chat-user-id = friend.id; chat-name = friend.name; chat-channel-id = ""; root.chat-action("chat_open",friend.id,"",""); }
+                                clicked => { root.open-conversation(friend.id,friend.name); }
                                 favorite-clicked => { root.friend-favorite(friend.id,!friend.favorite); }
                             } }
                         }
@@ -642,7 +651,7 @@ export component LibraryWindow inherits Window {
                         }
                         if chat-active: Conversation {
                             horizontal-stretch: 3;
-                            friend-name: chat-name; messages: chat-messages; status: chat-status; loading: chat-loading; pending: chat-pending; can-send: bridge-connected && chat-can-send; can-open-discord: bridge-connected && chat-can-open-discord;
+                            friend-name: chat-name; conversation-id: chat-user-id; confirmed-nonce: chat-sent-nonce; messages: chat-messages; status: chat-status; loading: chat-loading; pending: chat-pending; can-send: bridge-connected && chat-can-send; can-open-discord: bridge-connected && chat-can-open-discord;
                             draft <=> chat-draft;
                             send(content) => { root.chat-action("chat_send",chat-user-id,chat-channel-id,content); }
                             refresh => { root.chat-action("chat_refresh",chat-user-id,chat-channel-id,""); }
@@ -809,7 +818,7 @@ export component LibraryWindow inherits Window {
                     name: friend.name; subtitle: bridge-connected ? (friend.presence == "online" ? "Çevrimiçi" : friend.presence == "idle" ? "Boşta" : friend.presence == "dnd" ? "Rahatsız etmeyin" : friend.presence == "offline" ? "Çevrimdışı" : "Durum bilinmiyor") : "Son bilinen durum · bağlantı kapalı"; voice: bridge-connected ? friend.voice : ""; game: bridge-connected ? friend.game : "";
                     avatar: friend.avatar; has-avatar: friend.has-avatar; initial: friend.initial; online: bridge-connected && friend.online; presence: bridge-connected ? friend.presence : "unknown";
                     favorite: true; can-favorite: can-favorite-friends && bridge-connected; enabled: bridge-connected;
-                    clicked => { section = 7; if chat-user-id != friend.id {chat-draft = "";chat-sent-nonce = "";} chat-active = true; chat-user-id = friend.id; chat-name = friend.name; chat-channel-id = ""; root.chat-action("chat_open",friend.id,"",""); }
+                    clicked => { root.open-conversation(friend.id,friend.name); }
                     favorite-clicked => { root.friend-favorite(friend.id,false); }
                 } }
                 Action { text: "Arkadaşları yönet"; ghost: true; clicked => { section = 7; } }

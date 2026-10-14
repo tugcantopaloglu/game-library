@@ -31,3 +31,13 @@ Sohbet adaptörü Vencord'un `proxyLazy` fonksiyon biçimindeki modül nesneleri
 18 sohbet testi, kapak boyut/dosya sınırı testi ve Vencord tip kontrolü geçti. Bu oturumda `snyk_code_scan` aracı sunulmadığından istenen Snyk taraması yapılamadı. Önceki RAM/CPU ölçümleri daha yüksek çözünürlüklü kapaklar için geçerli kabul edilmez.
 
 Release derlemesi tamamlandı. 540 kayıtlı kopya profille 960/1280 piksel ve %150 ölçekli 1920×1080 görüntüler incelendi; arkadaş paneli açıkken üç/dört sütun taşmıyor. Son bağlantı noktası metinle aynı satır merkezinde. Görseller örnek arkadaş içerir; gerçek sohbet kabulü ayrı `artifacts/ui-chat-fix-20261014/chat-live.json` kaydındadır.
+
+## Sohbet kaydırması, seçim ve geniş pencere düzeni
+
+Kullanıcı gerçek mesaj gönderiminin çalıştığını doğruladı; son mesaja kayma, arkadaşın birkaç tıklamada açılması ve büyük penceredeki oranları bildirdi. Sohbetin en fazla 30 mesajı artık tahmini satır boyu kullanan sanal ListView yerine gerçek satır yüksekliğiyle ScrollView içinde yerleşir. Görüşme değişiminde, gönderme isteğinde ve doğrulanan nonce'ta son mesaj takip edilir. Görünür yükseklik değiştiğinde takip korunur; eski mesajlara elle kaydırıldığında Son mesaja git seçeneği bulunur. Mesaj balonları 800 piksel ile sınırlandı, saat sağa hizalandı.
+
+Native köprü güncellemeleri arkadaş, takip edilen arkadaş, oda ve mesaj modelini her snapshot'ta değiştirmiyor. Aynı model üzerinde yalnız değişen satırlar güncellenir; etkileşim bileşenleri korunur. Aynı kişiye tekrar tıklamak devam eden/yüklenmiş görüşmeyi yeniden açmaz. Yeni görüşme isteği önceki görüşmenin revizyonunu taşımaz; hesap ve arkadaş doğrulaması korunur. Gönderme/yenileme/kapatma işlemleri kendi kanal ve revizyonuyla sınırlandırılmaya devam eder. Eski seçime ait UI geri dönüşü yeni seçimi değiştirmez.
+
+Kütüphane 3–12 sütunla kullanılabilir genişliğe göre yerleşir; 2560 piksel pencerede arkadaş paneli açıkken 10 sütun olur. Paneller içerik yüksekliğinde kalır. 850 pikselden kısa pencerede sohbet açılırken yayın paneli daraltılır; Yayın düğmesinden yeniden açılabilir.
+
+9 native sohbet testi ve model kimliği/satır güncelleme regresyon testi geçti. `--chat-fixture --chat-scroll-fixture` 30 değişken yükseklikte örnek mesajla son mesaja kaymayı görsel olarak doğrular; gerçek Discord mesajı göndermez. Görseller ve ölçüleri `artifacts/chat-layout-20261014/` altında tutulur. Snyk aracı bu oturumda da sunulmadı.

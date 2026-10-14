@@ -248,7 +248,8 @@ pub fn request(
                     .into(),
             );
         }
-        return Ok(json!({"userId":user,"accountId":session.account,"revision":session.revision}));
+        // A new selection must not depend on the previous chat's snapshot revision.
+        return Ok(json!({"userId":user,"accountId":session.account}));
     }
     let observed = view(snapshot);
     if observed.user_id != user || observed.channel_id != channel {
@@ -331,6 +332,9 @@ mod tests {
     #[test]
     fn requests_are_bound_to_the_current_account_and_chat_revision() {
         let snapshot = fixture();
+        let open = request(&snapshot, "chat_open", PEER, "", "").unwrap();
+        assert_eq!(open["accountId"], ACCOUNT);
+        assert!(open.get("revision").is_none());
         let request = request(&snapshot, "chat_send", PEER, CHANNEL, "Hi").unwrap();
         assert_eq!(request["accountId"], ACCOUNT);
         assert_eq!(request["revision"], 3);
