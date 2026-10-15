@@ -6,7 +6,7 @@ use library_core::models::{Game, LibraryStatus, Source};
 use library_core::{launcher, sources, storage::Store};
 use platform_windows::shell::open_target;
 use slint::{Model, ModelRc, SharedPixelBuffer, VecModel};
-use std::io::{Cursor, Read};
+use crate::covers::thumbnail;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -38,6 +38,7 @@ pub struct State {
     pub scanning: AtomicBool,
     pub cancel_scan: AtomicBool,
     pub revision: AtomicU64,
+    pub chat_open: std::sync::Mutex<Option<crate::chat::OpenAttempt>>,
     pub cover_requests: std::sync::Mutex<Option<CoverQueue>>,
     pub cover_attempts: std::sync::Mutex<std::collections::HashSet<String>>,
 }
@@ -55,6 +56,7 @@ pub struct Query {
 
 pub enum Command {
     Query(Query),
+    CoverFailed(String),
     Scan {
         add_source: Option<Source>,
     },
@@ -186,40 +188,6 @@ fn submit(
     Ok(())
 }
 
-struct Tile {
-    game: Game,
-    pixels: Option<(u32, u32, Vec<u8>)>,
-}
-
-fn thumbnail(path: &str) -> Option<(u32, u32, Vec<u8>)> {
-    let file = std::fs::File::open(path).ok()?;
-    if file.metadata().ok()?.len() > 8 * 1024 * 1024 {
-        return None;
-    }
-    let mut bytes = Vec::new();
-    file.take(8 * 1024 * 1024 + 1)
-        .read_to_end(&mut bytes)
-        .ok()?;
-    if bytes.len() > 8 * 1024 * 1024 {
-        return None;
-    }
-    let mut reader = image::ImageReader::new(Cursor::new(bytes))
-        .with_guessed_format()
-        .ok()?;
-    let mut limits = image::Limits::default();
-    limits.max_image_width = Some(4096);
-    limits.max_image_height = Some(4096);
-    limits.max_alloc = Some(64 * 1024 * 1024);
-    reader.limits(limits);
-    let decoded = reader.decode().ok()?;
-    let resized = if decoded.width() > 480 || decoded.height() > 720 {
-        decoded.resize(480, 720, image::imageops::FilterType::Lanczos3)
-    } else {
-        decoded
-    }.into_rgba8();
-    Some((resized.width(), resized.height(), resized.into_raw()))
-}
-
 fn size_text(bytes: f64) -> String {
     if bytes <= 0.0 {
         return "Boyut bilinmiyor".into();
@@ -291,6 +259,16 @@ fn publish_extensions(
     .map_err(|error| error.to_string())
 }
 
+fn request_cover(store: &Store, state: &State, game: &Game) {
+    if game.source == Source::Manual { return; }
+    let url = store.artwork_url(game).ok().flatten().or_else(|| (game.source == Source::Steam).then(|| format!("https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/{}/library_600x900.jpg",game.app_id)));
+    if let (Ok(queue), Ok(mut attempted)) = (state.cover_requests.lock(), state.cover_attempts.lock()) {
+        if !attempted.contains(&game.id) && queue.as_ref().is_some_and(|queue| queue.try_send(CoverRequest { game: game.clone(), url }).is_ok()) {
+            attempted.insert(game.id.clone());
+        }
+    }
+}
+
 fn publish(
     store: &Store,
     query: &Query,
@@ -331,30 +309,14 @@ fn publish(
         if query.revision != state.revision.load(Ordering::Relaxed) {
             return Ok(());
         }
-        let pixels = game.artwork_path.as_deref().and_then(thumbnail);
-        if pixels.is_none() && game.source != Source::Manual {
-            let url=store.artwork_url(&game).ok().flatten().or_else(||(game.source==Source::Steam).then(||format!("https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/{}/library_600x900.jpg",game.app_id)));
-            if let (Ok(queue), Ok(mut attempted)) =
-                (state.cover_requests.lock(), state.cover_attempts.lock())
-            {
-                if !attempted.contains(&game.id)
-                    && queue.as_ref().is_some_and(|queue| {
-                        queue
-                            .try_send(CoverRequest {
-                                game: game.clone(),
-                                url,
-                            })
-                            .is_ok()
-                    })
-                {
-                    attempted.insert(game.id.clone());
-                }
-            }
+        let local_artwork = game.artwork_path.as_ref().is_some_and(|path| std::path::Path::new(path).is_file());
+        if !local_artwork && game.source != Source::Manual {
+            request_cover(store, state, &game);
         }
-        if game.artwork_path.is_some() && pixels.is_none() {
+        if game.artwork_path.is_some() && !local_artwork {
             unavailable_artwork += 1;
         }
-        tiles.push(Tile { game, pixels });
+        tiles.push(game);
     }
     let revision = query.revision;
     let matched = page.total;
@@ -366,28 +328,21 @@ fn publish(
         }
         let mut entries: Vec<GameTile> = tiles
             .into_iter()
-            .map(|tile| {
-                let has_artwork = tile.pixels.is_some();
-                let artwork = tile
-                    .pixels
-                    .map(|(width, height, pixels)| {
-                        slint::Image::from_rgba8(SharedPixelBuffer::clone_from_slice(
-                            &pixels, width, height,
-                        ))
-                    })
-                    .unwrap_or_default();
+            .map(|game| {
                 GameTile {
-                    id: tile.game.id.into(),
-                    name: tile.game.name.into(),
-                    size: size_text(tile.game.size_bytes).into(),
-                    installed: tile.game.installed,
-                    favorite: tile.game.favorite,
-                    artwork,
-                    has_artwork,
-                    source: tile.game.source.label().into(),
-                    status_label: if tile.game.installed {
+                    id: game.id.into(),
+                    name: game.name.into(),
+                    size: size_text(game.size_bytes).into(),
+                    installed: game.installed,
+                    favorite: game.favorite,
+                    artwork: Default::default(),
+                    has_artwork: false,
+                    artwork_loaded: false,
+                    artwork_path: game.artwork_path.unwrap_or_default().into(),
+                    source: game.source.label().into(),
+                    status_label: if game.installed {
                         "Kurulu"
-                    } else if tile.game.install_path.is_empty() {
+                    } else if game.install_path.is_empty() {
                         "Kurulu değil"
                     } else {
                         "Erişilemiyor"
@@ -423,7 +378,7 @@ fn publish(
             .collect();
         ui.set_source_summaries(Rc::new(VecModel::from(summaries)).into());
         ui.set_loading(false);
-        ui.invoke_library_ready();
+        ui.invoke_cover_viewport();
     })
     .map_err(|error| error.to_string())
 }
@@ -602,6 +557,7 @@ fn bridge_status(
     store: &Store,
     query: &crate::social::Query,
     avatar_cache: &crate::avatars::Cache,
+    state: &Arc<State>,
     ui: &slint::Weak<LibraryWindow>,
 ) -> Result<(), String> {
     let snapshot = bridge
@@ -659,6 +615,7 @@ fn bridge_status(
         && query.room_mode == 2
         && snapshot["roomCatalogQuery"].as_str() != Some(query.room_query.as_str());
     let stream = crate::stream::view(&snapshot);
+    let state = state.clone();
     let mut lines = vec![snapshot["status"]
         .as_str()
         .unwrap_or("Vencord bekleniyor")
@@ -674,27 +631,13 @@ fn bridge_status(
         ui.set_bridge_connected(connected);
         let chat = crate::chat::view(&snapshot);
         let selected = ui.get_chat_user_id().as_str() == chat.user_id;
-        let status = if !connected {
-            "Discord bağlantısı kapalı. Yeniden bağlandığında arkadaşını seç.".into()
-        } else if ui.get_chat_active() && !selected {
-            "Birebir sohbet açılıyor…".into()
-        } else if snapshot["capabilities"]["chat_open"] != true {
-            "Yeni sohbet köprüsü için görüşmen bitince Discord'u tamamen kapatıp yeniden aç.".into()
-        } else if chat.status.is_empty() {
-            snapshot["chat"]["status"]
-                .as_str()
-                .unwrap_or("Sohbet için bir arkadaş seç.")
-                .chars()
-                .take(256)
-                .collect::<String>()
-        } else {
-            chat.status
-        };
-        ui.set_chat_status(status.into());
+        let panel = crate::chat::panel_state(&snapshot, ui.get_chat_user_id().as_str(), &mut state.chat_open.lock().unwrap(), now_ms);
+        ui.set_chat_status(panel.status.into());
+        ui.set_chat_retry(panel.retry);
         if selected && !chat.name.is_empty() {
             ui.set_chat_name(chat.name.into());
         }
-        ui.set_chat_loading(connected && ui.get_chat_active() && (!selected || chat.loading));
+        ui.set_chat_loading(ui.get_chat_active() && panel.loading);
         ui.set_chat_pending(selected && chat.pending);
         ui.set_chat_can_send(selected && chat.can_send);
         ui.set_chat_can_open_discord(
@@ -1381,8 +1324,9 @@ pub fn start(
                 }
             };
             let result = match command {
+                Command::CoverFailed(id) => store.game(&id).map(|game| request_cover(&store, &state, &game)).map_err(|error| error.to_string()),
                 Command::FriendsPanel(enabled)=>store.set_setting("friends_panel_enabled",if enabled {"true"}else{"false"}).map_err(|error|error.to_string()),
-                Command::AvatarReady=> {social_view=None;let _=ui.upgrade_in_event_loop(|ui|ui.set_avatar_status("".into()));bridge_status(bridge.as_ref(),&store,&social_query,&avatars,&ui)},
+                Command::AvatarReady=> {social_view=None;let _=ui.upgrade_in_event_loop(|ui|ui.set_avatar_status("".into()));bridge_status(bridge.as_ref(),&store,&social_query,&avatars,&state,&ui)},
                 Command::AvatarFallback(url)=> {
                     let _=ui.upgrade_in_event_loop(|ui|ui.set_avatar_status("Fotoğraflar Discord bağlantısından yükleniyor…".into()));
                     bridge.as_ref().ok_or("Fotoğraflar için Discord bağlantısını aç.").and_then(|bridge|bridge.command("avatar_request",serde_json::json!({"url":url})).map_err(|_|"Fotoğraflar için Discord köprüsünü güncelle.")).map_err(str::to_owned)
@@ -1518,31 +1462,29 @@ pub fn start(
                     if current.artwork_path.as_deref() != Some(path.to_string_lossy().as_ref()) {
                         return Ok(());
                     }
-                    let Some((width, height, bytes)) = thumbnail(&path.to_string_lossy()) else {
-                        return Ok(());
-                    };
-                    ui.upgrade_in_event_loop(move |ui| {
-                        let image = slint::Image::from_rgba8(SharedPixelBuffer::clone_from_slice(
-                            &bytes, width, height,
-                        ));
-                        let rows = ui.get_game_rows();
-                        for row in rows.iter() {
-                            for column in 0..row.row_count() {
-                                if let Some(mut tile) = row.row_data(column) {
-                                    if tile.id == id {
-                                        tile.artwork = image.clone();
-                                        tile.has_artwork = true;
-                                        row.set_row_data(column, tile);
+                    let updated = ui.upgrade_in_event_loop({
+                        let id = id.clone();
+                        let path = path.to_string_lossy().to_string();
+                        move |ui| {
+                            for row in ui.get_game_rows().iter() {
+                                for column in 0..row.row_count() {
+                                    if let Some(mut tile) = row.row_data(column) {
+                                        if tile.id == id {
+                                            tile.artwork_path = path.clone().into();
+                                            tile.artwork = Default::default();
+                                            tile.has_artwork = false;
+                                            tile.artwork_loaded = false;
+                                            row.set_row_data(column, tile);
+                                        }
                                     }
                                 }
                             }
+                            ui.invoke_cover_viewport();
+                            if ui.get_section() == 9 && ui.get_detail_id() == id { ui.invoke_detail(id.into()); }
                         }
-                        if ui.get_detail_id() == id {
-                            ui.set_detail_artwork(image);
-                            ui.set_detail_has_artwork(true);
-                        }
-                    })
-                    .map_err(|error| error.to_string())
+                    }).map_err(|error| error.to_string());
+                    // Detail rendering is independent of the grid's viewport ownership.
+                    updated
                 })(),
                 Command::SteamLogin => {
                     let _=ui.upgrade_in_event_loop(|ui|ui.set_steam_account_status("Steam giriş penceresinde hesabını doğrula; oyunların ardından otomatik alınacak.".into()));
@@ -1863,6 +1805,7 @@ pub fn start(
                         &store,
                         &social_query,
                         &avatars,
+                        &state,
                         &ui,
                     )
                 })(),
@@ -1873,7 +1816,9 @@ pub fn start(
                         .map(|time| time.as_secs() / 60)
                         .unwrap_or_default();
                     let next_view = (token, minute);
-                    if social_view == Some(next_view) {
+                    let now_ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as u64;
+                    let open_expired = state.chat_open.lock().unwrap().as_ref().is_some_and(|attempt| attempt.expired(now_ms));
+                    if social_view == Some(next_view) && !open_expired {
                         return Ok(());
                     }
                     if let Some(bridge) = &bridge {
@@ -1920,7 +1865,7 @@ pub fn start(
                             }
                         }
                     }
-                    bridge_status(bridge.as_ref(), &store, &social_query, &avatars, &ui)?;
+                    bridge_status(bridge.as_ref(), &store, &social_query, &avatars, &state, &ui)?;
                     social_view = Some(next_view);
                     Ok(())
                 })(),
@@ -1928,7 +1873,7 @@ pub fn start(
                     social_view = None;
                     social_query.text = text.chars().take(256).collect();
                     social_query.favorites_only = favorites_only;
-                    bridge_status(bridge.as_ref(), &store, &social_query, &avatars, &ui)
+                    bridge_status(bridge.as_ref(), &store, &social_query, &avatars, &state, &ui)
                 }
                 Command::FriendFavorite(id, favorite) => (|| {
                     social_view = None;
@@ -1949,7 +1894,7 @@ pub fn start(
                     store
                         .set_friend_favorite(account, &id, favorite)
                         .map_err(|error| error.to_string())?;
-                    bridge_status(bridge.as_ref(), &store, &social_query, &avatars, &ui)
+                    bridge_status(bridge.as_ref(), &store, &social_query, &avatars, &state, &ui)
                 })(),
                 Command::RoomFilter(mode, text) => (|| {
                     social_view = None;
@@ -1960,7 +1905,7 @@ pub fn start(
                             bridge.command("room_catalog", serde_json::json!({"query":if social_query.room_mode == 2 {Some(&social_query.room_query)} else {None}}))?;
                         }
                     }
-                    bridge_status(bridge.as_ref(), &store, &social_query, &avatars, &ui)
+                    bridge_status(bridge.as_ref(), &store, &social_query, &avatars, &state, &ui)
                 })(),
                 Command::RoomFavorite(id, favorite) => (|| {
                     social_view = None;
@@ -1986,7 +1931,7 @@ pub fn start(
                     store
                         .set_room_favorite(account, &id, favorite)
                         .map_err(|error| error.to_string())?;
-                    bridge_status(Some(bridge), &store, &social_query, &avatars, &ui)
+                    bridge_status(Some(bridge), &store, &social_query, &avatars, &state, &ui)
                 })(),
                 Command::StreamControl(action, key, index) => (|| {
                     let bridge = bridge.as_ref().ok_or("Discord bağlantısını aç.")?;
@@ -2011,32 +1956,34 @@ pub fn start(
                     bridge.command(&action, data)
                 })(
                 ),
-                Command::Chat(action, user, channel, content) => (|| {
-                    let bridge = bridge.as_ref().ok_or("Discord bağlantısını aç.")?;
-                    let request = crate::chat::request(
-                        &bridge.snapshot(),
-                        &action,
-                        &user,
-                        &channel,
-                        &content,
-                    )?;
-                    bridge.command(&action, request)?;
-                    ui.upgrade_in_event_loop(move |ui| {
-                        if ui.get_chat_user_id().as_str() != user {
-                            return;
+                Command::Chat(action, user, channel, content) => {
+                    let snapshot = bridge.as_ref().map(|bridge| bridge.snapshot()).unwrap_or_default();
+                    if action == "chat_open" {
+                        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as u64;
+                        *state.chat_open.lock().unwrap() = Some(crate::chat::OpenAttempt::new(&snapshot, &user, now));
+                    }
+                    let result = (|| {
+                        let bridge = bridge.as_ref().ok_or("Discord bağlantısını aç.")?;
+                        let request = crate::chat::request(&snapshot, &action, &user, &channel, &content)?;
+                        bridge.command(&action, request)
+                    })();
+                    if action == "chat_open" {
+                        if let Err(error) = &result {
+                            if let Some(attempt) = state.chat_open.lock().unwrap().as_mut() { attempt.fail(error); }
                         }
-                        if action == "chat_open" {
-                            ui.set_chat_loading(true);
-                            ui.set_chat_can_send(false);
-                            ui.set_chat_status("Birebir sohbet açılıyor…".into());
-                        } else if action == "chat_send" {
-                            ui.set_chat_pending(true);
-                            ui.set_chat_can_send(false);
-                            ui.set_chat_status("Mesajın Discord onayı bekleniyor.".into());
-                        }
-                    })
-                    .map_err(|error| error.to_string())
-                })(),
+                    }
+                    let refresh = bridge_status(bridge.as_ref(), &store, &social_query, &avatars, &state, &ui);
+                    if result.is_ok() && action == "chat_send" {
+                        let _ = ui.upgrade_in_event_loop(move |ui| {
+                            if ui.get_chat_user_id().as_str() == user {
+                                ui.set_chat_pending(true);
+                                ui.set_chat_can_send(false);
+                                ui.set_chat_status("Mesajın Discord onayı bekleniyor.".into());
+                            }
+                        });
+                    }
+                    result.and(refresh)
+                },
                 Command::BridgeAction(action, data) => bridge
                     .as_ref()
                     .ok_or("Discord bağlantısını aç.")

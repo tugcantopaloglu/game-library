@@ -11,6 +11,106 @@ const MAX_RECEIVE_BYTES: usize = 16000;
 const MAX_JS_INTEGER: u64 = 9_007_199_254_740_991;
 const DISCORD_EPOCH_MS: u64 = 1_420_070_400_000;
 
+/// A native open is optimistic only until Discord acknowledges a newer revision.
+pub struct OpenAttempt {
+    user: String,
+    account: String,
+    revision: u64,
+    deadline: u64,
+    error: Option<String>,
+}
+
+impl OpenAttempt {
+    pub fn new(snapshot: &Value, user: &str, now: u64) -> Self {
+        Self {
+            user: user.into(),
+            account: snapshot["accountId"].as_str().unwrap_or("").into(),
+            revision: snapshot["chat"]["revision"].as_u64().unwrap_or(0),
+            deadline: now.saturating_add(35_000),
+            error: None,
+        }
+    }
+
+    pub fn fail(&mut self, error: &str) {
+        self.error = Some(label(error, 256));
+    }
+
+    pub fn expired(&self, now: u64) -> bool {
+        self.error.is_none() && now >= self.deadline
+    }
+}
+
+pub struct PanelState {
+    pub loading: bool,
+    pub retry: bool,
+    pub status: String,
+}
+
+pub fn panel_state(
+    snapshot: &Value,
+    user: &str,
+    attempt: &mut Option<OpenAttempt>,
+    now: u64,
+) -> PanelState {
+    let chat = view(snapshot);
+    let connected = snapshot["connected"] == true;
+    if !connected
+        || attempt
+            .as_ref()
+            .is_some_and(|attempt| attempt.user != user || snapshot["accountId"] != attempt.account)
+    {
+        *attempt = None;
+    }
+    let selected = !user.is_empty() && chat.user_id == user;
+    let fallback = label(
+        snapshot["chat"]["status"]
+            .as_str()
+            .unwrap_or("Sohbet açılamadı. Tekrar dene."),
+        256,
+    );
+    let mut waiting = false;
+    let mut error = None;
+    if let Some(open) = attempt {
+        if selected {
+            *attempt = None;
+        } else if let Some(message) = &open.error {
+            error = Some(message.clone());
+        } else if snapshot["chat"]["revision"].as_u64().unwrap_or(0) > open.revision
+            && snapshot["chat"]["loading"] == false
+            && snapshot["chat"]["userId"] == ""
+        {
+            open.fail(&fallback);
+            error = open.error.clone();
+        } else if now >= open.deadline {
+            open.fail("Sohbet açma işlemi zaman aşımına uğradı. Tekrar dene.");
+            error = open.error.clone();
+        } else {
+            waiting = true;
+        }
+    }
+    let loading = connected && (waiting || selected && chat.loading);
+    PanelState {
+        loading,
+        retry: connected
+            && !user.is_empty()
+            && !loading
+            && (!selected || chat.channel_id.is_empty()),
+        status: if !connected {
+            "Discord bağlantısı kapalı. Bağlantı kurulduktan sonra tekrar dene.".into()
+        } else if let Some(error) = error {
+            error
+        } else if waiting {
+            "Birebir sohbet açılıyor…".into()
+        } else if selected {
+            chat.status
+        } else if snapshot["chat"]["userId"] == "" {
+            fallback
+        } else {
+            "Bu görüşme henüz açık değil. Tekrar dene.".into()
+        },
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Message {
     pub id: String,
@@ -344,6 +444,88 @@ mod tests {
             malformed["chat"]["revision"] = invalid;
             assert_eq!(view(&malformed), View::default());
         }
+    }
+
+    #[test]
+    fn failed_and_timed_out_opens_release_loading_and_allow_the_same_friend_to_retry() {
+        let mut snapshot = fixture();
+        snapshot["chat"]["userId"] = json!("");
+        snapshot["chat"]["channelId"] = json!("");
+        let mut attempt = Some(OpenAttempt::new(&snapshot, PEER, 100));
+        assert!(panel_state(&snapshot, PEER, &mut attempt, 101).loading);
+        snapshot["chat"]["revision"] = json!(4);
+        snapshot["chat"]["loading"] = json!(false);
+        snapshot["chat"]["status"] =
+            json!("Birebir sohbet açılamadı. Discord bağlantısını kontrol et.");
+        let failed = panel_state(&snapshot, PEER, &mut attempt, 102);
+        assert!(!failed.loading);
+        assert!(failed.retry);
+        assert!(failed.status.contains("açılamadı"));
+        // A new request for the same friend is allowed and has a fresh deadline.
+        attempt = Some(OpenAttempt::new(&snapshot, PEER, 200));
+        assert!(panel_state(&snapshot, PEER, &mut attempt, 201).loading);
+        assert!(attempt.as_ref().unwrap().expired(35_200));
+        let timeout = panel_state(&snapshot, PEER, &mut attempt, 35_200);
+        assert!(!timeout.loading);
+        assert!(timeout.retry);
+        assert!(timeout.status.contains("zaman aşımına"));
+        assert!(!attempt.as_ref().unwrap().expired(35_201));
+    }
+
+    #[test]
+    fn a_rejected_open_keeps_its_error_until_retry_and_ignores_the_previous_conversation() {
+        let mut snapshot = fixture();
+        snapshot["chat"]["pending"] = json!(true);
+        snapshot["friends"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!({"id":OTHER,"name":"Other"}));
+        let mut attempt = OpenAttempt::new(&snapshot, OTHER, 100);
+        let error = request(&snapshot, "chat_open", OTHER, "", "").unwrap_err();
+        attempt.fail(&error);
+        let mut attempt = Some(attempt);
+        let failed = panel_state(&snapshot, OTHER, &mut attempt, 101);
+        assert!(!failed.loading);
+        assert!(failed.retry);
+        assert_eq!(failed.status, error);
+        snapshot["chat"]["pending"] = json!(false);
+        assert_eq!(
+            panel_state(&snapshot, OTHER, &mut attempt, 102).status,
+            error
+        );
+        // A late response for the old user cannot keep the new user's attempt alive.
+        let selected = panel_state(&snapshot, PEER, &mut attempt, 103);
+        assert!(!selected.retry);
+        assert!(attempt.is_none());
+    }
+
+    #[test]
+    fn successful_opens_and_account_changes_clear_native_attempts() {
+        let mut snapshot = fixture();
+        let mut attempt = Some(OpenAttempt::new(&snapshot, PEER, 100));
+        let ready = panel_state(&snapshot, PEER, &mut attempt, 101);
+        assert!(!ready.loading);
+        assert!(!ready.retry);
+        assert!(attempt.is_none());
+        attempt = Some(OpenAttempt::new(&snapshot, PEER, 100));
+        snapshot["accountId"] = json!(OTHER);
+        assert!(panel_state(&snapshot, PEER, &mut attempt, 102).retry);
+        assert!(attempt.is_none());
+        snapshot["connected"] = json!(false);
+        let disconnected = panel_state(&snapshot, PEER, &mut attempt, 103);
+        assert!(!disconnected.loading);
+        assert!(!disconnected.retry);
+    }
+
+    #[test]
+    fn an_older_open_acknowledgement_cannot_finish_the_new_selection() {
+        let mut snapshot = fixture();
+        let mut attempt = Some(OpenAttempt::new(&snapshot, OTHER, 100));
+        snapshot["chat"]["revision"] = json!(4);
+        let pending = panel_state(&snapshot, OTHER, &mut attempt, 101);
+        assert!(pending.loading);
+        assert!(!pending.retry);
+        assert_eq!(pending.status, "Birebir sohbet açılıyor…");
     }
 
     #[test]

@@ -6,6 +6,7 @@ mod bridge;
 mod broadcast;
 mod chat;
 mod completion;
+mod covers;
 mod extensions;
 mod measurement;
 mod media;
@@ -75,6 +76,8 @@ fn argument_value(args: &[String], name: &str) -> Option<String> {
 }
 
 fn show(ui: &LibraryWindow) {
+    ui.set_library_visible(true);
+    ui.invoke_cover_viewport();
     if let Err(error) = ui.show() {
         ui.set_notice(error.to_string().into());
     } else {
@@ -359,6 +362,12 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let bridge_enabled = store.setting("bridge_enabled")?.as_deref() == Some("true");
     let auto_update_app = store.setting("auto_update_app")?.as_deref() == Some("true");
     let ui = LibraryWindow::new()?;
+    let covers = Rc::new(covers::Controller::start(ui.as_weak()));
+    let cover_view = covers.clone();
+    let weak_covers = ui.as_weak();
+    ui.on_cover_viewport(move || {
+        if let Some(ui) = weak_covers.upgrade() { cover_view.update(&ui); }
+    });
     ui.set_friends_panel_enabled(
         store.setting("friends_panel_enabled")?.as_deref() != Some("false"),
     );
@@ -401,10 +410,13 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         scanning: AtomicBool::new(false),
         cancel_scan: AtomicBool::new(false),
         revision: AtomicU64::new(0),
+        chat_open: Default::default(),
         cover_requests: Default::default(),
         cover_attempts: Default::default(),
     });
     let sender = worker::start(store, data_dir.clone(), state.clone(), ui.as_weak());
+    let failed_cover = sender.clone();
+    ui.on_cover_failed(move |id| { let _ = failed_cover.try_send(Command::CoverFailed(id.into())); });
     if let Some(output) = argument_value(&args, "--bridge-status-report") {
         let weak = ui.as_weak();
         ui.on_bridge_ready(move || {if let Some(ui) = weak.upgrade() {
@@ -414,6 +426,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             }
         }});
     }
+    let ready_view = ui.as_weak();
+    ui.on_covers_ready(move || { if let Some(ui) = ready_view.upgrade() { if !ui.get_loading() { ui.invoke_library_ready(); } } });
     let startup_timer = Rc::new(Timer::default());
     let startup_output = argument_value(&args, "--startup-report");
     let update_health = argument_value(&args, "--update-health-report")
@@ -478,6 +492,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 ui.set_room_mode(1);
                 ui.invoke_room_filter(1, ui.get_room_query());
             }
+            ui.set_library_visible(false);
+            ui.invoke_cover_viewport();
             let _ = ui.hide();
         }
     });
@@ -492,6 +508,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 ui.set_room_mode(1);
                 ui.invoke_room_filter(1, ui.get_room_query());
             }
+            ui.set_library_visible(false);
+            ui.invoke_cover_viewport();
             let _ = ui.hide();
         }
         slint::CloseRequestResponse::KeepWindowShown
@@ -755,6 +773,12 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             ui.set_chat_sent_nonce("fixture-confirmed".into());
         }
     }
+    if args.iter().any(|argument| argument == "--chat-error-fixture") {
+        ui.set_chat_messages(Default::default());
+        ui.set_chat_loading(false);
+        ui.set_chat_retry(true);
+        ui.set_chat_status("Birebir sohbet açılamadı. Discord bağlantısını kontrol edip tekrar dene.".into());
+    }
     if args.iter().any(|argument| argument == "--friends-fixture") {
         ui.set_social_fixture(true);
         let avatar = slint::Image::load_from_path(Path::new("apps/native/ui/logos/discord.png"))?;
@@ -828,6 +852,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 height.clamp(640.0, 2160.0),
             ));
         }
+        ui.set_library_visible(true);
         ui.show()?;
     }
     let screenshot_timer = Rc::new(Timer::default());
@@ -841,7 +866,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         let capture_timer = screenshot_timer.clone();
         screenshot_timer.start(TimerMode::Repeated, Duration::from_millis(500), move || {
             if let Some(ui) = weak.upgrade() {
-                let ready = !ui.get_loading() && (!(ui.get_section()==11 || ui.get_section()==12) || !ui.get_integration_busy()) && detail_target.as_ref().is_none_or(|id| ui.get_detail_id() == id);
+                let ready = !ui.get_loading() && !ui.get_covers_loading() && (!(ui.get_section()==11 || ui.get_section()==12) || !ui.get_integration_busy()) && detail_target.as_ref().is_none_or(|id| ui.get_detail_id() == id);
                 if capture_started.elapsed() < Duration::from_secs(3) || (!ready && capture_started.elapsed() < Duration::from_secs(30)) { return; }
                 capture_timer.stop();
                 if let Err(error) = validation::screenshot(&ui, Path::new(&output)) {
@@ -853,6 +878,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 let _ = slint::quit_event_loop();
             }
         });
+    }
+    if let Some(output) = argument_value(&args, "--cover-validation-report") {
+        validation::cover_lifecycle(ui.as_weak(), PathBuf::from(output));
     }
     if let Some(id) = argument_value(&args, "--launch-test") {
         let report =

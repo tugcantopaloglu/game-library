@@ -41,6 +41,69 @@ pub fn screenshot(ui: &LibraryWindow, output: &Path) -> Result<(), String> {
     .map_err(|error| error.to_string())
 }
 
+/// Isolated profile acceptance: real Slint scrolling, cancellation, hide and restore.
+pub fn cover_lifecycle(ui: slint::Weak<LibraryWindow>, output: std::path::PathBuf) {
+    use slint::{Model, Timer, TimerMode};
+    use std::cell::{Cell, RefCell};
+    use std::rc::Rc;
+    use std::time::Duration;
+    let timer = Rc::new(Timer::default());
+    let ticking = timer.clone();
+    let phase = Cell::new(0);
+    let samples = RefCell::new(Vec::new());
+    let started = Instant::now();
+    let changed = Cell::new(Instant::now());
+    timer.start(TimerMode::Repeated, Duration::from_millis(150), move || {
+        let Some(ui) = ui.upgrade() else { ticking.stop(); return; };
+        if started.elapsed() > Duration::from_secs(40) {
+            let _ = std::fs::write(&output, b"{\"passed\":false,\"reason\":\"timeout\"}");
+            ticking.stop(); let _ = slint::quit_event_loop(); return;
+        }
+        if ui.get_loading() || ui.get_covers_loading() || changed.get().elapsed() < Duration::from_millis(300) { return; }
+        let rows = ui.get_game_rows();
+        let range = crate::covers::visible_rows(ui.get_first_cover_row(), ui.get_visible_cover_rows(), rows.row_count());
+        let mut count = 0;
+        let mut bytes = 0;
+        let mut outside = 0;
+        let mut full_quality = true;
+        for (index, row) in rows.iter().enumerate() {
+            for tile in row.iter() {
+                if !tile.has_artwork { continue; }
+                count += 1;
+                let size = tile.artwork.size();
+                bytes += u64::from(size.width) * u64::from(size.height) * 4;
+                full_quality &= size.width == 480 && size.height == 720;
+                if !range.contains(&index) || !ui.get_library_visible() { outside += 1; }
+            }
+        }
+        samples.borrow_mut().push(json!({"phase":phase.get(),"firstRow":range.start,"rows":range.len(),"covers":count,"rgbaBytes":bytes,"outsideViewport":outside,"all480x720":full_quality}));
+        match phase.get() {
+            0 => ui.invoke_validation_scroll(rows.row_count().saturating_sub(1) as i32),
+            1 => ui.invoke_validation_scroll(0),
+            2 => {
+                // Replace queued work before it can publish into the final viewport.
+                ui.invoke_validation_scroll((rows.row_count() / 2) as i32);
+                ui.invoke_validation_scroll(rows.row_count().saturating_sub(1) as i32);
+            }
+            3 => ui.invoke_hide_window(),
+            4 => { ui.set_library_visible(true); let _ = ui.show(); ui.invoke_cover_viewport(); }
+            _ => {
+                let samples = samples.borrow();
+                let passed = samples.iter().all(|sample| sample["outsideViewport"] == 0 && sample["all480x720"] == true)
+                    && samples[0]["covers"].as_u64().unwrap_or(0) > 0
+                    && samples[1]["firstRow"].as_u64().unwrap_or(0) > 0
+                    && samples[4]["covers"] == 0
+                    && count > 0;
+                let _ = screenshot(&ui, &output.with_extension("png"));
+                let _ = std::fs::write(&output, serde_json::to_vec_pretty(&json!({"passed":passed,"samples":*samples,"previousFullPageRgbaBytes":100*480*720*4})).unwrap_or_default());
+                ticking.stop(); let _ = slint::quit_event_loop(); return;
+            }
+        }
+        phase.set(phase.get() + 1);
+        changed.set(Instant::now());
+    });
+}
+
 pub fn stability(output: std::path::PathBuf, seconds: u32) -> Result<(), String> {
     if !(60..=28_800).contains(&seconds) {
         return Err("Kararlılık denemesi 60 saniye ile sekiz saat arasında olmalı".into());

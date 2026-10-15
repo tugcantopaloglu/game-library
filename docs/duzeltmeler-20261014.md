@@ -41,3 +41,20 @@ Native köprü güncellemeleri arkadaş, takip edilen arkadaş, oda ve mesaj mod
 Kütüphane 3–12 sütunla kullanılabilir genişliğe göre yerleşir; 2560 piksel pencerede arkadaş paneli açıkken 10 sütun olur. Paneller içerik yüksekliğinde kalır. 850 pikselden kısa pencerede sohbet açılırken yayın paneli daraltılır; Yayın düğmesinden yeniden açılabilir.
 
 9 native sohbet testi ve model kimliği/satır güncelleme regresyon testi geçti. `--chat-fixture --chat-scroll-fixture` 30 değişken yükseklikte örnek mesajla son mesaja kaymayı görsel olarak doğrular; gerçek Discord mesajı göndermez. Görseller ve ölçüleri `artifacts/chat-layout-20261014/` altında tutulur. Snyk aracı bu oturumda da sunulmadı.
+
+
+## 15 Ekim 2026 — sohbet kurtarma, kapak belleği ve arayüz
+
+Sohbet açma isteğinin hesap, kişi, başlangıç revizyonu ve son tarihi native tarafta izlenir. Yeni Discord revizyonundaki hata yüklemeyi bitirir; başarısız istek aynı kişide Tekrar dene sunar. Komut daha gönderilmeden reddedilirse hata korunur; önceki görüşmenin durum güncellemeleri bu hatayı örtemez. Hesap/kişi değişiminde eski istek bırakılır. Durum snapshot'ı değişmese de yerel son tarih kontrol edilir. Mesaj gönderme ve nonce onayı değişmez.
+
+100 kapaklık sayfa metadata olarak kalır; kapak çözme işi ayrı işçide yalnız görünür satırlar ve sınırdaki bir satır için çalışır. 480×720 üst sınırı ile Lanczos3 çıktısı değişmedi; test piksel dizisini önceki yöntemle birebir karşılaştırır. Küçük görseller büyütülmez ve dosya/decode sınırları korunur. 32 MiB önbellek ve UI, SharedPixelBuffer üzerinden aynı RGBA tahsisini kullanır. Kaydırma, filtre, sayfa, sekme ve tepsi değişiminde ekran dışı görsel referansları bırakılır. Tek bekleyen iş değiştirilir; eski işin sonucu yeni sayfaya uygulanmaz. Kapak indirme tamamlanınca ekran dışındaki satır hemen çözülmez.
+
+Mevcut Slint tasarımı `impeccable` polish/optimize ve `make-interfaces-feel-better` rehberleriyle korundu: sohbet başlığı ile eylemleri iki satıra ayrıldı, mesaj balonları geniş pencerede doğru tarafa hizalandı, hata ve tekrar deneme görünür oldu. Sohbet ve favori eylemlerinde 40 px hedefler, kapaklarda nötr ince sınır ve düğmelerde basılı durum geri bildirimi eklendi. Örnek veri gösteriminde gerçek bağlantı düğmesi gösterilmez.
+
+Yeni kabul çıktıları `artifacts/fix-review-20261015/` altında tutulur. Canlı Discord hesabında mesaj gönderimi bu değişiklikte çalıştırılmadı; otomatik testler ve ayrı örnek profilde native UI doğrulaması kullanılır.
+
+62 native Rust testi, 55 Node köprü testi ve `cargo clippy -p game-library-native --all-targets --offline --locked -- -D warnings` geçti. Önbellek testinde aynı dosyanın piksel tamponu adresi paylaşılır; resize çıktısı önceki algoritmayla byte düzeyinde eşittir. Mekanik Impeccable taraması bulgu döndürmedi; Slint için asıl görsel doğrulama native software renderer ekran görüntüleridir.
+
+1280×860 örnek profilde 100 farklı 600×900 kaynak kapak kullanıldı. Görünür bantta 12 tam 480×720 kapak 15,82 MiB RGBA tuttu; önceki tüm sayfayı çözme politikasının 131,84 MiB hesabına göre %88 daha azdır. Bunlar kapak piksel belleği değerleridir, toplam süreç RAM'i değildir. Kaydırma sonrası ekran dışı görsel sayısı sıfır, tepside modeldeki görsel sayısı sıfır, yeniden açılışta son satırın dört kapağı aynı çözünürlükteydi. Önbellek üst sınırı 32 MiB; çok geniş pencerede görünür görsellerin toplamı bu hedefi aşabilir, kalite bu sınırı tutturmak için düşürülmez.
+
+Son release dosyasıyla 960×720 sohbet, 1280×860 hata/kütüphane ve 2560×1080 geniş kütüphane görüntüleri doğrulandı; runtime hata/uyarı logları boştu. `cover-lifecycle.json` release akışında da `passed: true` döndürdü. Aynı 100 kapaklı örnek profilde 10,03 saniyelik kısa pencere ölçümü: ortalama özel çalışma kümesi 26,14 MiB, private bytes 27,37 MiB ve makine toplamına göre CPU %0,026; rapor kesintisiz ve tek süreçlidir. Bu kısa ölçüm, 60 saniye performans veya uzun kararlılık kabulü yerine geçmez. Ham rapor: `artifacts/fix-review-20261015/window-memory.json`.

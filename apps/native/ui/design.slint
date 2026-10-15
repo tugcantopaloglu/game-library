@@ -10,6 +10,7 @@ export global Theme {
     out property <color> accent: #c6dae8;
     out property <color> accent-surface: #27333d;
     out property <color> positive: #8ec6a8;
+    out property <color> warning: #e3c18f;
 }
 
 export component Brand inherits Rectangle {
@@ -45,7 +46,7 @@ export component Action inherits Rectangle {
     border-radius: 6px;
     border-width: keys.has-focus ? 1px : 0px;
     border-color: keys.has-focus ? Theme.accent : Theme.line;
-    background: !enabled ? transparent : accent ? (touch.has-hover ? #e0eaf1 : Theme.accent) : touch.has-hover ? Theme.hover : transparent;
+    background: !enabled ? transparent : accent ? (touch.pressed ? #adbfcd : touch.has-hover ? #e0eaf1 : Theme.accent) : touch.pressed ? Theme.accent-surface : touch.has-hover ? Theme.hover : transparent;
     opacity: enabled ? 1 : 0.6;
     forward-focus: keys;
     accessible-role: button; accessible-label: text; accessible-enabled: enabled;
@@ -210,7 +211,7 @@ export component FriendRow inherits Rectangle {
     in property <bool> enabled: true;
     callback clicked;
     callback favorite-clicked;
-    height: game != "" ? (voice == "" ? 90px : 104px) : voice == "" ? 58px : 74px; min-width: 0px;
+    height: game != "" ? (voice == "" ? 96px : 112px) : voice == "" ? 64px : 80px; min-width: 0px;
     border-radius: 6px; background: touch.has-hover ? Theme.hover : transparent;
     forward-focus: keys;
     accessible-role: button; accessible-label: name + " · " + subtitle + " · " + voice + (favorite ? " · favori" : ""); accessible-enabled: enabled;
@@ -227,11 +228,11 @@ export component FriendRow inherits Rectangle {
         VerticalLayout { spacing: 3px;
             Text { text: root.name; color: Theme.text; font-size: 13px; overflow: elide; vertical-stretch: 0; }
             Text { text: root.subtitle; color: Theme.muted; font-size: 11px; overflow: elide; vertical-stretch: 0; }
-            if root.game != "": Text { text: "Oynuyor · " + root.game; color: Theme.muted; font-size: 11px; wrap: word-wrap; vertical-stretch: 0; }
+            if root.game != "": Text { text: "Oynuyor · " + root.game; color: Theme.muted; font-size: 11px; wrap: word-wrap; max-lines: 2; overflow: elide; vertical-stretch: 0; }
             if root.voice != "": Text { text: "Ses · " + root.voice; color: Theme.accent; font-size: 10px; overflow: elide; vertical-stretch: 0; }
         }
         Text { text: root.recent; color: Theme.subtle; font-size: 11px; horizontal-stretch: 0; vertical-alignment: center; }
-        Action { text: ""; icon: 1; selected: root.favorite; min-width: 30px; max-width: 30px; ghost: true; opacity: root.favorite ? 1 : touch.has-hover || keys.has-focus ? 0.7 : 0.25; enabled: root.can-favorite; accessible-label: root.favorite ? root.name + " favorilerden çıkar" : root.name + " favoriye ekle"; clicked => { root.favorite-clicked(); } }
+        Action { text: ""; icon: 1; selected: root.favorite; height: 40px; min-width: 40px; max-width: 40px; ghost: true; opacity: root.favorite ? 1 : touch.has-hover || keys.has-focus ? 0.7 : 0.25; enabled: root.can-favorite; accessible-label: root.favorite ? root.name + " favorilerden çıkar" : root.name + " favoriye ekle"; clicked => { root.favorite-clicked(); } }
     }
     keys := FocusScope { enabled: root.enabled; key-pressed(event) => { if event.text == "\n" { root.clicked(); return accept; } if event.text == "f" && root.can-favorite { root.favorite-clicked(); return accept; } return reject; } }
     ContextMenuArea { Menu { MenuItem { title: "Görüşmeyi aç"; enabled: root.enabled; activated => { root.clicked(); } } MenuItem { title: root.favorite ? "Favorilerden çıkar" : "Favoriye ekle"; enabled: root.can-favorite; activated => { root.favorite-clicked(); } } } }

@@ -18,7 +18,7 @@ component MessageRow inherits Rectangle {
     accessible-label: message.author + " · " + message.time;
 
     bubble := Panel {
-        x: root.message.own ? 32px : 0px;
+        x: root.message.own ? max(32px, parent.width - self.width) : 0px;
         width: max(0px, min(800px, parent.width - 32px));
         height: body.preferred-height + 51px;
         background: root.message.own ? Theme.accent-surface : Theme.surface;
@@ -71,12 +71,14 @@ export component Conversation inherits Rectangle {
     in property <[ChatMessageTile]> messages;
     in property <string> status;
     in property <bool> loading;
+    in property <bool> retry-available;
     in property <bool> pending;
     in property <bool> can-send;
     in property <bool> can-open-discord;
     in-out property <string> draft;
     callback send(string);
     callback refresh();
+    callback retry();
     callback close();
     callback open-discord();
 
@@ -101,7 +103,9 @@ export component Conversation inherits Rectangle {
 
     min-width: 0px;
     min-height: 320px;
-    background: Theme.canvas;
+    background: Theme.sidebar;
+    border-width: 1px;
+    border-color: Theme.line;
     border-radius: 10px;
     clip: true;
     accessible-role: groupbox;
@@ -111,31 +115,38 @@ export component Conversation inherits Rectangle {
     VerticalLayout {
         padding: 16px;
         spacing: 12px;
-        HorizontalLayout {
+        VerticalLayout {
             vertical-stretch: 0;
-            spacing: 8px;
+            spacing: 12px;
             Heading {
                 text: root.friend-name;
                 min-width: 0px;
                 overflow: elide;
                 vertical-alignment: center;
             }
+            HorizontalLayout { spacing: 8px;
             Action {
                 text: "Discord'da aç";
+                height: 40px;
                 enabled: root.can-open-discord;
                 clicked => { root.open-discord(); }
             }
             Action {
-                text: root.loading ? "Yükleniyor…" : "Yenile";
+                text: root.loading ? "Yükleniyor…" : root.retry-available ? "Tekrar dene" : "Yenile";
                 icon: 8;
+                height: 40px;
+                accent: root.retry-available;
                 enabled: !root.loading && !root.pending;
-                accessible-label: "Sohbet mesajlarını yenile";
-                clicked => { root.refresh(); }
+                accessible-label: root.retry-available ? "Bu kişiyle sohbeti yeniden aç" : "Sohbet mesajlarını yenile";
+                clicked => { if root.retry-available { root.retry(); } else { root.refresh(); } }
             }
+            Rectangle { horizontal-stretch: 1; background: transparent; }
             Action {
                 text: "Kapat";
+                height: 40px;
                 accessible-label: "Sohbeti kapat";
                 clicked => { root.close(); }
+            }
             }
         }
         Rectangle { height: 1px; vertical-stretch: 0; background: Theme.line; }
@@ -144,6 +155,7 @@ export component Conversation inherits Rectangle {
             max-lines: 3;
             overflow: elide;
             accessible-label: "Sohbet durumu " + root.status;
+            color: root.retry-available ? Theme.warning : Theme.muted;
         }
         Rectangle {
             min-height: 100px;
@@ -177,11 +189,11 @@ export component Conversation inherits Rectangle {
                 alignment: center;
                 spacing: 8px;
                 Heading {
-                    text: root.loading ? "Mesajlar yükleniyor…" : "Henüz gösterilecek mesaj yok";
+                    text: root.loading ? "Mesajlar yükleniyor…" : root.retry-available ? "Görüşme açılamadı" : "Henüz gösterilecek mesaj yok";
                     horizontal-alignment: center;
                 }
                 Caption {
-                    text: root.loading ? "Discord bağlantısı bekleniyor." : "Mesajları almak için Yenile'yi seç.";
+                    text: root.loading ? "Discord bağlantısı bekleniyor." : root.retry-available ? "Üstteki Tekrar dene düğmesiyle aynı kişiyi yeniden açabilirsin." : "Mesajları almak için Yenile'yi seç.";
                     horizontal-alignment: center;
                 }
             }
@@ -194,7 +206,8 @@ export component Conversation inherits Rectangle {
         Rectangle { height: 1px; vertical-stretch: 0; background: Theme.line; }
         composer := TextEdit {
             min-width: 0px;
-            height: 78px;
+            height: root.retry-available ? 0px : 78px;
+            visible: !root.retry-available;
             vertical-stretch: 0;
             text <=> root.draft;
             placeholder-text: root.can-send ? "Mesaj yaz…" : "Bu görüşmede mesaj gönderilemiyor.";
@@ -215,7 +228,7 @@ export component Conversation inherits Rectangle {
                 return reject;
             }
         }
-        HorizontalLayout {
+        if !root.retry-available: HorizontalLayout {
             vertical-stretch: 0;
             spacing: 12px;
             Caption {
@@ -233,6 +246,7 @@ export component Conversation inherits Rectangle {
             }
             Action {
                 text: root.pending ? "Gönderiliyor…" : "Gönder";
+                height: 40px;
                 accent: true;
                 enabled: root.send-enabled;
                 accessible-label: root.friend-name + " kişisine mesaj gönder";

@@ -6,6 +6,8 @@ Bilgisayardaki oyunları tek yerde toplayan, yerel verilerle çalışan masaüst
 
 ## Proje durumu
 
+15 Ekim 2026: sohbet açma hataları ve zaman aşımı artık aynı kişi için Tekrar dene yolunu açar. Kapaklar 480×720 / Lanczos3 kalitesi korunarak yalnız görünür satırlarda çözülür; 32 MiB önbellek ve arayüz aynı piksel tamponunu paylaşır. Sohbetin dar pencere düzeni, hata durumu ve küçük eylem hedefleri iyileştirildi. [Doğrulama kaydı](docs/duzeltmeler-20261014.md).
+
 14 Ekim yayın devamı: boş okunan aktif yayın anahtarı, native kaynak kimlikleri, kalite/FPS izin kontrolü ve seçici değer iletimi düzeltildi; 32 ilgili test geçti. Discord kapatılmadı. Yeni köprü dosyaları hazırlanmış olsa da açık Discord oturumu eski kodu kullanıyor; yeni kontrollerin canlı kabulü bekliyor. [Yayın düzeltmeleri ve etkinleştirme sınırı](docs/yayin-kontrolleri-20261013.md).
 
 14 Ekim 2026 yerel devamı: güncel uygulama/köprü eşleşmesiyle gerçek Discord oturumunda 32 arkadaş ve 2 ses odası okundu. Arkadaş paneli açıkken kart taşması, kapak kalitesi ve durum noktaları düzeltildi. Vencord lazy modül uyumu onarıldı; son 30 mesaj Discord'da arkadaşa tıklamadan yüklenir. Gerçek mesaj gönderimi kullanıcı tarafından doğrulandı. Son mesaja kaydırma, arkadaş modellerinin korunması, görüşme seçimi ve büyük pencere düzeni düzeltildi. [Doğrulama ayrıntıları](docs/duzeltmeler-20261014.md).

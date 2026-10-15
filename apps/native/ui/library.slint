@@ -7,7 +7,7 @@ export struct MusicTile { user-id: string, name: string, title: string, artist: 
 export struct SocialTile { id: string, name: string, subtitle: string, initial: string, online: bool, favorite: bool, recent: string, avatar: image, has-avatar: bool, presence: string, voice: string, game: string }
 export struct RoomTile { id: string, name: string, subtitle: string, online: bool, favorite: bool, can-join: bool }
 export struct ExtensionTile { id: string, name: string, version: string, details: string, enabled: bool }
-export struct GameTile { id: string, name: string, size: string, installed: bool, favorite: bool, artwork: image, has-artwork: bool, source: string, status-label: string }
+export struct GameTile { id: string, name: string, size: string, installed: bool, favorite: bool, artwork: image, has-artwork: bool, artwork-path: string, artwork-loaded: bool, source: string, status-label: string }
 component GameCard inherits Rectangle {
     in property <GameTile> game;
     callback launch(string);
@@ -26,7 +26,7 @@ component GameCard inherits Rectangle {
         if !game.has-artwork: VerticalLayout { padding: 18px; spacing: 14px;
             Rectangle { vertical-stretch: 1; background: transparent; }
             Glyph { kind: 0; width: 32px; height: 32px; ink: Theme.subtle; }
-            Text { text: game.source; color: Theme.subtle; font-size: 12px; vertical-stretch: 0; horizontal-alignment: center; }
+            Text { text: game.artwork-path != "" ? (game.artwork-loaded ? "Kapak okunamadı" : "Kapak yükleniyor…") : game.source; color: Theme.subtle; font-size: 12px; vertical-stretch: 0; horizontal-alignment: center; }
             Rectangle { vertical-stretch: 1; background: transparent; }
         }
         poster-touch := TouchArea { enabled: game.id != ""; mouse-cursor: pointer; clicked => { card-focus.focus(); root.detail(game.id); } }
@@ -39,7 +39,7 @@ component GameCard inherits Rectangle {
             x: 10px; y: parent.height - 32px; height: 22px; width: 90px; border-radius: 5px; background: #13141ae8;
             Text { text: game.status-label; color: Theme.muted; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; }
         }
-        Rectangle { width: parent.width; height: parent.height; border-radius: 11px; background: transparent; border-width: card-focus.has-focus || poster-touch.has-hover ? 2px : 0px; border-color: Theme.accent; }
+        Rectangle { width: parent.width; height: parent.height; border-radius: 11px; background: transparent; border-width: card-focus.has-focus || poster-touch.has-hover ? 2px : 1px; border-color: card-focus.has-focus || poster-touch.has-hover ? Theme.accent : #ffffff19; }
     }
     Rectangle {
         x: 0px; y: parent.height - 57px; width: parent.width - 34px; height: 52px; background: transparent;
@@ -103,6 +103,18 @@ export component LibraryWindow inherits Window {
     background: Theme.canvas;
     default-font-family: "Segoe UI";
     in property <[[GameTile]]> game-rows;
+    in-out property <bool> library-visible;
+    in-out property <bool> covers-loading;
+    in-out property <length> cover-viewport-height;
+    out property <int> first-cover-row: max(0, floor(-scroll-position / (card-height + 16px)));
+    out property <int> visible-cover-rows: cover-viewport-height > 0px ? ceil(cover-viewport-height / (card-height + 16px)) + 1 : 0;
+    callback cover-viewport();
+    callback covers-ready();
+    callback cover-failed(string);
+    callback validation-scroll(int);
+    validation-scroll(row) => { root.scroll-position = -(root.card-height + 16px) * row; root.cover-viewport(); }
+    changed first-cover-row => { root.cover-viewport(); }
+    changed visible-cover-rows => { root.cover-viewport(); }
     in property <int> total;
     in property <int> installed-count;
     in property <int> favorite-count;
@@ -157,6 +169,7 @@ export component LibraryWindow inherits Window {
     in property <[ChatMessageTile]> chat-messages;
     in property <string> chat-status: "Sohbet için bir arkadaş seç.";
     in-out property <bool> chat-loading;
+    in property <bool> chat-retry;
     in property <bool> chat-pending;
     in property <bool> chat-can-send;
     in property <bool> chat-can-open-discord;
@@ -265,7 +278,7 @@ export component LibraryWindow inherits Window {
     in property <string> measurement-summary;
     in property <int> measurement-progress;
     in-out property <int> section;
-    changed section => { if section != 7 { if room-mode == 2 { room-mode = 1; root.room-filter(1,room-query); } if stream-source-picker { stream-source-picker = false; root.stream-catalog(false); } } if section == 12 && !integration-busy { root.network-action(0,network-interface-index,network-encrypted-dns); } if section == 11 && !integration-busy { root.broadcast-inspect(); } }
+    changed section => { root.cover-viewport(); if section != 7 { if room-mode == 2 { room-mode = 1; root.room-filter(1,room-query); } if stream-source-picker { stream-source-picker = false; root.stream-catalog(false); } } if section == 12 && !integration-busy { root.network-action(0,network-interface-index,network-encrypted-dns); } if section == 11 && !integration-busy { root.broadcast-inspect(); } }
     changed stream-panel => { if !stream-panel && stream-source-picker { stream-source-picker = false; root.stream-catalog(false); } }
     in-out property <bool> installed-only;
     in-out property <string> query;
@@ -448,6 +461,8 @@ export component LibraryWindow inherits Window {
                         HorizontalLayout { alignment: center; Action { text: query != "" ? "Aramayı temizle" : section == 1 ? "Tüm oyunları göster" : "Oyun klasörü ekle"; clicked => { if query != "" { query = ""; root.refresh(query,section == 1,installed-only,0,source-index); } else if section == 1 { section = 0; root.refresh(query,false,installed-only,0,source-index); } else { root.add-folder(source-index > 0 ? source-index - 1 : 0); } } } }
                     }
                     if matched > 0: ListView { content-y <=> root.scroll-position;
+                        init => { root.cover-viewport-height = self.height; }
+                        changed height => { root.cover-viewport-height = self.height; }
                         for row-data in game-rows: HorizontalLayout { height: root.card-height + 16px; spacing: 16px; alignment: start;
                             for entry in row-data: GameCard { width: root.card-width; height: root.card-height; game: entry; detail(id) => { detail-origin = section; detail-tab = 0; root.detail(id); } launch(id) => { root.launch(id); } favorite(id,value) => { root.favorite(id,value); } }
                         }
@@ -653,10 +668,11 @@ export component LibraryWindow inherits Window {
                         }
                         if chat-active: Conversation {
                             horizontal-stretch: 3;
-                            friend-name: chat-name; conversation-id: chat-user-id; confirmed-nonce: chat-sent-nonce; messages: chat-messages; status: chat-status; loading: chat-loading; pending: chat-pending; can-send: bridge-connected && chat-can-send; can-open-discord: bridge-connected && chat-can-open-discord;
+                            friend-name: chat-name; conversation-id: chat-user-id; confirmed-nonce: chat-sent-nonce; messages: chat-messages; status: chat-status; loading: chat-loading; retry-available: chat-retry; pending: chat-pending; can-send: bridge-connected && chat-can-send; can-open-discord: bridge-connected && chat-can-open-discord;
                             draft <=> chat-draft;
                             send(content) => { root.chat-action("chat_send",chat-user-id,chat-channel-id,content); }
                             refresh => { root.chat-action("chat_refresh",chat-user-id,chat-channel-id,""); }
+                            retry => { root.open-conversation(chat-user-id,chat-name); }
                             close => { if bridge-connected { root.chat-action("chat_close",chat-user-id,chat-channel-id,""); } chat-active = false; }
                             open-discord => { root.bridge-action("open_dm",chat-user-id); }
                         }
@@ -811,9 +827,9 @@ export component LibraryWindow inherits Window {
         }
         if friends-panel-enabled: Rectangle { width: 280px; horizontal-stretch: 0; background: Theme.surface;
             VerticalLayout { padding: 14px; spacing: 12px;
-                HorizontalLayout { Heading { text: "Takip ettiklerin"; } Rectangle { horizontal-stretch: 1; background: transparent; } Action { text: "×"; ghost: true; min-width: 28px; max-width: 28px; accessible-label: "Arkadaş panelini gizle"; clicked => { friends-panel-enabled = false; root.friends-panel-toggle(false); } } }
+                HorizontalLayout { Heading { text: "Takip ettiklerin"; } Rectangle { horizontal-stretch: 1; background: transparent; } Action { text: "×"; ghost: true; height: 40px; min-width: 40px; max-width: 40px; accessible-label: "Arkadaş panelini gizle"; clicked => { friends-panel-enabled = false; root.friends-panel-toggle(false); } } }
                 Caption { text: social-fixture ? "Örnek kişiler · görsel doğrulama" : !bridge-enabled ? "Discord bağlantısı kapalı" : bridge-connected ? "Discord bağlı · güncel durum" : "Discord bekleniyor · durum güncel değil"; font-size: 11px; color: bridge-connected ? Theme.positive : Theme.muted; }
-                if !bridge-enabled: Action { text: "Discord'a bağlan"; accent: true; clicked => { bridge-enabled = true; root.bridge-toggle(true); } }
+                if !bridge-enabled && !social-fixture: Action { text: "Discord'a bağlan"; accent: true; clicked => { bridge-enabled = true; root.bridge-toggle(true); } }
                 if avatar-status != "": Caption { text: avatar-status; font-size: 11px; }
                 if followed-friends.length == 0: Caption { text: "Discord'da arkadaşlarını yıldızla. Oyun ve ses odası durumları burada görünür."; font-size: 12px; }
                 ListView { for friend in followed-friends: FriendRow {
