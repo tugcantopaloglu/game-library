@@ -6,6 +6,8 @@ Bilgisayardaki oyunları tek yerde toplayan, yerel verilerle çalışan masaüst
 
 ## Proje durumu
 
+Discord köprüsü uygulamanın içinde hazır gelir. **Ayarlar → Discord bağlantısı → Köprüyü kur / güncelle** dosyaları yedekleyip kurar; kullanıcı bilgisayarında geliştirme aracı veya elle dosya kopyalama gerekmez. İlk kurulumdan sonra yeni uygulamayla gelen köprü otomatik güncellenebilir. [Kurulum, güncelleme ve doğrulama](docs/otomatik-kopru-kurulumu.md).
+
 15 Ekim 2026: sohbet açma hataları ve zaman aşımı artık aynı kişi için Tekrar dene yolunu açar. Kapaklar 480×720 / Lanczos3 kalitesi korunarak yalnız görünür satırlarda çözülür; 32 MiB önbellek ve arayüz aynı piksel tamponunu paylaşır. Sohbetin dar pencere düzeni, hata durumu ve küçük eylem hedefleri iyileştirildi. [Doğrulama kaydı](docs/duzeltmeler-20261014.md).
 
 14 Ekim yayın devamı: boş okunan aktif yayın anahtarı, native kaynak kimlikleri, kalite/FPS izin kontrolü ve seçici değer iletimi düzeltildi; 32 ilgili test geçti. Discord kapatılmadı. Yeni köprü dosyaları hazırlanmış olsa da açık Discord oturumu eski kodu kullanıyor; yeni kontrollerin canlı kabulü bekliyor. [Yayın düzeltmeleri ve etkinleştirme sınırı](docs/yayin-kontrolleri-20261013.md).
@@ -88,6 +90,6 @@ pwsh -File scripts/measure.ps1 -Mode Tray -Seconds 60
 
 Fixture testleri makinedeki kurulumlardan yalıtılır; gerçek launcher kabulü ayrıca yapılır. Yerel Steam kapaklarına ek olarak kullanıcı kapağı ve isteğe bağlı SteamGridDB araması desteklenir. API anahtarı Windows Credential Manager'da saklanır. Native arayüz kapak odaklı kartlar, pencereye göre 4–6 sütun, 100 kayıtlık sayfalar ve sanallaştırılmış satırlar kullanır. Oyun ayrıntısı Genel bakış/Düzenle olarak ayrılır; Discord arkadaş ve ses odalarını liste halinde gösterir. JPEG/PNG kapaklar işçi thread'inde en fazla 180×270 piksele indirilir; dosya, boyut ve decode bellek sınırları uygulanır.
 
-Uygulama güncelleyicisi Ed25519 imzalı release bildirimi ve SHA-256 doğrulaması kullanır. Bu geliştirme derlemesinde güven anahtarı ve yayımlanmış imzalı release yoktur; canlı otomatik güncelleme henüz etkin değildir. Özel GameLibraryBridge paketini korumak için standart Vencord otomatik güncellemesi kapalıdır; **Köprüyü hazırla / güncelle** resmi Vencord kaynağını günceller, köprüyü derler ve kurulu paketi yedekleyerek uygular.
+Uygulama güncelleyicisi Ed25519 imzalı release bildirimi ve SHA-256 doğrulaması kullanır. Bu geliştirme derlemesinde güven anahtarı ve yayımlanmış imzalı release yoktur; internetten otomatik uygulama güncellemesi henüz etkin değildir. Özel GameLibraryBridge paketini korumak için standart Vencord otomatik güncellemesi kapalıdır; **Köprüyü kur / güncelle** uygulamaya gömülü hazır paketi yedekleyerek uygular. Etkinleştirilmiş otomatik köprü güncellemesi, daha yeni uygulamayla gelen paketi sonraki uygulama açılışında kurar.
 
 Slint atfı ⋯ → Hakkında ekranında `AboutSlint` bileşeniyle gösterilir. [Slint kullanım koşulları](https://slint.dev/terms-and-conditions).

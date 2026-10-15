@@ -4,6 +4,7 @@ mod accounts;
 mod avatars;
 mod attachments;
 mod bridge;
+mod bridge_install;
 mod broadcast;
 mod chat;
 mod completion;
@@ -144,6 +145,19 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 &serde_json::json!({"dataDirectory":updates::external_path(&data_dir)}),
             )?,
         )?;
+        return Ok(());
+    }
+    if let Some(output) = argument_value(&args, "--bridge-package-report") {
+        std::fs::write(output, serde_json::to_vec_pretty(&bridge_install::verified_manifest()?)?)?;
+        return Ok(());
+    }
+    if args.iter().any(|argument| argument == "--install-bridge") {
+        let report = bridge_install::install(&data_dir,
+            &argument_value(&args, "--discord-branch").unwrap_or_else(|| "stable".into()), |_| {})?;
+        if let Some(output) = argument_value(&args, "--output") {
+            std::fs::write(output, serde_json::to_vec_pretty(&report)?)?;
+        }
+        println!("{}", report.message);
         return Ok(());
     }
     if args.iter().any(|argument| argument == "--prepare-vencord") {
@@ -400,6 +414,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
     ui.set_bridge_enabled(bridge_enabled);
     ui.set_auto_update_app(auto_update_app);
+    let bridge_preferences = bridge_install::preferences(&data_dir).unwrap_or_else(|_| bridge_install::Preferences { auto_update: false, ..Default::default() });
+    ui.set_discord_branch(match bridge_preferences.branch.as_str() { "ptb"=>1,"canary"=>2,_=>0 });
+    ui.set_bridge_auto_update(bridge_preferences.auto_update);
+    ui.set_bridge_install_status(bridge_install::status(&data_dir, &bridge_preferences.branch).into());
     ui.set_broadcast_requirements(broadcast::REQUIREMENTS.into());
     ui.set_obs_port(
         store
@@ -634,7 +652,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     register_command!(on_change_stream_source, (key,channel,revision,index) => Command::StreamSelection("stream_source".into(),key.into(),channel.into(),revision,index,false));
     register_command!(on_change_stream_audio, (key,audio) => Command::StreamControl("stream_audio".into(),key.into(),i32::from(audio)));
     register_command!(on_update_check, () => Command::UpdateCheck);
-    register_command!(on_prepare_bridge, () => Command::PrepareBridge);
+    register_command!(on_install_bridge, (branch) => Command::InstallBridge(match branch {1=>"ptb",2=>"canary",_=>"stable"}.into()));
+    register_command!(on_bridge_branch, (branch) => Command::BridgeBranch(match branch {1=>"ptb",2=>"canary",_=>"stable"}.into()));
+    register_command!(on_bridge_update_preferences, (enabled) => Command::BridgeAutoUpdate(enabled));
     register_command!(on_artwork_key, (key) => Command::ArtworkKey(key.into()));
     register_command!(on_search_covers, (id) => Command::SearchCovers(id.into()));
     register_command!(on_steam_credentials, (id,key) => Command::SteamCredentials(id.into(),key.into()));
@@ -660,7 +680,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let weak = ui.as_weak();
     ui.on_installer(move |action,branch| {
         let branch = match branch { 1=>"ptb",2=>"canary",_=>"stable" };
-        let message = format!("Resmi Vencord installer Discord {branch} kurulumunu değiştirecek. Discord kapanabilir ve yeniden açılması gerekebilir. Devam edilsin mi?");
+        if action != 2 { enqueue(&installer_sender,&weak,Command::InstallBridge(branch.into())); return; }
+        let message = format!("Discord {branch} için Vencord kaldırılacak ve otomatik köprü güncellemesi kapatılacak. Kaldırılsın mı?");
         if rfd::MessageDialog::new().set_title("Vencord işlemi").set_description(message).set_buttons(rfd::MessageButtons::YesNo).show() == rfd::MessageDialogResult::Yes {
             enqueue(&installer_sender,&weak,Command::Installer(match action { 1=>updates::InstallerAction::Repair,2=>updates::InstallerAction::Uninstall,_=>updates::InstallerAction::Install },branch.into()));
         }
@@ -874,6 +895,14 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         ui.show()?;
     }
     let screenshot_timer = Rc::new(Timer::default());
+    if let Some(fixture) = argument_value(&args, "--bridge-install-ui-fixture") {
+        match fixture.as_str() {
+            "busy" => { ui.set_bridge_install_busy(true); ui.set_integration_busy(true); ui.set_bridge_install_status("Mevcut köprü ve ayarlar yedekleniyor…".into()); },
+            "error" => ui.set_bridge_install_status("Discord kurulumu bulunamadı. Önce Discord'u kur veya doğru Discord sürümünü seç.".into()),
+            "installed" => ui.set_bridge_install_status(format!("Köprü {} kuruldu. Etkinleşmesi için Discord'u yeniden aç.", bridge_install::manifest().build).into()),
+            _ => return Err("Köprü arayüz örneği geçersiz".into()),
+        }
+    }
     if let Some(output) = argument_value(&args, "--screenshot") {
         if let Some(section) = argument_value(&args, "--section") {
             ui.set_section(section.parse()?);
@@ -979,6 +1008,8 @@ fn main() {
                 || argument == "--vencord-action"
                 || argument == "--bridge-probe"
                 || argument == "--prepare-vencord"
+                || argument == "--install-bridge"
+                || argument == "--bridge-package-report"
                 || argument == "--data-directory-report"
                 || argument == "--update-health-report"
                 || argument == "--prepare-epic"

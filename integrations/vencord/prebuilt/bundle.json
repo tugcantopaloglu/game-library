@@ -1,0 +1,40 @@
+{
+  "protocol": 1,
+  "build": "20261015.1",
+  "vencord_revision": "32c90633ce6a95d7e56c95479efbb431bacf1eac",
+  "plugin_sources": {
+    "broadcast.ts": "ca809939c27fab7797e96b18546c721ea546f1dc7457da7aa3bfb39781228814",
+    "capture.ts": "0cace58b6dbc1301a4085e0a144889b4866506c6e9a8d4660dba026002e44ed3",
+    "directMessage.ts": "97b71b8b6b6df837a674a0bc349afb9c756f2df8c530bca3e73cf9a353585f73",
+    "index.ts": "43bf27ed0adba32a6d419fa0bb5bd1de42564c53e52b255534b537a866444b6b",
+    "native.ts": "dac5bc0b25dd07b5c14da23a09958094b4dff991b6a152d62267c92a1e034dbb",
+    "social.ts": "5988ce8c537e97257987a3fc072c9904c0d7990e997b1433f98c0cdb1336728b",
+    "spotify.ts": "bee17235cdb4587ea6acfdfa66a96c13d49eb3a488754f49534fc4e04b236671",
+    "state.ts": "7b87d04e89fa0d32576a87875614b31248a4642bdd740680beb5f5ddee8697d0",
+    "stream.ts": "d581de03968e923f6395ef284421c7c150b36284e29008de17855759fa609506",
+    "streamAdapter.ts": "abbd416f2f2bd24f1b1713c46eb6bf341e2a78dade2029e29662f9a29089396e",
+    "transport.ts": "16faed6129b83510957cf05f21dbb6d1f9b5b1553ffcb1526e8acac0be80f868"
+  },
+  "files": [
+    {
+      "name": "patcher.js",
+      "size": 44227,
+      "sha256": "f11b931f5a0cc47fcf0dd8aec49fd1fb3e5bcce4c9b269758e1dc1bb4270d136"
+    },
+    {
+      "name": "preload.js",
+      "size": 2404,
+      "sha256": "e3c6a46d2e9b4193f6b5ade38582c523347ee8b789a5d8fe03daca65120d530e"
+    },
+    {
+      "name": "renderer.js",
+      "size": 757058,
+      "sha256": "a8e8931c1878d45aaf9769b941b2bf525f956fed8449d21acf89dd7457a81965"
+    },
+    {
+      "name": "renderer.css",
+      "size": 42852,
+      "sha256": "4291c822779506aa335868ff39a655eb9aae183210a7cce0f34fd041776aec20"
+    }
+  ]
+}

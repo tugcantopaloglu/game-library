@@ -284,7 +284,7 @@ fn configure_bridge(data: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn enable_bridge_settings(settings: &mut serde_json::Value, data: &Path) -> Result<(), String> {
+pub(crate) fn enable_bridge_settings(settings: &mut serde_json::Value, data: &Path) -> Result<(), String> {
     if !settings.is_object() {
         return Err("Vencord ayar biçimi geçersiz; mevcut dosya korundu".into());
     }
@@ -493,6 +493,21 @@ pub fn vencord_installer(
     action: InstallerAction,
     branch: &str,
 ) -> Result<String, String> {
+    if !matches!(action, InstallerAction::Uninstall) {
+        return crate::bridge_install::install(data, branch, |_| {}).map(|report| report.message);
+    }
+    let root = PathBuf::from(std::env::var_os("APPDATA").ok_or("Windows kullanıcı veri klasörü bulunamadı")?).join("Vencord");
+    run_vencord_installer(data, action, branch, &root)?;
+    crate::bridge_install::set_auto_update(data, false)?;
+    Ok("Vencord kaldırıldı. Otomatik köprü güncellemesi kapatıldı.".into())
+}
+
+pub(crate) fn run_vencord_installer(
+    data: &Path,
+    action: InstallerAction,
+    branch: &str,
+    package_root: &Path,
+) -> Result<(), String> {
     if !["stable", "ptb", "canary"].contains(&branch) {
         return Err("Discord kanalı geçersiz".into());
     }
@@ -533,13 +548,8 @@ pub fn vencord_installer(
     std::fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
     let installer = directory.join("VencordInstallerCli.exe");
     std::fs::write(&installer, bytes).map_err(|error| error.to_string())?;
-    let source = directory.join("source");
-    let custom = source.join("game-library-bridge.json").is_file()
-        && source.join("dist/patcher.js").is_file();
     let flag = match action {
-        InstallerAction::Install => "--install",
-        InstallerAction::Repair if custom => "--install",
-        InstallerAction::Repair => "--repair",
+        InstallerAction::Install | InstallerAction::Repair => "--install",
         InstallerAction::Uninstall => "--uninstall",
     };
     use std::os::windows::process::CommandExt;
@@ -547,10 +557,10 @@ pub fn vencord_installer(
         .map_err(|error| error.to_string())?;
     let error_log = log.try_clone().map_err(|error| error.to_string())?;
     let mut command = std::process::Command::new(&installer);
-    if custom {
-        command
-            .env("VENCORD_USER_DATA_DIR", external_path(&source))
-            .env("VENCORD_DEV_INSTALL", "1");
+    command.env("VENCORD_USER_DATA_DIR", external_path(package_root)).env("VENCORD_DEV_INSTALL", "1");
+    let name = match branch { "ptb" => "DiscordPTB", "canary" => "DiscordCanary", _ => "Discord" };
+    if platform_windows::sessions::running_named(&format!("{name}.exe")) {
+        return Err("Discord açık. Kurulum/onarım için Discord'dan tamamen çıkıp yeniden dene; oturumun kapatılmadı.".into());
     }
     let mut child = command
         .args([flag, "--branch", branch])
@@ -578,10 +588,7 @@ pub fn vencord_installer(
         }
         std::thread::sleep(std::time::Duration::from_millis(250));
     }
-    if custom && !matches!(action, InstallerAction::Uninstall) {
-        configure_bridge(data)?;
-    }
-    Ok(format!("Resmi installer işlemi tamamlandı ({branch}). Discord yeniden açıldıktan sonra Vencord/köprü bağlantısı ayrıca doğrulanır."))
+    Ok(())
 }
 
 #[cfg(test)]

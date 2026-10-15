@@ -86,7 +86,9 @@ pub enum Command {
     StreamCatalog(bool),
     StreamSelection(String, String, String, i32, i32, bool),
     Installer(crate::updates::InstallerAction, String),
-    PrepareBridge,
+    InstallBridge(String),
+    BridgeBranch(String),
+    BridgeAutoUpdate(bool),
     UpdateCheck,
     UpdateStage,
     UpdateApply,
@@ -133,7 +135,7 @@ enum NetworkTask {
     Cover(String, String),
     Search(String, String, Option<u32>),
     Installer(crate::updates::InstallerAction, String),
-    PrepareBridge,
+    InstallBridge(String, bool),
     Check,
     Stage(crate::updates::UpdateManifest),
     Owned(Source, String),
@@ -158,7 +160,7 @@ pub enum NetworkResult {
     NetworkTools(crate::network_tools::Report, Result<String, String>),
     Cover(String, Result<PathBuf, String>),
     Search(String, Result<Vec<crate::media::CoverCandidate>, String>),
-    Notice(Result<String, String>),
+    BridgeInstall(Result<String, String>, Option<bool>),
     Check(Result<crate::updates::UpdateManifest, String>),
     Stage(Result<PathBuf, String>),
     Owned(
@@ -187,6 +189,15 @@ fn submit(
         return Err("İndirme / entegrasyon kuyruğu dolu; işlem bitince yeniden dene".into());
     }
     let _ = ui.upgrade_in_event_loop(|ui| ui.set_integration_busy(true));
+    Ok(())
+}
+
+fn submit_bridge(network: &Network, ui: &slint::Weak<LibraryWindow>, task: NetworkTask) -> Result<(), String> {
+    submit(network, ui, task)?;
+    let _ = ui.upgrade_in_event_loop(|ui| {
+        ui.set_bridge_install_busy(true);
+        ui.set_bridge_install_status("Discord kurulumu kontrol ediliyor…".into());
+    });
     Ok(())
 }
 
@@ -1135,6 +1146,7 @@ pub fn start(
         sender: network,
         busy: busy.clone(),
     };
+    let network_ui = ui.clone();
     std::thread::spawn(move || {
         while let Ok(task) = network_receiver.recv() {
             let result = match task {
@@ -1264,11 +1276,15 @@ pub fn start(
                 NetworkTask::Search(id, title, steam_id) => {
                     NetworkResult::Search(id, crate::media::search_covers(&title, steam_id))
                 }
-                NetworkTask::Installer(action, branch) => NetworkResult::Notice(
+                NetworkTask::Installer(action, branch) => NetworkResult::BridgeInstall(
                     crate::updates::vencord_installer(&network_data, action, &branch),
+                    Some(!matches!(action, crate::updates::InstallerAction::Uninstall)),
                 ),
-                NetworkTask::PrepareBridge => {
-                    NetworkResult::Notice(crate::updates::prepare_bridge(&network_data))
+                NetworkTask::InstallBridge(branch, enable_connection) => {
+                    NetworkResult::BridgeInstall(crate::bridge_install::install(&network_data, &branch, |text| {
+                        let text = text.to_owned();
+                        let _ = network_ui.upgrade_in_event_loop(move |ui| ui.set_bridge_install_status(text.into()));
+                    }).map(|report| report.message), enable_connection.then_some(true))
                 }
                 NetworkTask::Check => NetworkResult::Check(crate::updates::check()),
                 NetworkTask::Stage(manifest) => {
@@ -1311,6 +1327,11 @@ pub fn start(
         let mut auto_update_app =
             store.setting("auto_update_app").ok().flatten().as_deref() == Some("true");
         let mut next_update = std::time::Instant::now();
+        match crate::bridge_install::automatic_update_needed(&data_dir) {
+            Ok(Some(branch)) => { let _ = submit_bridge(&network, &ui, NetworkTask::InstallBridge(branch, false)); }
+            Err(error) => { let _ = ui.upgrade_in_event_loop(move |ui| ui.set_bridge_install_status(error.into())); }
+            Ok(None) => {}
+        }
         let mut next_network_check = std::time::Instant::now() + std::time::Duration::from_secs(15);
         let mut network_interfaces: Vec<String> = Vec::new();
         let mut query = Query {
@@ -1685,7 +1706,21 @@ pub fn start(
                             let (summary,url)=match result {Ok(completion)=> {store.save_completion(&id,&completion.times).map_err(|error|error.to_string())?; let game=store.game(&id).map_err(|error|error.to_string())?; if let Some(url)=completion.image_url {store.set_artwork_url(game.source,&game.source_id,&url).map_err(|error|error.to_string())?;} (crate::completion::summary(&completion.times),Some(format!("https://howlongtobeat.com/game/{}",completion.times.hltb_id)))},Err(error)=>(format!("HowLongToBeat: {error}"),None)};
                             let times=store.completion(&store.game(&id).map_err(|error|error.to_string())?).map_err(|error|error.to_string())?; ui.upgrade_in_event_loop(move |ui| {if ui.get_detail_id()==id {set_completion(&ui,times.as_ref());ui.set_completion_summary(summary.into());if let Some(url)=url {ui.set_completion_url(url.into());}}}).map_err(|error|error.to_string())
                         })(),
-                        NetworkResult::Notice(result) => result.map(|notice|set_notice(&ui,notice)),
+                        NetworkResult::BridgeInstall(result, connection) => {
+                            let connection = if result.is_ok() { connection } else { None };
+                            let message = result.as_ref().cloned().unwrap_or_else(|error|error.clone());
+                            let preferences = crate::bridge_install::preferences(&data_dir).ok();
+                            let _ = ui.upgrade_in_event_loop(move |ui| {
+                                ui.set_bridge_install_busy(false);
+                                ui.set_bridge_install_status(message.into());
+                                if let Some(preferences) = preferences { ui.set_bridge_auto_update(preferences.auto_update); }
+                                if let Some(enabled) = connection {
+                                    ui.set_bridge_enabled(enabled);
+                                    ui.invoke_bridge_toggle(enabled);
+                                }
+                            });
+                            result.map(|notice|set_notice(&ui,notice))
+                        },
                         NetworkResult::Search(id,result) => result.and_then(|candidates| {
                             if candidates.is_empty() {return Err("Uygun kapak bulunamadı.".into());}
                             let names: Vec<slint::SharedString> = candidates.iter().map(|candidate|candidate.title.clone().into()).collect();
@@ -2022,9 +2057,15 @@ pub fn start(
                     })
                     .map_err(str::to_string),
                 Command::Installer(action, branch) => {
-                    submit(&network, &ui, NetworkTask::Installer(action, branch))
+                    submit_bridge(&network, &ui, NetworkTask::Installer(action, branch))
                 }
-                Command::PrepareBridge => submit(&network, &ui, NetworkTask::PrepareBridge),
+                Command::InstallBridge(branch) => submit_bridge(&network, &ui, NetworkTask::InstallBridge(branch, true)),
+                Command::BridgeBranch(branch) => {
+                    let status = crate::bridge_install::status(&data_dir, &branch);
+                    let _ = ui.upgrade_in_event_loop(move |ui| if !ui.get_bridge_install_busy() { ui.set_bridge_install_status(status.into()); });
+                    Ok(())
+                },
+                Command::BridgeAutoUpdate(enabled) => crate::bridge_install::set_auto_update(&data_dir, enabled),
                 Command::UpdateCheck => submit(&network, &ui, NetworkTask::Check),
                 Command::UpdateStage => available_update
                     .as_ref()

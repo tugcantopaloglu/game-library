@@ -68,6 +68,10 @@ pub fn baseline() -> Vec<u32> {
     processes().into_iter().map(|process| process.0).collect()
 }
 
+pub fn running_named(name: &str) -> bool {
+    processes().iter().any(|(_, executable)| executable.file_name().is_some_and(|file| file.to_string_lossy().eq_ignore_ascii_case(name)))
+}
+
 pub fn wait_for_exit(pid: u32, timeout: u32) -> Result<bool, String> {
     unsafe {
         match OpenProcess(PROCESS_SYNCHRONIZE, false, pid).map(Handle) {
