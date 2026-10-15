@@ -59,6 +59,7 @@ component GameCard inherits Rectangle {
     card-focus := FocusScope { enabled: game.id != ""; key-pressed(event) => { if event.text == "\n" || event.text == " " { root.detail(game.id); return accept; } if event.text == "p" && !event.modifiers.control && game.installed { root.launch(game.id); return accept; } if event.text == "f" && !event.modifiers.control { root.favorite(game.id,!game.favorite); return accept; } return reject; } }
 }
 export component AboutWindow inherits Window {
+    in property <string> app-version;
     title: "Game Library hakkında";
     preferred-width: 420px;
     preferred-height: 300px;
@@ -67,7 +68,7 @@ export component AboutWindow inherits Window {
         padding: 26px;
         spacing: 18px;
         Text { vertical-stretch: 0; text: "Game Library"; color: #f1f3f5; font-size: 24px; font-weight: 600; }
-        Text { vertical-stretch: 0; text: "0.1.0 · Windows\nKişisel oyun kütüphanesi"; color: #aab4bf; font-size: 13px; }
+        Text { vertical-stretch: 0; text: app-version + " · Windows\nKişisel oyun kütüphanesi"; color: #aab4bf; font-size: 13px; }
         AboutSlint {}
     }
 }
@@ -270,7 +271,8 @@ export component LibraryWindow inherits Window {
     in property <[string]> cover-names;
     in-out property <int> cover-index;
     in-out property <string> artwork-api-key;
-    in property <string> update-status: "İmzalı release yayımlandığında güncelleme kullanılabilir.";
+    in property <string> app-version;
+    in property <string> update-status;
     in property <int> matched;
     in property <int> offset;
     in property <int> page-size: 100;
@@ -814,11 +816,11 @@ export component LibraryWindow inherits Window {
                 } }
                 if section == 8: ScrollView { VerticalLayout { spacing: 18px;
                     Panel { VerticalLayout { padding: 22px; spacing: 14px;
-                        HorizontalLayout { Heading { text: "Game Library"; } Rectangle { horizontal-stretch: 1; background: transparent; } Caption { text: "Sürüm 0.1.0 · Windows"; horizontal-stretch: 0; } }
+                        HorizontalLayout { Heading { text: "Uygulama güncellemeleri"; } Rectangle { horizontal-stretch: 1; background: transparent; } Caption { text: app-version + " · Windows"; horizontal-stretch: 0; } }
                         Caption { text: update-status; }
-                        Caption { text: "Klavye: Ctrl+1 kütüphane · Ctrl+2 Discord · Ctrl+3 ayarlar · Ctrl+F ara. Tab / Shift+Tab gezin; Enter / Boşluk seç; Esc kapat. Oyun kartı: F favori, P başlat."; font-size: 11px; }
-                        CheckBox { text: "Güncellemeleri otomatik kontrol et ve indir"; checked <=> auto-update-app; toggled => { root.update-preferences(auto-update-app); } }
-                        HorizontalLayout { spacing: 8px; Action { text: "Güncellemeleri kontrol et"; icon: 8; enabled: !integration-busy; clicked => { root.update-check(); } } if update-available: Action { text: "İndir ve doğrula"; accent: true; enabled: !integration-busy; clicked => { root.update-stage(); } } if update-staged: Action { text: "Yeniden başlat ve uygula"; accent: true; enabled: !integration-busy; clicked => { root.update-apply(); } } Rectangle { horizontal-stretch: 1; background: transparent; } }
+                        CheckBox { text: "Yeni sürümleri otomatik indir ve sonraki açılışta kur"; checked <=> auto-update-app; toggled => { root.update-preferences(auto-update-app); } }
+                        Caption { text: auto-update-app ? "Günde bir kontrol edilir. Güncelleme hazır olduğunda, uygulamayı kapatıp açman yeterli." : "Otomatik güncelleme kapalı. Yeni sürümleri buradan kontrol edip kurabilirsin."; font-size: 12px; }
+                        HorizontalLayout { spacing: 8px; Action { text: "Kontrol et"; icon: 8; enabled: !integration-busy; clicked => { root.update-check(); } } if update-available && !update-staged: Action { text: "İndir"; accent: true; enabled: !integration-busy; clicked => { root.update-stage(); } } if update-staged: Action { text: "Yeniden başlat ve güncelle"; accent: true; enabled: !integration-busy && !scanning; clicked => { root.update-apply(); } } Rectangle { horizontal-stretch: 1; background: transparent; } }
                     } }
                     Panel { VerticalLayout { padding: 22px; spacing: 14px;
                         Heading { text: "Discord köprüsü"; }
@@ -833,6 +835,7 @@ export component LibraryWindow inherits Window {
                         HorizontalLayout { spacing: 8px; Field { text <=> artwork-api-key; secret: true; placeholder: "SteamGridDB API anahtarı"; } Action { text: "Anahtarı kaydet"; clicked => { root.artwork-key(artwork-api-key); artwork-api-key = ""; } } }
                     } }
                     HorizontalLayout { Action { text: "Hakkında"; ghost: true; clicked => { root.about(); } } Rectangle { horizontal-stretch: 1; background: transparent; } }
+                    Caption { text: "Klavye: Ctrl+1 kütüphane · Ctrl+2 Discord · Ctrl+3 ayarlar · Ctrl+F ara. Tab / Shift+Tab gezin; Enter / Boşluk seç; Esc kapat. Oyun kartı: F favori, P başlat."; font-size: 11px; }
                     Rectangle { vertical-stretch: 1; background: transparent; }
                 } }
                 if section == 2: VerticalLayout { spacing: 18px;

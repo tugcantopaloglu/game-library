@@ -46,16 +46,7 @@ Canlı kabul: Discord Stable 1.0.9261 ve Vencord `16ec4ea838899706019e7f472e45f0
 
 ## Uygulama güncellemesi
 
-Güncelleme bildirimi sabit proje GitHub release kaynağından alınır. Yeni kararlı SemVer, izinli proje yolu, boyut, SHA-256, köprü protokolü ve Ed25519 imzası doğrulanır. İmzası olmayan veya eski sürüm reddedilir. Otomatik tercih etkinse en fazla günde bir kontrol edilir ve paket hazırlanır. Uygulama yeniden başlatılmadan executable değiştirilmez.
-
-Yeniden başlat ve uygula, ayrı güncelleme yardımcısını başlatır. Yardımcı ana sürecin çıkmasını bekler, paketi yeniden doğrular, eski executable'ı yedekler ve yeni dosyayı atomik olarak yerleştirir. Yeni sürümün SQLite verisini/kapaklarını yükleyip software görünümü çizebilmesi gerekir. Yardımcı 30 saniye içinde doğru sürüm/PID ve rastgele açılış anahtarını içeren hazır raporunu bekler. Süreç erken kapanır veya hazır olmazsa yalnızca başlattığı yeni süreç sonlandırılır, önceki executable geri yüklenir ve yeniden açılır. Yeni sürümün veri geçişi başarısız olursa SQLite migration yedeği ayrıca korunur; executable geri dönüşü veritabanını otomatik geri almaz. Tam veri ve paket geri dönüşü ilk yayımlanmış sürüm zincirinde ayrıca doğrulanmalıdır.
-
-Geliştirme derlemesinde yayımlanmış imzalı release ve güven anahtarı yoktur; canlı otomatik güncelleme bu yüzden açık sayılmaz. Yayın hazırlığı:
-
-1. Ed25519 özel anahtarını depo dışında güvenli tut. Açık anahtarın ham 32 baytının base64 değerini `GAME_LIBRARY_UPDATE_PUBLIC_KEY` derleme değişkeniyle tanımla.
-2. `apps/native/Cargo.toml` sürümünü bildirimdeki sürümle eşleştir ve güven anahtarı tanımlı release executable'ını derle. Açılış raporundaki derleme sürümü bildirime uymuyorsa yardımcı geri dönüş uygular.
-3. `node scripts/sign-update.mjs <exe> <sürüm> <özel-anahtar.pem> <update.json>` ile bildirimi imzala.
-4. İlk sürüm ve sonraki güncellemeyi gerçek paketle doğruladıktan sonra `v<sürüm>` release'ine executable ve `update.json` ekle. Bu geliştirme çalışması release yayımlamaz.
+GitHub Releases üzerinden imzalı otomatik uygulama güncellemesi, kalıcı indirme durumu, sonraki açılışta kurulum ve executable/veritabanı geri dönüşü tamamlandı. Yeni kurulumlarda otomatik tercih açıktır; daha önce kapatılmış tercih korunur. [Güncel kullanım, release üretimi ve kontroller](otomatik-uygulama-guncellemesi.md).
 
 ## Doğrulama araçları
 

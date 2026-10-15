@@ -12,6 +12,16 @@ pub struct Store {
 }
 
 impl Store {
+    /// Snapshot a closed application's database, including committed WAL data,
+    /// without running schema migrations in the updater helper.
+    pub fn snapshot_file(path: &Path, backup: &Path) -> Result<()> {
+        if !path.exists() { return Ok(()); }
+        let connection = Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE)?;
+        connection.busy_timeout(Duration::from_secs(3))?;
+        connection.execute("VACUUM INTO ?1", [backup.to_string_lossy().as_ref()])?;
+        Ok(())
+    }
+
     pub fn open(path: &Path) -> Result<Self> {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;

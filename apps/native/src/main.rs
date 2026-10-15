@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod accounts;
+mod app_updates;
 mod avatars;
 mod attachments;
 mod bridge;
@@ -261,6 +262,35 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
     let mut store = Store::open(&data_dir.join("library.db"))?;
+    if let Some(command) = argument_value(&args, "--update-command") {
+        let report = match command.as_str() {
+            "status" => serde_json::json!({"version":updates::VERSION,"status":updates::status(&data_dir),"pending":updates::pending(&data_dir)?,"automatic":store.setting("auto_update_app")?.as_deref()!=Some("false")}),
+            "check" => serde_json::json!({"version":updates::VERSION,"available":updates::check(&data_dir)?}),
+            "download" => {
+                let manifest=updates::check(&data_dir)?.ok_or("Uygulama güncel; indirilecek yeni sürüm yok")?;
+                let path=updates::stage(&data_dir,&manifest,|_,_|{})?;
+                serde_json::json!({"version":manifest.version,"staged":path})
+            },
+            "verify" => serde_json::to_value(updates::verify_package(Path::new(&argument_value(&args,"--folder").ok_or("Paket klasörü eksik")?))?)?,
+            "apply" => {updates::request_apply(&data_dir,&updates::pending(&data_dir)?.ok_or("Hazırlanmış güncelleme yok")?)?;serde_json::json!({"applying":true})},
+            "enable" | "disable" => {store.set_setting("auto_update_app",if command=="enable" {"true"}else{"false"})?;serde_json::json!({"automatic":command=="enable"})},
+            _ => return Err("Güncelleme komutu geçersiz".into()),
+        };
+        if let Some(output)=argument_value(&args,"--output") {std::fs::write(output,serde_json::to_vec_pretty(&report)?)?;}
+        else {println!("{}",serde_json::to_string_pretty(&report)?);}
+        return Ok(());
+    }
+    let auto_update_app = store.setting("auto_update_app")?.as_deref() != Some("false");
+    let mut update_status = updates::status(&data_dir);
+    let normal_start = !args.iter().skip(1).any(|arg| arg.starts_with("--") && arg != "--data-dir");
+    if auto_update_app && normal_start {
+        if let Ok(Some(staged)) = updates::pending(&data_dir) {
+            match updates::request_apply(&data_dir, &staged) {
+                Ok(()) => return Ok(()),
+                Err(error) => update_status = format!("Güncelleme uygulanamadı: {error}"),
+            }
+        }
+    }
     if let Some(source) = argument_value(&args, "--sync-account") {
         let source = Source::parse(&source)?;
         let (games, covers) = match source {
@@ -377,7 +407,6 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         store.set_tracking_executable(&id, Path::new(&executable))?;
     }
     let bridge_enabled = store.setting("bridge_enabled")?.as_deref() == Some("true");
-    let auto_update_app = store.setting("auto_update_app")?.as_deref() == Some("true");
     let ui = LibraryWindow::new()?;
     let covers = Rc::new(covers::Controller::start(ui.as_weak()));
     let cover_view = covers.clone();
@@ -414,6 +443,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
     ui.set_bridge_enabled(bridge_enabled);
     ui.set_auto_update_app(auto_update_app);
+    ui.set_app_version(updates::VERSION.into());
+    ui.set_update_status(update_status.into());
+    ui.set_update_staged(updates::pending(&data_dir).ok().flatten().is_some());
     let bridge_preferences = bridge_install::preferences(&data_dir).unwrap_or_else(|_| bridge_install::Preferences { auto_update: false, ..Default::default() });
     ui.set_discord_branch(match bridge_preferences.branch.as_str() { "ptb"=>1,"canary"=>2,_=>0 });
     ui.set_bridge_auto_update(bridge_preferences.auto_update);
@@ -427,6 +459,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     );
     let tray = LibraryTray::new()?;
     let about = AboutWindow::new()?;
+    about.set_app_version(updates::VERSION.into());
     let state = Arc::new(worker::State {
         attachments: std::sync::Mutex::new(None),
         scanning: AtomicBool::new(false),
@@ -903,6 +936,18 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             _ => return Err("Köprü arayüz örneği geçersiz".into()),
         }
     }
+    if argument_value(&args,"--screenshot").is_some() {
+        if let Some(fixture)=argument_value(&args,"--update-ui-fixture") {
+            ui.set_notice("Görsel doğrulama · örnek güncelleme durumu".into());
+            match fixture.as_str() {
+                "available"=>{ui.set_update_available(true);ui.set_update_status("0.3.0 sürümü hazır. İndirerek güncelleyebilirsin.".into());},
+                "staged"=>{ui.set_update_staged(true);ui.set_update_status("0.3.0 indirildi ve doğrulandı. Sonraki açılışta kurulmaya hazır.".into());},
+                "downloading"=>{ui.set_integration_busy(true);ui.set_update_status("0.3.0 indiriliyor… %42 · 8.4 / 20.0 MB".into());},
+                "error"=>ui.set_update_status("Güncelleme kontrol edilemedi: GitHub'a bağlanılamadı. İnternet bağlantını kontrol edip Kontrol et ile yeniden dene.".into()),
+                _=>return Err("Güncelleme arayüz örneği geçersiz".into()),
+            }
+        }
+    }
     if let Some(output) = argument_value(&args, "--screenshot") {
         if let Some(section) = argument_value(&args, "--section") {
             ui.set_section(section.parse()?);
@@ -1002,6 +1047,7 @@ fn main() {
                 || argument == "--interface-validation-report"
                 || argument == "--cover-validation-report"
                 || argument == "--apply-update"
+                || argument == "--update-command"
                 || argument == "--add-manual"
                 || argument == "--launch-test"
                 || argument == "--startup-report"

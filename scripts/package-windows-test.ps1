@@ -6,6 +6,7 @@ param(
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+$version = ([regex]::Match([IO.File]::ReadAllText((Join-Path $repo 'apps/native/Cargo.toml')), '(?m)^version = "([^"]+)"')).Groups[1].Value
 $Executable = (Resolve-Path -LiteralPath $Executable).Path
 $OutputDirectory = [IO.Path]::GetFullPath($OutputDirectory)
 if (& git -C $repo status --porcelain) { throw 'Commit the source before packaging a matching source archive.' }
@@ -30,12 +31,16 @@ Copy-Item -LiteralPath $Executable -Destination (Join-Path $package 'game-librar
 $instructions = @'
 GAME LIBRARY - WINDOWS x64
 
-1. ZIP'in tamamını bir klasöre çıkartıp game-library-native.exe'yi aç.
+1. ZIP'in tamamını yazma iznin olan bir klasöre çıkartıp game-library-native.exe'yi aç.
 2. İlk kurulum için Discord'dan tepsi menüsündeki Çıkış ile tamamen çık.
 3. Ayarlar > Discord bağlantısı bölümünde kullandığın Discord sürümünü seç.
 4. Köprüyü kur / güncelle düğmesine bas. Sonra Discord'u yeniden aç.
 
 Dosyaları elle kopyalaman veya bir geliştirme aracı kurman gerekmez.
+Uygulama yeni kararlı sürümleri GitHub Releases üzerinden otomatik indirir.
+İndirilen güncelleme sonraki açılışta kurulur. Ayarlar > Genel bölümünden
+Yeniden başlat ve güncelle ile hemen kurabilir veya otomatik güncellemeyi kapatabilirsin.
+İmza ve SHA-256 doğrulanır. Açılış testi başarısızsa uygulama ve kütüphane geri alınır.
 İlk kurulum/onarımda resmi Vencord kurucusu internetten doğrulanarak alınır.
 Köprü dosyaları uygulamanın içinde hazırdır; normal güncelleme internetsiz de çalışır.
 
@@ -86,7 +91,7 @@ $commit = (& git -C $repo rev-parse HEAD)
 Get-ChildItem -LiteralPath $package -Recurse -File | Sort-Object FullName | ForEach-Object {
     '{0} *{1}' -f (Get-FileHash -LiteralPath $_.FullName).Hash.ToLowerInvariant(), [IO.Path]::GetRelativePath($package,$_.FullName).Replace('\','/')
 } | Set-Content -LiteralPath (Join-Path $package 'SHA256SUMS.txt') -Encoding utf8
-$zip = Join-Path $OutputDirectory ('GameLibrary-Windows-x64-' + $manifest.build + '-auto.zip')
+$zip = Join-Path $OutputDirectory ('GameLibrary-Windows-x64-' + $version + '.zip')
 Compress-Archive -LiteralPath $package -DestinationPath $zip -CompressionLevel Optimal
 [ordered]@{path=$zip;sha256=(Get-FileHash -LiteralPath $zip).Hash;bytes=(Get-Item -LiteralPath $zip).Length;commit=$commit;bridgeBuild=$manifest.build} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $OutputDirectory 'package.json') -Encoding utf8
 Write-Output $zip

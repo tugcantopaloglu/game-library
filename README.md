@@ -6,6 +6,8 @@ Bilgisayardaki oyunları tek yerde toplayan, yerel verilerle çalışan masaüst
 
 ## Proje durumu
 
+Uygulama yeni kararlı sürümleri **GitHub Releases üzerinden otomatik indirip sonraki açılışta kurar**. Ayarlar → Genel bölümünden hemen güncellenebilir. Ed25519 imzası ve SHA-256 doğrulanır; açılamayan sürümde executable ve kütüphane geri alınır. [İlk geçiş, release akışı ve doğrulama](docs/otomatik-uygulama-guncellemesi.md).
+
 Discord köprüsü uygulamanın içinde hazır gelir. **Ayarlar → Discord bağlantısı → Köprüyü kur / güncelle** dosyaları yedekleyip kurar; kullanıcı bilgisayarında geliştirme aracı veya elle dosya kopyalama gerekmez. İlk kurulumdan sonra yeni uygulamayla gelen köprü otomatik güncellenebilir. [Kurulum, güncelleme ve doğrulama](docs/otomatik-kopru-kurulumu.md).
 
 15 Ekim 2026: sohbet açma hataları ve zaman aşımı artık aynı kişi için Tekrar dene yolunu açar. Kapaklar 480×720 / Lanczos3 kalitesi korunarak yalnız görünür satırlarda çözülür; 32 MiB önbellek ve arayüz aynı piksel tamponunu paylaşır. Sohbetin dar pencere düzeni, hata durumu ve küçük eylem hedefleri iyileştirildi. [Doğrulama kaydı](docs/duzeltmeler-20261014.md).

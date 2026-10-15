@@ -34,13 +34,21 @@ pub fn trusted_url(value: &str, hosts: &[&str]) -> Result<url::Url, String> {
 }
 
 pub fn download(url: &str, hosts: &[&str], limit: u64) -> Result<Vec<u8>, String> {
+    download_impl(url, hosts, limit, 45, |_, _| {})
+}
+
+pub fn download_progress(url: &str, hosts: &[&str], limit: u64, progress: impl FnMut(u64, u64)) -> Result<Vec<u8>, String> {
+    download_impl(url, hosts, limit, 180, progress)
+}
+
+fn download_impl(url: &str, hosts: &[&str], limit: u64, seconds: u64, mut progress: impl FnMut(u64, u64)) -> Result<Vec<u8>, String> {
     let mut url = trusted_url(url, hosts)?;
-    let client = agent(45);
+    let client = agent(seconds);
     let mut response = client
         .get(url.as_str())
         .header(
             "User-Agent",
-            "GameLibrary/0.1.0 (https://github.com/tugcantopaloglu/game-library)",
+            concat!("GameLibrary/", env!("CARGO_PKG_VERSION"), " (https://github.com/tugcantopaloglu/game-library)"),
         )
         .call()
         .map_err(|error| error.to_string())?;
@@ -63,7 +71,7 @@ pub fn download(url: &str, hosts: &[&str], limit: u64) -> Result<Vec<u8>, String
             .get(url.as_str())
             .header(
                 "User-Agent",
-                "GameLibrary/0.1.0 (https://github.com/tugcantopaloglu/game-library)",
+                concat!("GameLibrary/", env!("CARGO_PKG_VERSION"), " (https://github.com/tugcantopaloglu/game-library)"),
             )
             .call()
             .map_err(|error| error.to_string())?;
@@ -72,15 +80,20 @@ pub fn download(url: &str, hosts: &[&str], limit: u64) -> Result<Vec<u8>, String
         return Err("İndirme tamamlanamadı".into());
     }
     let mut bytes = Vec::new();
-    response
-        .body_mut()
-        .as_reader()
-        .take(limit + 1)
-        .read_to_end(&mut bytes)
-        .map_err(|error| error.to_string())?;
-    if bytes.len() as u64 > limit {
-        return Err("İndirme boyut sınırını aşıyor".into());
+    let mut reader = response.body_mut().as_reader().take(limit + 1);
+    let mut buffer = [0u8; 64 * 1024];
+    let mut last_progress = std::time::Instant::now();
+    loop {
+        let read = reader.read(&mut buffer).map_err(|error| error.to_string())?;
+        if read == 0 { break; }
+        bytes.extend_from_slice(&buffer[..read]);
+        if bytes.len() as u64 > limit { return Err("İndirme boyut sınırını aşıyor".into()); }
+        if last_progress.elapsed() >= Duration::from_millis(250) {
+            progress(bytes.len() as u64, limit);
+            last_progress = std::time::Instant::now();
+        }
     }
+    progress(bytes.len() as u64, limit);
     Ok(bytes)
 }
 

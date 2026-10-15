@@ -161,7 +161,7 @@ pub enum NetworkResult {
     Cover(String, Result<PathBuf, String>),
     Search(String, Result<Vec<crate::media::CoverCandidate>, String>),
     BridgeInstall(Result<String, String>, Option<bool>),
-    Check(Result<crate::updates::UpdateManifest, String>),
+    Check(Result<Option<crate::updates::UpdateManifest>, String>),
     Stage(Result<PathBuf, String>),
     Owned(
         Source,
@@ -1286,9 +1286,13 @@ pub fn start(
                         let _ = network_ui.upgrade_in_event_loop(move |ui| ui.set_bridge_install_status(text.into()));
                     }).map(|report| report.message), enable_connection.then_some(true))
                 }
-                NetworkTask::Check => NetworkResult::Check(crate::updates::check()),
+                NetworkTask::Check => NetworkResult::Check(crate::updates::check(&network_data)),
                 NetworkTask::Stage(manifest) => {
-                    NetworkResult::Stage(crate::updates::stage(&network_data, &manifest))
+                    let version = manifest.version.clone();
+                    NetworkResult::Stage(crate::updates::stage(&network_data, &manifest, |downloaded,total| {
+                        let message = format!("{version} indiriliyor… %{} · {:.1} / {:.1} MB",downloaded*100/total.max(1),downloaded as f64/1_048_576.0,total as f64/1_048_576.0);
+                        let _ = network_ui.upgrade_in_event_loop(move |ui| ui.set_update_status(message.into()));
+                    }))
                 }
                 NetworkTask::Owned(source, id) => NetworkResult::Owned(
                     source,
@@ -1323,10 +1327,10 @@ pub fn start(
         let _ = store.recover_sessions();
         let mut bridge: Option<crate::bridge::Bridge> = None;
         let mut available_update = None;
-        let mut staged_update = None;
+        let mut staged_update = crate::updates::pending(&data_dir).ok().flatten();
         let mut auto_update_app =
-            store.setting("auto_update_app").ok().flatten().as_deref() == Some("true");
-        let mut next_update = std::time::Instant::now();
+            store.setting("auto_update_app").ok().flatten().as_deref() != Some("false");
+        let mut next_update = std::time::Instant::now() + crate::updates::check_delay(&data_dir).max(std::time::Duration::from_secs(10));
         match crate::bridge_install::automatic_update_needed(&data_dir) {
             Ok(Some(branch)) => { let _ = submit_bridge(&network, &ui, NetworkTask::InstallBridge(branch, false)); }
             Err(error) => { let _ = ui.upgrade_in_event_loop(move |ui| ui.set_bridge_install_status(error.into())); }
@@ -1353,7 +1357,7 @@ pub fn start(
                     NetworkTask::NetworkTools(NetworkToolTask::BackgroundUpdate),
                 );
             }
-            let command = if auto_update_app && std::time::Instant::now() >= next_update {
+            let command = if auto_update_app && staged_update.is_none() && std::time::Instant::now() >= next_update && !network.busy.load(Ordering::SeqCst) {
                 next_update =
                     std::time::Instant::now() + std::time::Duration::from_secs(24 * 60 * 60);
                 Command::UpdateCheck
@@ -1731,16 +1735,47 @@ pub fn start(
                             store.set_artwork_override(&id,Some(&cover.to_string_lossy())).map_err(|error|error.to_string())?;
                             publish(&store,&query,&state,&ui)?; detail_impl(&store,&id,&ui,true)
                         }),
-                        NetworkResult::Check(result) => result.and_then(|manifest| {
-                            let version = manifest.version.clone(); available_update = Some(manifest.clone());
-                            ui.upgrade_in_event_loop(move |ui| {ui.set_update_status(format!("{version} sürümü hazır. İmza doğrulandı.").into());ui.set_update_available(true);}).map_err(|error|error.to_string())?;
-                            if auto_update_app {submit(&network,&ui,NetworkTask::Stage(manifest))?;}
+                        NetworkResult::Check(result) => (|| {
+                            let manifest = match result {
+                                Ok(manifest) => manifest,
+                                Err(error) => {
+                                    next_update=std::time::Instant::now()+std::time::Duration::from_secs(15*60);
+                                    let message=format!("Güncelleme kontrol edilemedi: {error} Kontrol et ile yeniden dene.");
+                                    let _=ui.upgrade_in_event_loop(move |ui|ui.set_update_status(message.into()));
+                                    return Err(error);
+                                }
+                            };
+                            next_update=std::time::Instant::now()+std::time::Duration::from_secs(24*60*60);
+                            let Some(manifest)=manifest else {
+                                available_update=None;
+                                let staged=staged_update.is_some();
+                                return ui.upgrade_in_event_loop(move |ui| {ui.set_update_available(false);if !staged {ui.set_update_status(format!("Uygulama güncel · {}",crate::updates::VERSION).into());}}).map_err(|error|error.to_string());
+                            };
+                            if crate::updates::rejected(&data_dir,&manifest) {
+                                let message=crate::updates::status(&data_dir);
+                                let _=ui.upgrade_in_event_loop(move |ui|ui.set_update_status(format!("{message} Düzeltilmiş sürüm beklenecek.").into()));
+                                return Ok(());
+                            }
+                            let version=manifest.version.clone();
+                            available_update=Some(manifest.clone());
+                            let automatic=auto_update_app;
+                            ui.upgrade_in_event_loop(move |ui| {ui.set_update_status(if automatic {format!("{version} indirilmeye hazırlanıyor…")}else{format!("{version} sürümü hazır. İndirerek güncelleyebilirsin.")}.into());ui.set_update_available(true);}).map_err(|error|error.to_string())?;
+                            if automatic {submit(&network,&ui,NetworkTask::Stage(manifest))?;}
                             Ok(())
-                        }),
-                        NetworkResult::Stage(result) => result.and_then(|path| {
-                            staged_update = Some(path);
-                            ui.upgrade_in_event_loop(|ui|{ui.set_update_staged(true);ui.set_update_status("Güncelleme indirildi ve doğrulandı. Yeniden başlatınca uygulanabilir.".into());}).map_err(|error|error.to_string())
-                        }),
+                        })(),
+                        NetworkResult::Stage(result) => match result {
+                            Ok(path) => {
+                                staged_update = Some(path);
+                                ui.upgrade_in_event_loop(|ui|{ui.set_update_staged(true);ui.set_update_available(false);ui.set_update_status("Güncelleme indirildi ve doğrulandı. Sonraki açılışta kurulmaya hazır.".into());}).map_err(|error|error.to_string())
+                            },
+                            Err(error) => {
+                                let _=crate::updates::schedule_check(&data_dir,false);
+                                next_update=std::time::Instant::now()+std::time::Duration::from_secs(15*60);
+                                let message=format!("Güncelleme indirilemedi: {error} İndir ile yeniden dene.");
+                                let _=ui.upgrade_in_event_loop(move |ui|ui.set_update_status(message.into()));
+                                Err(error)
+                            }
+                        },
                     }
                 }
                 Command::Session(id, status, pid, finished) => store
@@ -2066,7 +2101,12 @@ pub fn start(
                     Ok(())
                 },
                 Command::BridgeAutoUpdate(enabled) => crate::bridge_install::set_auto_update(&data_dir, enabled),
-                Command::UpdateCheck => submit(&network, &ui, NetworkTask::Check),
+                Command::UpdateCheck => {
+                    let result=submit(&network, &ui, NetworkTask::Check);
+                    if result.is_ok() {let _=ui.upgrade_in_event_loop(|ui|ui.set_update_status("GitHub Releases kontrol ediliyor…".into()));}
+                    else {next_update=std::time::Instant::now()+std::time::Duration::from_secs(60);}
+                    result
+                },
                 Command::UpdateStage => available_update
                     .as_ref()
                     .ok_or_else(|| "Önce güncelleme kontrolü yap.".to_string())
@@ -2085,6 +2125,7 @@ pub fn start(
                     }),
                 Command::UpdatePreferences(app) => (|| {
                     auto_update_app = app;
+                    if app { next_update=std::time::Instant::now(); }
                     store
                         .set_setting("auto_update_app", if app { "true" } else { "false" })
                         .map_err(|error| error.to_string())?;
