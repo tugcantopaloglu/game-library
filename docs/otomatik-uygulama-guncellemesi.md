@@ -29,14 +29,14 @@ Bir defalık Ed25519 özel anahtarı depo dışında saklanır. Bu bilgisayardak
 GitHub Actions ekranından **Windows release → Run workflow** ile mevcut sürüm etiketi için başarısız yayın yeniden denenebilir. Tamamlanmış release'in üzerine yazılmaz. Yerel eşdeğeri, temiz commit ve derlenmiş executable varken:
 
 ```powershell
-pwsh -File scripts/build-release.ps1 -Tag v0.2.0 -PrivateKeyFile "$env:LOCALAPPDATA\GameLibrary\release-signing\update-private.pem"
+pwsh -File scripts/build-release.ps1 -Tag v0.2.1 -PrivateKeyFile "$env:LOCALAPPDATA\GameLibrary\release-signing\update-private.pem"
 ```
 
 Bu komut yalnızca imzalı/doğrulanmış paketi hazırlar. `-Publish` ayrıca mevcut Git etiketi ve GitHub yetkisiyle draft/yayın adımlarını çalıştırır. İmzalama betiği kullanılan özel anahtarın uygulamadaki açık anahtara uyduğunu denetler; yanlış anahtarla sessizce release üretmez.
 
 ## İlk geçiş ve kontroller
 
-0.1.0 deneme paketlerinde güven anahtarı derlenmemişti. Bu paketler kendilerini yeni sürüme taşıyamaz; 0.2.0 veya üzerindeki ilk paketi bir kez açmak gerekir. Kütüphane verileri aynı kullanıcı veri klasöründen alınır. Bundan sonraki sürümler için ZIP taşıma gerekmez.
+0.1.0 deneme paketlerinde güven anahtarı derlenmemişti. Bu paketler kendilerini yeni sürüme taşıyamaz; 0.2.1 veya üzerindeki ilk paketi bir kez açmak gerekir. Kütüphane verileri aynı kullanıcı veri klasöründen alınır. Bundan sonraki sürümler için ZIP taşıma gerekmez.
 
 ```powershell
 cargo test -p game-library-native -p library-core -p platform-windows --locked

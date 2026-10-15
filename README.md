@@ -51,7 +51,7 @@ Epic/Riot eklendikten sonra 2.004 kayıtla pencere 32,32 MiB / %0,199; doğrudan
 
 ## Çalıştırma
 
-Windows x64 geliştirme uygulaması: `target/release/game-library-native.exe`. Pencereyi kapatmak veya ⋯ menüsünden Tepsiye al seçmek pencereyi gizler; uygulamadan çıkmak için aynı menüdeki veya tepsi menüsündeki Çıkış kullanılır. Tepsi simgesine tıklamak kütüphaneyi yeniden açar. Paketleme ertelendi.
+Windows x64 uygulaması [GitHub Releases](https://github.com/tugcantopaloglu/game-library/releases/latest) üzerinden indirilebilir. Geliştirme derlemesi: `target/release/game-library-native.exe`. Pencereyi kapatmak veya ⋯ menüsünden Tepsiye al seçmek pencereyi gizler; uygulamadan çıkmak için aynı menüdeki veya tepsi menüsündeki Çıkış kullanılır. Tepsi simgesine tıklamak kütüphaneyi yeniden açar.
 
 Native uygulama için Rust MSVC ve C++ Build Tools yeterlidir:
 

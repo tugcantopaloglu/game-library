@@ -35,7 +35,7 @@ fn main() {
         println!("cargo:rerun-if-changed={}", path.display());
         let hash = format!(
             "{:x}",
-            Sha256::digest(std::fs::read(path).expect("Köprü kaynağı okunamadı"))
+            Sha256::digest(std::fs::read_to_string(path).expect("Köprü kaynağı okunamadı").replace("\r\n", "\n").as_bytes())
         );
         assert_eq!(
             Some(hash.as_str()),

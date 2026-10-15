@@ -70,7 +70,9 @@ if ($LASTEXITCODE -ne 0) { throw 'Vencord source archive failed.' }
 $sourceZip = [IO.Compression.ZipFile]::Open($bridgeSourceArchive, [IO.Compression.ZipArchiveMode]::Update)
 try {
     foreach ($pluginFile in Get-ChildItem -LiteralPath (Join-Path $repo 'integrations\vencord\gameLibraryBridge.desktop') -File) {
-        if ($pluginFile.Extension -eq '.ts' -and (Get-FileHash -LiteralPath $pluginFile.FullName).Hash.ToLowerInvariant() -ne $manifest.plugin_sources.($pluginFile.Name)) { throw 'Bridge source changed after the bundle was packaged.' }
+        $canonical = [Text.Encoding]::UTF8.GetBytes([IO.File]::ReadAllText($pluginFile.FullName).Replace("`r`n","`n"))
+        $sourceHash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($canonical)).ToLowerInvariant()
+        if ($pluginFile.Extension -eq '.ts' -and $sourceHash -ne $manifest.plugin_sources.($pluginFile.Name)) { throw 'Bridge source changed after the bundle was packaged.' }
         [IO.Compression.ZipFileExtensions]::CreateEntryFromFile($sourceZip, $pluginFile.FullName, ('src/userplugins/gameLibraryBridge.desktop/' + $pluginFile.Name), [IO.Compression.CompressionLevel]::Optimal) | Out-Null
     }
     $entry = $sourceZip.CreateEntry('BUILD-GAMELIBRARY.txt')

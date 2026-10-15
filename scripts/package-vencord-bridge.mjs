@@ -17,9 +17,9 @@ const sha256 = bytes => createHash("sha256").update(bytes).digest("hex");
 const plugin = join(root, "integrations/vencord/gameLibraryBridge.desktop");
 const pluginSources = {};
 for (const name of (await readdir(plugin)).filter(name => name.endsWith(".ts")).sort()) {
-    const bytes = await readFile(join(plugin, name));
-    const builtSource = await readFile(join(checkout, "src/userplugins/gameLibraryBridge.desktop", name));
-    if (!bytes.equals(builtSource)) throw new Error(`Build uses a different plugin source: ${name}`);
+    const bytes = (await readFile(join(plugin, name),"utf8")).replace(/\r\n/g,"\n");
+    const builtSource = (await readFile(join(checkout, "src/userplugins/gameLibraryBridge.desktop", name),"utf8")).replace(/\r\n/g,"\n");
+    if (bytes !== builtSource) throw new Error(`Build uses a different plugin source: ${name}`);
     pluginSources[name] = sha256(bytes);
 }
 const index = await readFile(join(plugin, "index.ts"), "utf8");

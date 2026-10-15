@@ -13,6 +13,6 @@ if (!existsSync(privateFile)) {
 }
 const jwk = createPublicKey(readFileSync(privateFile)).export({ format: "jwk" });
 const publicKey = Buffer.from(jwk.x, "base64url").toString("base64") + "\n";
-if (existsSync(publicFile) && readFileSync(publicFile, "utf8") !== publicKey) throw new Error("Public key differs; refusing to rotate the trusted update key.");
+if (existsSync(publicFile) && readFileSync(publicFile, "utf8").trim() !== publicKey.trim()) throw new Error("Public key differs; refusing to rotate the trusted update key.");
 writeFileSync(publicFile, publicKey, { mode: 0o644 });
 console.log("Ed25519 release signing key ready. Private key contents are never printed.");
