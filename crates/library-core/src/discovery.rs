@@ -37,7 +37,16 @@ pub fn absolute_path(value: &str) -> Result<PathBuf> {
             "Kurulum yolu mutlak ve geçerli bir dosya yolu olmalı".into(),
         ));
     }
-    Ok(std::fs::canonicalize(&path).unwrap_or(path))
+    // Keep the same Windows long path when an install disappears. Metadata can
+    // contain an 8.3 alias in an existing parent (for example RUNNER~1); returning
+    // that raw alias after a disconnect would create a different game identity.
+    for ancestor in path.ancestors().take(128) {
+        if let Ok(canonical) = std::fs::canonicalize(ancestor) {
+            if ancestor == path { return Ok(canonical); }
+            if let Ok(suffix) = path.strip_prefix(ancestor) { return Ok(canonical.join(suffix)); }
+        }
+    }
+    Ok(path)
 }
 
 pub fn relative_executable(root: &Path, value: &str) -> Result<PathBuf> {

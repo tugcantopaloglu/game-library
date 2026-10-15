@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Existing stable version tag, for example v0.2.0'
+        description: 'Existing stable version tag, for example v0.2.2'
         required: true
         type: string
 permissions:
@@ -86,5 +86,6 @@ jobs:
           path: |
             artifacts/releases/*/verified.json
             artifacts/releases/*/startup.json
+            artifacts/releases/*/health.json
             artifacts/releases/*/package.json
           if-no-files-found: ignore

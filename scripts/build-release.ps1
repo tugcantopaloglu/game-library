@@ -31,11 +31,13 @@ $verified = Get-Content -LiteralPath (Join-Path $OutputDirectory 'verified.json'
 if ($verified.version -ne $version) { throw 'Verified package has a different version.' }
 # A real startup report binds the executable version to the signed manifest.
 $start.ArgumentList.Clear()
-foreach ($argument in @('--data-dir',(Join-Path $OutputDirectory 'startup-profile'),'--startup-report',(Join-Path $OutputDirectory 'startup.json'))) { $start.ArgumentList.Add($argument) }
+$healthToken = [Guid]::NewGuid().ToString('N')
+foreach ($argument in @('--data-dir',(Join-Path $OutputDirectory 'startup-profile'),'--startup-report',(Join-Path $OutputDirectory 'startup.json'),'--update-health-report',(Join-Path $OutputDirectory 'health.json'),'--update-health-token',$healthToken)) { $start.ArgumentList.Add($argument) }
 $child = [Diagnostics.Process]::Start($start)
 if (!$child.WaitForExit(60000) -or $child.ExitCode -ne 0) { throw 'Release UI startup failed.' }
 $startup = Get-Content -LiteralPath (Join-Path $OutputDirectory 'startup.json') -Raw | ConvertFrom-Json
-if (!$startup.ready -or $startup.version -ne $version) { throw 'Executable startup version differs from manifest.' }
+$health = Get-Content -LiteralPath (Join-Path $OutputDirectory 'health.json') -Raw | ConvertFrom-Json
+if (!$startup.rendered -or !$health.ready -or $health.version -ne $version -or $health.pid -ne $child.Id -or $health.token -ne $healthToken) { throw 'Executable startup health/version differs from manifest.' }
 if ($Publish) {
     $tagCommit = & git -C $repo rev-list -n 1 $Tag
     if ($LASTEXITCODE -ne 0 -or $tagCommit -ne (& git -C $repo rev-parse HEAD)) { throw 'Release tag must point to the exact packaged commit.' }
