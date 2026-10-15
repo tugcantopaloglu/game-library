@@ -232,3 +232,39 @@ test("empty, oversized, ill-formed and control-filled sends are rejected", () =>
     assert.equal(validContent("🦊".repeat(2000)),true);
     assert.equal(validContent("🦊".repeat(2001)),false);
 });
+
+
+test("history requests use a scoped before cursor, retain the viewport data and stop at the beginning", async () => {
+    let before;
+    const messages={ready:true,_array:Array.from({length:30},(_,i)=>row(`Recent ${i}`,{id:messageId(i+100)}))};
+    const provider=fixture({messages:()=>messages,fetch:(_channel,limit,cursor)=>{before=cursor;assert.equal(limit,30);messages._array=[row("Oldest",{id:messageId(10)}),...messages._array];}});
+    const controls=new ChatControls(); await controls.execute(provider,"chat_open",{userId:friend},now);
+    const state=controls.state(provider,now); assert.equal(state.canLoadOlder,true);
+    await controls.execute(provider,"chat_older",{userId:friend,channelId,accountId:account,revision:state.revision},now);
+    await Promise.resolve(); const loaded=controls.state(provider,now);
+    assert.equal(before,messageId(100));assert.equal(loaded.messages[0].content,"Oldest");assert.equal(loaded.messages.length,31);assert.equal(loaded.canLoadOlder,false);
+    await assert.rejects(controls.execute(provider,"chat_older",{userId:outsider},now),/değişti/);
+});
+
+test("late history and media never cross a closed conversation or account switch", async () => {
+    let finish; const messages={ready:true,_array:[row()]};
+    const provider=fixture({messages:()=>messages,fetch:()=>new Promise(resolve=>finish=resolve)});
+    const controls=new ChatControls();await controls.execute(provider,"chat_open",{userId:friend},now);
+    await controls.execute(provider,"chat_older",{},now);await controls.execute(provider,"chat_close",{},now);
+    finish(true);await Promise.resolve();assert.deepEqual(controls.state(provider,now).messages,[]);
+});
+
+test("attachments allow only matching Discord channel and attachment URLs with bounded previews", () => {
+    const id="523456789012345678", url=`https://cdn.discordapp.com/attachments/${channelId}/${id}/photo.png?ex=123&hm=abc`;
+    const attachments=[{id,url,filename:"photo.png",content_type:"image/png",size:512},{id,url:"https://example.com/photo.png",filename:"foreign"},{id,url:url.replace(channelId,outsider),filename:"other channel"},{id,url:url.replace("https:","http:"),filename:"http"}];
+    const messages=chatMessages(fixture({messages:()=>({_array:[row("",{attachments})]})}),channelId,friend,account,now);
+    assert.equal(messages[0].attachments.length,1);assert.equal(messages[0].attachments[0].image,true);assert.equal(messages[0].attachments[0].url,url);
+});
+
+test("Discord edits and deletions remain authoritative after loading history", async () => {
+    const messages={ready:true,_array:[row("Original")]};const provider=fixture({messages:()=>messages});
+    const controls=new ChatControls();await controls.execute(provider,"chat_open",{userId:friend},now);
+    assert.equal(controls.state(provider,now).messages[0].content,"Original");
+    messages._array[0].content="Edited";assert.equal(controls.state(provider,now).messages[0].content,"Edited");
+    messages._array=[];assert.deepEqual(controls.state(provider,now).messages,[]);
+});

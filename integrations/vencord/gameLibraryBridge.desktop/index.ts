@@ -7,7 +7,7 @@ import { BroadcastControls, BroadcastProvider, broadcastAdapter } from "./broadc
 import { ChatControls, ChatProvider, chatMessageAdapters, directMessageAdapter, discordFocusAdapter } from "./directMessage";
 import { findByCode, findByProps } from "@webpack";
 import { ApplicationStreamingStore, ChannelActionCreators, ChannelStore, GuildStore, MediaEngineStore, MessageActions, MessageStore, PermissionStore, PermissionsBits, PresenceStore, ReadStateStore, RelationshipStore, SelectedChannelStore, SpotifyStore, UserStore, VoiceStateStore } from "@webpack/common";
-import { avatarUrl, favoriteIds, lastMessageAt, validId, visibleFriends } from "./social";
+import { avatarUrl, favoriteIds, lastMessageAt, unreadCount, validId, visibleFriends } from "./social";
 import { SnapshotCache, StoreListeners, Section } from "./state";
 import { LiveStream, StreamControls, StreamProvider } from "./stream";
 import { currentStreamKey, mediaAdapter, qualityAdapter, startAdapter, stopAdapter } from "./streamAdapter";
@@ -35,7 +35,7 @@ let spotifyControls = new SpotifyControls();
 let broadcastControls = new BroadcastControls();
 let chatControls = new ChatControls();
 function chatProvider(): ChatProvider {
-    return {get account(){return UserStore.getCurrentUser()?.id;},friendIds:()=>RelationshipStore.getFriendIDs(),dmChannelId:id=>ChannelStore.getDMFromUserId(id),channel:id=>ChannelStore.getChannel(id),messages:id=>MessageStore.getMessages(id),openDm:directMessageAdapter(ChannelActionCreators),...chatMessageAdapters(MessageActions),selectedChannel:()=>SelectedChannelStore.getChannelId(),focus:actions().chatFocus};
+    return {get account(){return UserStore.getCurrentUser()?.id;},friendIds:()=>RelationshipStore.getFriendIDs(),dmChannelId:id=>ChannelStore.getDMFromUserId(id),channel:id=>ChannelStore.getChannel(id),messages:id=>MessageStore.getMessages(id),unread:id=>ReadStateStore.getUnreadCount?.(id) ?? 0,openDm:directMessageAdapter(ChannelActionCreators),...chatMessageAdapters(MessageActions),selectedChannel:()=>SelectedChannelStore.getChannelId(),focus:actions().chatFocus};
 }
 function broadcastProvider(): BroadcastProvider {
     return {get account(){return UserStore.getCurrentUser()?.id;},store:MediaEngineStore,selector:broadcastAdapter(actions().media)};
@@ -87,12 +87,12 @@ function friendSnapshot() {
     const recencyAvailable = typeof ChannelStore.getDMFromUserId === "function" && typeof ReadStateStore?.lastMessageId === "function";
     const recent = RelationshipStore.getFriendIDs().filter(id => validId(id) && (selected.length === 0 || selected.includes(id))).slice(0, 2000).map(id => {
         const channel = recencyAvailable ? ChannelStore.getDMFromUserId(id) : undefined;
-        return { id, lastMessageAt: channel ? lastMessageAt(ReadStateStore.lastMessageId(channel)) : null };
+        return { id, unread: channel ? unreadCount(ReadStateStore.getUnreadCount?.(channel)) : 0, lastMessageAt: channel ? lastMessageAt(ReadStateStore.lastMessageId(channel)) : null };
     });
-    const friends = visibleFriends(recent, favorites).map(({id, lastMessageAt}) => {
+    const friends = visibleFriends(recent, favorites).map(({id, lastMessageAt, unread}) => {
         const user = UserStore.getUser(id);
         const avatar = avatarUrl(id,user?.avatar,user?.discriminator);
-        return { id, lastMessageAt, avatarUrl:avatar, voiceChannel:voice.get(id) ?? "", name: (user?.globalName || user?.username || id).slice(0,64), status: PresenceStore.getStatus(id) || "unknown", activity: PresenceStore.getActivities(id).filter(activity=>activity.type===0).slice(0, 2).map(activity => activity.name).join(", ").slice(0,128) };
+        return { id, lastMessageAt, unread, avatarUrl:avatar, voiceChannel:voice.get(id) ?? "", name: (user?.globalName || user?.username || id).slice(0,64), status: PresenceStore.getStatus(id) || "unknown", activity: PresenceStore.getActivities(id).filter(activity=>activity.type===0).slice(0, 2).map(activity => activity.name).join(", ").slice(0,128) };
     });
     return { friends, accountId: UserStore.getCurrentUser()?.id, favoriteIds: favorites, recentConversations: recencyAvailable };
 }
@@ -132,7 +132,7 @@ function roomSnapshot() {
 function controlSnapshot() {
     const modules = actions();
     const streamControl = streamControls.state(streamProvider());
-    return { status: "Discord köprüsü bağlı", bridgeBuild: "20261014.2", result, voiceChannel: SelectedChannelStore.getVoiceChannelId(),
+    return { status: "Discord köprüsü bağlı", bridgeBuild: "20261015.1", result, voiceChannel: SelectedChannelStore.getVoiceChannelId(),
         diagnostics: {chatOpen:typeof chatProvider().openDm === "function",chatFetch:typeof chatProvider().fetch === "function",chatSend:typeof chatProvider().send === "function",streamStart:typeof modules.start === "function",streamStop:typeof modules.stop === "function",streamQuality:!!mediaAdapter(modules.media,modules.presets?.PRESET_CUSTOM),streamCapture:typeof DiscordNative?.desktopCapture?.getDesktopCaptureSources === "function"},
         muted: MediaEngineStore.isSelfMute(), deafened: MediaEngineStore.isSelfDeaf(),
         stream: streamControl.active ? {streamKey:streamControl.key} : null,
@@ -143,7 +143,7 @@ function controlSnapshot() {
             recent_conversations: typeof ChannelStore?.getDMFromUserId === "function" && typeof ReadStateStore?.lastMessageId === "function",
             favorite_friends: true, favorite_rooms: typeof PermissionStore?.can === "function", room_catalog: typeof ChannelStore?.getChannelIds === "function" && typeof PermissionStore?.can === "function",
             open_dm: typeof chatProvider().openDm === "function",
-            chat_open: typeof chatProvider().openDm === "function" || typeof ChannelStore?.getDMFromUserId === "function",chat_close:true,chat_refresh:typeof chatProvider().fetch === "function",chat_send:chatControls.state(chatProvider()).canSend,
+            chat_open: typeof chatProvider().openDm === "function" || typeof ChannelStore?.getDMFromUserId === "function",chat_close:true,chat_older:typeof chatProvider().fetch === "function",chat_refresh:typeof chatProvider().fetch === "function",chat_send:chatControls.state(chatProvider()).canSend,
             mute: typeof modules.voice?.toggleSelfMute === "function", deafen: typeof modules.voice?.toggleSelfDeaf === "function", join_voice: typeof modules.channel?.selectVoiceChannel === "function",
             stream_inspect: typeof ApplicationStreamingStore?.getCurrentUserActiveStream === "function",
             stream_stop: streamControl.canStop, stream_start: streamControl.canStart, stream_sources: streamControl.canSources, stream_source: streamControl.canSource, stream_quality: streamControl.canQuality, stream_fps: streamControl.canFps, stream_audio: streamControl.canAudio,
@@ -203,7 +203,7 @@ function bindStores() {
     let complete = true;
     const bindings: [any, Section[]][] = [
         [UserStore, ["friends", "rooms", "controls"]],
-        [RelationshipStore, ["friends", "controls"]], [PresenceStore, ["friends", "controls"]], [ReadStateStore, ["friends"]],
+        [RelationshipStore, ["friends", "controls"]], [PresenceStore, ["friends", "controls"]], [ReadStateStore, ["friends", "controls"]],
         [SpotifyStore, ["controls"]],
         [MessageStore, ["controls"]],
         [ChannelStore, ["friends", "rooms", "controls"]], [GuildStore, ["rooms"]],
@@ -243,7 +243,7 @@ async function command(message: any) {
         case "join_voice":
             if (!validId(id) || ![2,13].includes(ChannelStore.getChannel(id)?.type) || !PermissionStore.can(PermissionsBits.VIEW_CHANNEL, ChannelStore.getChannel(id)) || !PermissionStore.can(PermissionsBits.CONNECT, ChannelStore.getChannel(id))) throw new Error("Ses kanalı erişilemiyor");
             modules.channel.selectVoiceChannel(id); break;
-        case "open_dm": case "chat_open": case "chat_close": case "chat_refresh": case "chat_send":
+        case "open_dm": case "chat_open": case "chat_close": case "chat_refresh": case "chat_older": case "chat_send":
             await chatControls.execute(chatProvider(),message.action,message.data); break;
         case "stream_sources":
             if (typeof message.data?.open !== "boolean") throw new Error("Kaynak seçimi geçersiz");

@@ -22,7 +22,7 @@ Root provider bağlantıları:
 - `openDm`: `directMessageAdapter(ChannelActionCreators)`.
 - `fetch`, `send`: `chatMessageAdapters(MessageActions)`.
 
-Snapshot `chat={accountId,revision,userId,channelId,messages,loading,pending,canSend,sentNonce,canOpenDiscord,status}`. Mesajlar `{id,author,content,timestamp,own}` içerir. Hesap kimliği ve pozitif revision, kuyruğa alınmış komutların farklı oturum veya sohbeti etkilemesini önler. Yeni kanal açılırken userId seçilidir, channelId boş ve loading true olabilir. Bu durumda kesin scope ile `chat_close` kabul edilir.
+Snapshot `chat={accountId,revision,userId,channelId,messages,loading,historyLoading,canLoadOlder,unread,pending,canSend,sentNonce,canOpenDiscord,status}`. Mesajlar `{id,author,content,timestamp,own,attachments}` içerir. Hesap kimliği ve pozitif revision, kuyruğa alınmış komutların farklı oturum veya sohbeti etkilemesini önler. Yeni kanal açılırken userId seçilidir, channelId boş ve loading true olabilir. Bu durumda kesin scope ile `chat_close` kabul edilir.
 
 Komutlar `chat_open{userId,accountId?,revision?}`, `chat_close{accountId?,revision?,userId?,channelId?}`, `chat_refresh{accountId?,revision?,userId?,channelId?}`, `chat_send{userId,channelId,content,accountId?,revision?}`. Sağlanan scope alanları mevcut seçime tam eşleşmelidir. Native UI bu alanları her komuta eklemelidir.
 
@@ -30,7 +30,7 @@ Komutlar `chat_open{userId,accountId?,revision?}`, `chat_close{accountId?,revisi
 
 ## Okuma ve gönderim
 
-`MessageStore` yalnız seçilen, doğrulanan birebir kanal için okunur; son 100 yerel kayıt içinden en yeni 30 doğrulanmış mesaj alınır. Snapshot JSON'u 96 KiB ile sınırlandırılır, yazar adı 64 ve görünen mesaj metni 4000 karaktere kırpılır. Bilinmeyen alanlar, ekler, embed'ler ve tokenlar dışarı taşınmaz.
+`MessageStore` yalnız seçilen, doğrulanan birebir kanal için okunur; en yeni 30 doğrulanmış mesaj alınır. Önceki mesajlar düğmesi seçili kanalda `before` imleciyle 30 kayıt daha yükler. Görüşme en fazla 150 mesaj ve 96 KiB JSON tutar; hesap/kişi değişince bırakılır. Geçmiş başa eklenirken kaydırma konumu korunur. Snapshot JSON'u 96 KiB ile sınırlandırılır, yazar adı 64 ve görünen mesaj metni 4000 karaktere kırpılır. Bilinmeyen alanlar, embed'ler ve tokenlar dışarı taşınmaz. Mesaj başına en fazla dört ekin kimliği, adı, boyutu ve Discord CDN adresi gösterilir. URL seçili kanal ve ek kimliğine eşleşmelidir. HTTPS dışında veya başka alandaki adresler reddedilir.
 
 Gerektiğinde native `MessageActions.fetchMessages({channelId,limit:30,skipLocalFetch:true})` çağrılır. Bu, Discord'un kendi kimlik doğrulama ve yetki yolunu kullanır; Game Library ayrı bir REST tokenı almaz. Açma ve yükleme Promise'ları poll döngüsünü engellemez. Gecikmiş sonuç farklı sohbeti dolduramaz.
 
@@ -44,7 +44,7 @@ Promise'ın tamamlanması başarı sayılmaz. MessageStore'da aynı kanal, nonce
 
 ## Doğrulama ve kaynak
 
-`node --import ./scripts/bridge-test-loader.mjs --test scripts/bridge-chat.test.mjs` (Node.js 22.15+). 16 offline test; native argüman şekli, grup reddi, hesap/selection scope, bounded mesajlar, optimistic gönderim, nonce geri okuması, çift tıklama, zaman aşımı ve geç Promise sonuçları kapsanır. Strict TypeScript kontrolü geçti. Canlı sohbet/mesaj/fetch işlemi bu araştırmada yapılmadı.
+`node --import ./scripts/bridge-test-loader.mjs --test scripts/bridge-chat.test.mjs` (Node.js 22.15+). 22 offline test; native argüman şekli, grup reddi, hesap/selection scope, bounded mesajlar, optimistic gönderim, nonce geri okuması, çift tıklama, zaman aşımı ve geç Promise sonuçları kapsanır. Strict TypeScript kontrolü geçti. Canlı sohbet/mesaj/fetch işlemi bu araştırmada yapılmadı.
 
 - [Discord'un herkese açık istemci kaynağı](https://discord.com/assets/web.b19183c9af96925c.js): kanal modülü 308528, kanal seçimi 730852, native pencere wrapper'ı 19575, MessageActions fetch/send sözleşmesi.
 - [Vencord eski openPrivateChannel yardımcısı](https://github.com/Vendicated/Vencord/blob/main/src/utils/discord.tsx)
@@ -52,3 +52,13 @@ Promise'ın tamamlanması başarı sayılmaz. MessageStore'da aynı kanal, nonce
 - [Vencord MessageStore türleri](https://github.com/Vendicated/Vencord/blob/main/packages/discord-types/src/stores/MessageStore.d.ts)
 
 Snyk `snyk_code_scan` aracı bu oturumun araç kataloğunda bulunmadığından tarama çalıştırılamadı. Yerel testler bu taramanın yerine geçmez.
+
+## 15 Ekim — geçmiş, okunmamış mesajlar ve ekler
+
+`chat_older` normal yenilemeyle aynı hesap, kişi, kanal ve revision kontrolünden geçer. Tek seferde tek yükleme çalışır; başarısızlık sonrasında yeniden denemek mümkündür. Discord'un `fetchMessages({channelId,before,limit:30,skipLocalFetch:true})` sözleşmesi yerel istemci kaynağından doğrulandı. `ReadStateStore.getUnreadCount()` kişi satırında ve sabit sağ panelde rozet olarak gösterilir. Görüşmeyi açmak mesajları kendiliğinden okunmuş olarak işaretlemez.
+
+PNG/JPEG ekler 8 MiB, 4096×4096 ve 64 MiB decode sınırıyla ayrı işçide çözülür; 640×360 önizleme üretilir. Yalnız seçili görüşmenin son altı eki istenir, kuyruk sekiz, önbellek en fazla 16 önizlemedir (yaklaşık 14,1 MiB RGBA). Hesap değişiminde önbellek temizlenir; eski hesapta başlamış indirme yeni hesapta yayımlanmaz. Başarısız önizlemede dosya açma düğmesi kalır. Dosya açılırken canlı snapshot'taki mesaj/ek eşleşmesi yeniden doğrulanır. Ekler diskte sohbet arşivi olarak saklanmaz. Dosya yükleme/gönderme bu sürümde Discord penceresinden yapılır.
+
+`--chat-media-fixture` gerçek mesaj veya hesap kullanmadan görsel/dosya satırlarını gösterir. Bu fixture ve offline testler canlı hesapta uçtan uca gönderim testi değildir.
+
+Geçmiş görünümünde Discord MessageStore düzenleme ve silmelerin kaynağıdır; silinen mesaj metni ayrı bir geçmiş haritasında tutulmaz. Yeni geçmiş/ek alanları için köprü derlemesi `20261015.1` hazırlanmalıdır.

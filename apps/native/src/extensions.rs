@@ -64,7 +64,7 @@ pub struct Manifest {
     #[serde(default)]
     pub permissions: Vec<String>,
 }
-#[derive(Default, Deserialize, Serialize)]
+#[derive(Clone, Default, Deserialize, Serialize)]
 pub struct Preferences {
     pub enabled: bool,
     pub roots: Vec<PathBuf>,
@@ -76,7 +76,7 @@ pub struct Extension {
 }
 
 fn valid_id(id: &str) -> bool {
-    !id.is_empty()
+    id.as_bytes().first().is_some_and(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit())
         && id.len() <= 64
         && id.bytes().all(|byte| {
             byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'-' | b'.')
@@ -224,9 +224,9 @@ pub fn add_root(data: &Path, id: &str, root: &Path) -> Result<(), String> {
 }
 pub fn install(data: &Path, source: &Path) -> Result<String, String> {
     let extension = load(source)?;
-    let destination = data.join("extensions").join(&extension.manifest.id);
+    let destination = owned_path(&data.join("extensions"), &extension.manifest.id)?;
     if destination.exists() {
-        return Err("Bu eklenti zaten kurulu. Yeni sürüm için önce kaldır.".into());
+        return Err("Bu eklenti zaten kurulu. Sürüm yükseltmek için Güncelle kullan.".into());
     }
     std::fs::create_dir_all(data.join("extensions")).map_err(|error| error.to_string())?;
     if std::fs::read_dir(data.join("extensions"))
@@ -236,6 +236,35 @@ pub fn install(data: &Path, source: &Path) -> Result<String, String> {
     {
         return Err("En fazla 64 eklenti kurulabilir".into());
     }
+    copy_package(&extension, &destination, Preferences::default())?;
+    Ok(extension.manifest.id)
+}
+
+// Only immediate children of a canonical, host-owned directory may be replaced.
+fn owned_path(root: &Path, name: &str) -> Result<PathBuf, String> {
+    if name.is_empty() || Path::new(name).components().any(|part| !matches!(part, Component::Normal(_))) {
+        return Err("Eklenti paket yolu geçersiz".into());
+    }
+    std::fs::create_dir_all(root).map_err(|error| error.to_string())?;
+    use std::os::windows::fs::MetadataExt;
+    if root.symlink_metadata().map_err(|error| error.to_string())?.file_attributes() & 0x400 != 0 { return Err("Eklenti ana klasörü junction olamaz".into()); }
+    let root = root.canonicalize().map_err(|error| error.to_string())?;
+    let path = root.join(name);
+    if path.exists() {
+        use std::os::windows::fs::MetadataExt;
+        let metadata = path.symlink_metadata().map_err(|error| error.to_string())?;
+        if metadata.file_attributes() & 0x400 != 0 || path.canonicalize().map_err(|error| error.to_string())?.parent() != Some(root.as_path()) {
+            return Err("Eklenti paket yolu sahipliği doğrulanamadı".into());
+        }
+    }
+    Ok(path)
+}
+fn remove_owned(root: &Path, name: &str) -> Result<(), String> {
+    let path = owned_path(root, name)?;
+    if path.exists() { std::fs::remove_dir_all(path).map_err(|error| error.to_string())?; }
+    Ok(())
+}
+fn copy_package(extension: &Extension, destination: &Path, preferences: Preferences) -> Result<(), String> {
     let mut files = vec![];
     let mut pending = vec![extension.directory.clone()];
     let mut size = 0u64;
@@ -266,8 +295,8 @@ pub fn install(data: &Path, source: &Path) -> Result<String, String> {
             }
         }
     }
+    std::fs::create_dir(destination).map_err(|error| error.to_string())?;
     let result = (|| {
-        std::fs::create_dir(&destination).map_err(|error| error.to_string())?;
         for file in files {
             let relative = file
                 .strip_prefix(&extension.directory)
@@ -280,15 +309,74 @@ pub fn install(data: &Path, source: &Path) -> Result<String, String> {
                 .map_err(|error| error.to_string())?;
             std::fs::copy(&file, &target).map_err(|error| error.to_string())?;
         }
-        let mut installed = load(&destination)?;
-        installed.preferences = Preferences::default();
-        save(&installed)?;
-        Ok(extension.manifest.id.clone())
+        let mut installed = load(destination)?;
+        installed.preferences = preferences;
+        save(&installed)
     })();
     if result.is_err() {
-        let _ = std::fs::remove_dir_all(&destination);
+        if let (Some(root), Some(name)) = (destination.parent(), destination.file_name().and_then(|name| name.to_str())) {
+            let _ = remove_owned(root, name);
+        }
     }
     result
+}
+
+pub fn previous_version(data: &Path, id: &str) -> Option<String> {
+    if !valid_id(id) { return None; }
+    let path = owned_path(&data.join("extension-backups"), id).ok()?;
+    let extension = load(&path).ok()?;
+    (extension.manifest.id == id).then_some(extension.manifest.version)
+}
+
+/// Local packages are staged and validated before the working installation moves.
+pub fn update(data: &Path, id: &str, source: &Path) -> Result<String, String> {
+    let current = get(data, id)?;
+    let next = load(source)?;
+    if next.manifest.id != id || semver::Version::parse(&next.manifest.version).map_err(|error| error.to_string())? <= semver::Version::parse(&current.manifest.version).map_err(|error| error.to_string())? {
+        return Err("Aynı kimliğe sahip daha yeni bir eklenti sürümü seç".into());
+    }
+    let root = data.join("extensions");
+    let backups = data.join("extension-backups");
+    let installed = owned_path(&root, id)?;
+    let staged = owned_path(&root, &format!("_update-{id}"))?;
+    if staged.exists() { return Err("Önceki güncelleme paketi bulunuyor; eklenti klasörünü kontrol et".into()); }
+    let backup = owned_path(&backups, id)?;
+    let mut preferences = current.preferences.clone();
+    let new_access = next.manifest.permissions.iter().any(|item| !current.manifest.permissions.contains(item))
+        || next.manifest.capabilities.iter().any(|item| !current.manifest.capabilities.contains(item));
+    if new_access { preferences.enabled = false; }
+    copy_package(&next, &staged, preferences)?;
+    // Keep the older rollback until the new package is completely staged.
+    if let Err(error) = remove_owned(&backups, id) { let _ = remove_owned(&root, &format!("_update-{id}")); return Err(error); }
+    if let Err(error) = std::fs::rename(&installed, &backup) { let _ = remove_owned(&root, &format!("_update-{id}")); return Err(error.to_string()); }
+    if let Err(error) = std::fs::rename(&staged, &installed) {
+        std::fs::rename(&backup, &installed).map_err(|restore| format!("Güncelleme başarısız: {error}. Önceki paket {} konumunda: {restore}", backup.display()))?;
+        let _ = remove_owned(&root, &format!("_update-{id}"));
+        return Err(error.to_string());
+    }
+    Ok(format!("{} → {} güncellendi. {}", current.manifest.version, next.manifest.version, if new_access { "İzinler değişti; yeniden etkinleştirmeden önce izinleri incele." } else { "Ayarlar korundu; önceki sürüme dönebilirsin." }))
+}
+
+pub fn rollback(data: &Path, id: &str) -> Result<String, String> {
+    let current = get(data, id)?;
+    if previous_version(data, id).is_none() { return Err("Geri dönülebilecek sürüm yok".into()); }
+    let root = data.join("extensions");
+    let backup = owned_path(&data.join("extension-backups"), id)?;
+    let installed = owned_path(&root, id)?;
+    let temporary = owned_path(&root, &format!("_rollback-{id}"))?;
+    if temporary.exists() { return Err("Önceki sürüme dönüş tamamlanmamış".into()); }
+    // Preserve current root choices; do not silently enable permissions on rollback.
+    let mut previous = load(&backup)?;
+    previous.preferences = current.preferences;
+    if previous.manifest.permissions.iter().any(|item| !current.manifest.permissions.contains(item)) { previous.preferences.enabled = false; }
+    save(&previous)?;
+    std::fs::rename(&installed, &temporary).map_err(|error| error.to_string())?;
+    if let Err(error) = std::fs::rename(&backup, &installed) {
+        std::fs::rename(&temporary, &installed).map_err(|restore| format!("Geri dönüş başarısız: {error}; mevcut paket {} konumunda: {restore}", temporary.display()))?;
+        return Err(error.to_string());
+    }
+    remove_owned(&root, &format!("_rollback-{id}"))?;
+    Ok(format!("{} sürümüne dönüldü; ayarlar korundu.", previous.manifest.version))
 }
 pub fn remove(data: &Path, id: &str) -> Result<(), String> {
     let extension = get(data, id)?;
@@ -299,7 +387,8 @@ pub fn remove(data: &Path, id: &str) -> Result<(), String> {
     if extension.directory.parent() != Some(root.as_path()) {
         return Err("Eklenti silme yolu doğrulanamadı".into());
     }
-    std::fs::remove_dir_all(extension.directory).map_err(|error| error.to_string())
+    remove_owned(&data.join("extension-backups"), id)?;
+    remove_owned(&data.join("extensions"), id)
 }
 fn invoke(
     extension: &Extension,
@@ -469,58 +558,43 @@ pub fn run(data: &Path, id: &str, store: &mut Store) -> Result<String, String> {
             .apply_extension_games(id, &games)
             .map_err(|error| error.to_string())?;
     }
-    if extension
-        .manifest
-        .capabilities
-        .iter()
-        .any(|method| method == "metadata.lookup")
-    {
-        let page = store
-            .list_filtered("", "all", 0, 100, None, None)
-            .map_err(|error| error.to_string())?;
-        let targets:Vec<_>=page.games.iter().map(|game|json!({"id":game.id,"name":game.name,"source":game.source.as_str(),"sourceId":game.source_id})).collect();
-        let result = invoke(
-            &extension,
-            "metadata.lookup",
-            json!({"protocolVersion":1,"pluginId":id,"games":targets}),
-            Duration::from_secs(15),
-        )?;
-        let rows = result["metadata"]
-            .as_array()
-            .filter(|rows| rows.len() <= 100)
-            .ok_or("Eklenti metadata listesi geçersiz")?;
+    let mut metadata = (0, 0, 0);
+    if extension.manifest.capabilities.iter().any(|method| method == "metadata.lookup") {
+        metadata = metadata_pages(store, |params| invoke(&extension, "metadata.lookup", params, Duration::from_secs(15)), id)?;
+    }
+    Ok(format!("{} tamamlandı · {count} oyun · {} metadata kaydı / {} oyun, {} sayfa", extension.manifest.name, metadata.1, metadata.0, metadata.2))
+}
+
+fn metadata_pages(store: &mut Store, mut call: impl FnMut(Value) -> Result<Value, String>, id: &str) -> Result<(usize, usize, usize), String> {
+    let through = store.metadata_upper_bound().map_err(|error| error.to_string())?;
+    let mut after = String::new();
+    let (mut checked, mut updated, mut pages) = (0, 0, 0);
+    loop {
+        let games = store.metadata_page(&after, &through).map_err(|error| error.to_string())?;
+        if games.is_empty() { break; }
+        let targets: Vec<_> = games.iter().map(|game| json!({"id":game.id,"name":game.name,"source":game.source.as_str(),"sourceId":game.source_id})).collect();
+        let result = call(json!({"protocolVersion":1,"pluginId":id,"games":targets,"page":{"after":after,"limit":100}}))
+            .map_err(|error| format!("{checked} oyun / {pages} sayfa işlendi; kalan metadata tamamlanamadı: {error}"))?;
+        let rows = result["metadata"].as_array().filter(|rows| rows.len() <= games.len()).ok_or("Eklenti metadata sayfası geçersiz")?;
         let mut updates = vec![];
+        let mut seen = std::collections::HashSet::new();
         for row in rows {
-            let game = page
-                .games
-                .iter()
-                .find(|game| row["id"] == game.id)
-                .ok_or("Eklenti istenmeyen oyun metadata'sı gönderdi")?;
-            let url = row["artworkUrl"]
-                .as_str()
-                .ok_or("Eklenti kapak adresi eksik")?;
+            let game = games.iter().find(|game| row["id"] == game.id).ok_or("Eklenti istenmeyen oyun metadata'sı gönderdi")?;
+            if !seen.insert(game.id.as_str()) { return Err("Eklenti yinelenen metadata gönderdi".into()); }
+            let url = row["artworkUrl"].as_str().ok_or("Eklenti kapak adresi eksik")?;
             let parsed = url::Url::parse(url).map_err(|_| "Eklenti kapak adresi geçersiz")?;
-            if url.len() > 4096
-                || parsed.scheme() != "https"
-                || parsed.host_str().is_none()
-                || !parsed.username().is_empty()
-                || parsed.password().is_some()
-            {
+            if url.len() > 4096 || parsed.scheme() != "https" || parsed.host_str().is_none() || !parsed.username().is_empty() || parsed.password().is_some() {
                 return Err("Eklenti kapak adresi geçersiz".into());
             }
             updates.push((game.source, game.source_id.clone(), url.to_owned()));
         }
-        for (source, key, url) in updates {
-            store
-                .set_artwork_url(source, &key, &url)
-                .map_err(|error| error.to_string())?;
-        }
+        store.set_artwork_urls(&updates).map_err(|error| error.to_string())?;
+        after = games.last().unwrap().id.clone();
+        checked += games.len(); updated += updates.len(); pages += 1;
     }
-    Ok(format!(
-        "{} tamamlandı · {count} oyun",
-        extension.manifest.name
-    ))
+    Ok((checked, updated, pages))
 }
+
 pub fn create_example(directory: &Path) -> Result<(), String> {
     std::fs::create_dir(directory).map_err(|error| error.to_string())?;
     std::fs::copy(
@@ -579,6 +653,48 @@ mod tests {
         let mut extension = load(directory.path()).unwrap();
         extension.preferences.enabled = true;
         (directory, extension)
+    }
+    fn rewrite_manifest(directory: &Path, version: &str, permissions: Vec<&str>) {
+        let mut manifest = load(directory).unwrap().manifest;
+        manifest.version = version.into(); manifest.permissions = permissions.into_iter().map(String::from).collect();
+        std::fs::write(directory.join("extension.json"), serde_json::to_vec(&manifest).unwrap()).unwrap();
+    }
+    #[test]
+    fn updates_preserve_preferences_and_rollback_without_enabling_new_access() {
+        let (package, _) = fixture("exit /b 0");
+        let data=tempfile::tempdir().unwrap();
+        rewrite_manifest(package.path(),"1.0.0",vec!["filesystem.read"]);
+        install(data.path(),package.path()).unwrap();
+        add_root(data.path(),"fixture",package.path()).unwrap(); enable(data.path(),"fixture",true).unwrap();
+        rewrite_manifest(package.path(),"1.1.0",vec!["filesystem.read"]);
+        update(data.path(),"fixture",package.path()).unwrap();
+        let current=get(data.path(),"fixture").unwrap(); assert!(current.preferences.enabled); assert_eq!(current.preferences.roots.len(),1);
+        assert_eq!(previous_version(data.path(),"fixture").as_deref(),Some("1.0.0"));
+        assert!(update(data.path(),"fixture",package.path()).is_err());
+        rewrite_manifest(package.path(),"1.2.0",vec!["filesystem.read","network"]);
+        update(data.path(),"fixture",package.path()).unwrap(); assert!(!get(data.path(),"fixture").unwrap().preferences.enabled);
+        rollback(data.path(),"fixture").unwrap(); let current=get(data.path(),"fixture").unwrap();
+        assert_eq!(current.manifest.version,"1.1.0"); assert!(!current.preferences.enabled); assert_eq!(current.preferences.roots.len(),1);
+        assert!(previous_version(data.path(),"fixture").is_none());
+        assert!(!valid_id("..")); assert!(update(data.path(),"..",package.path()).is_err());
+    }
+    #[test]
+    fn metadata_covers_the_entire_library_and_rejects_a_bad_page_atomically() {
+        let directory=tempfile::tempdir().unwrap(); let mut store=Store::open(&directory.path().join("library.db")).unwrap();
+        let games:Vec<_>=(0..257).map(|index| Game {
+            id:format!("extension:fixture:{index:04}"), source:Source::Manual,source_id:format!("fixture:{index:04}"),name:format!("Game {index}"), app_id:0,
+            launch:LaunchTarget::Manual{executable:"C:/Games/game.exe".into(),args:vec![],working_dir:"C:/Games".into()},library_path:"extension://fixture".into(),install_path:"C:/Games".into(),installed:true,favorite:false,size_bytes:0.0,artwork_path:None
+        }).collect();
+        store.apply_extension_games("fixture",&games).unwrap();
+        store.set_favorite(&games[0].id,true).unwrap();
+        let result=metadata_pages(&mut store,|params| {
+            let rows=params["games"].as_array().unwrap(); assert!(rows.len()<=100);
+            Ok(json!({"metadata":rows.iter().map(|row|json!({"id":row["id"],"artworkUrl":"https://example.com/cover.png"})).collect::<Vec<_>>()}))
+        },"fixture").unwrap();
+        assert_eq!(result,(257,257,3)); assert!(store.game(&games[0].id).unwrap().favorite);
+        let before=store.setting("cover-url:manual:fixture:0000").unwrap();
+        assert!(metadata_pages(&mut store,|params|Ok(json!({"metadata":[{"id":params["games"][0]["id"],"artworkUrl":"https://example.com/new.png"},{"id":"unknown","artworkUrl":"https://example.com/no.png"}]})),"fixture").is_err());
+        assert_eq!(store.setting("cover-url:manual:fixture:0000").unwrap(),before);
     }
     #[test]
     fn process_responses_require_matching_protocol_and_identity() {

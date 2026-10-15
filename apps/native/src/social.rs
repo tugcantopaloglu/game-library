@@ -85,6 +85,8 @@ pub struct Friend {
     pub voice_channel: String,
     #[serde(default)]
     pub last_message_at: Option<u64>,
+    #[serde(default)]
+    pub unread: u32,
 }
 
 pub fn friends(snapshot: &Value, favorites: &[String], query: &Query, now_ms: u64) -> Vec<Friend> {
@@ -111,6 +113,7 @@ pub fn friends(snapshot: &Value, favorites: &[String], query: &Query, now_ms: u6
         })
         .collect();
     for friend in &mut friends {
+        friend.unread = friend.unread.min(999);
         friend.last_message_at = friend
             .last_message_at
             .filter(|at| *at >= 1_420_070_400_000 && *at <= now_ms.saturating_add(300_000));

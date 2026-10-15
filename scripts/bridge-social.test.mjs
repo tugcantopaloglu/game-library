@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { avatarUrl, favoriteIds, lastMessageAt, visibleFriends } from "../integrations/vencord/gameLibraryBridge.desktop/social.ts";
+import { avatarUrl, favoriteIds, lastMessageAt, unreadCount, visibleFriends } from "../integrations/vencord/gameLibraryBridge.desktop/social.ts";
 
 test("avatar URLs preserve custom images and both Discord default avatar schemes",()=>{
     const id="223456789012345678";
@@ -24,4 +24,11 @@ test("favorite inclusion precedes the limit and remaining friends are recent fir
     const rows = [{id:"123456789012345678",lastMessageAt:null}, {id:"223456789012345678",lastMessageAt:20}, {id:"323456789012345678",lastMessageAt:10}];
     assert.deepEqual(favoriteIds("bad,123456789012345678,123456789012345678"), ["123456789012345678"]);
     assert.deepEqual(visibleFriends(rows,["123456789012345678"],2).map(row=>row.id),["123456789012345678","223456789012345678"]);
+});
+
+test("unread badges reject unknown values and preserve counts through friend ordering",()=>{
+    for(const value of [undefined,null,NaN,Infinity,-1,1.5,"3"]) assert.equal(unreadCount(value),0);
+    assert.equal(unreadCount(1234),999);
+    const rows=visibleFriends([{id:"223456789012345678",lastMessageAt:12,unread:unreadCount(3)}],[]);
+    assert.equal(rows[0].unread,3);
 });

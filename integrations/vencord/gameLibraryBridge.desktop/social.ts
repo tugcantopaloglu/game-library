@@ -25,3 +25,7 @@ export function visibleFriends<T extends { id: string; lastMessageAt: number | n
     const favorite = new Set(favorites);
     return rows.sort((first, second) => Number(favorite.has(second.id)) - Number(favorite.has(first.id)) || (second.lastMessageAt ?? 0) - (first.lastMessageAt ?? 0) || first.id.localeCompare(second.id)).slice(0, limit);
 }
+
+export function unreadCount(value: unknown): number {
+    return typeof value === "number" && Number.isSafeInteger(value) && value > 0 ? Math.min(value,999) : 0;
+}

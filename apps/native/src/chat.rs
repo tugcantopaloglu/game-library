@@ -2,7 +2,7 @@ use serde_json::{json, Value};
 use std::collections::HashSet;
 
 const MAX_FRIENDS: usize = 200;
-const MAX_MESSAGES: usize = 30;
+const MAX_MESSAGES: usize = 150;
 const MAX_VIEW_BYTES: usize = 96 * 1024;
 const MAX_SEND_CHARS: usize = 2000;
 const MAX_SEND_BYTES: usize = 8000;
@@ -119,6 +119,23 @@ pub struct Message {
     /// Discord server milliseconds formatted in the user's current Istanbul UTC+3 offset.
     pub time: String,
     pub own: bool,
+    pub attachments: Vec<Attachment>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Attachment {
+    pub id: String,
+    pub name: String,
+    pub url: String,
+    pub size: u64,
+    pub image: bool,
+}
+
+pub fn attachment_url(value: &str, channel: &str, id: &str) -> bool {
+    valid_id(channel) && valid_id(id) && value.len() <= 2048 &&
+    url::Url::parse(value).is_ok_and(|url|
+        url.scheme() == "https" && matches!(url.host_str(), Some("cdn.discordapp.com" | "media.discordapp.net"))
+        && url.username().is_empty() && url.password().is_none() && url.port().is_none() && url.fragment().is_none() && url.path().starts_with(&format!("/attachments/{channel}/{id}/")))
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -129,6 +146,8 @@ pub struct View {
     pub status: String,
     pub messages: Vec<Message>,
     pub loading: bool,
+    pub can_load_older: bool,
+    pub history_loading: bool,
     pub pending: bool,
     pub can_send: bool,
     /// Only the backend's confirmed MessageStore nonce may clear a draft.
@@ -205,11 +224,10 @@ fn clock(timestamp: u64) -> String {
     format!("{:02}:{:02}", (minutes / 60 + 3) % 24, minutes % 60)
 }
 
-fn message(value: &Value, peer_name: &str) -> Option<Message> {
+fn message(value: &Value, peer_name: &str, channel: &str) -> Option<Message> {
     let id = value["id"].as_str().filter(|id| valid_id(id))?;
     let content = value["content"].as_str()?;
-    if content.is_empty()
-        || content.len() > MAX_RECEIVE_BYTES
+    if content.len() > MAX_RECEIVE_BYTES
         || content.chars().count() > MAX_RECEIVE_CHARS
         || !plain_text(content)
     {
@@ -229,12 +247,21 @@ fn message(value: &Value, peer_name: &str) -> Option<Message> {
     } else {
         author
     };
+    let attachments: Vec<_> = value["attachments"].as_array().into_iter().flatten().take(4).filter_map(|item| {
+        let id = item["id"].as_str()?;
+        let url = item["url"].as_str()?;
+        if !attachment_url(url, channel, id) { return None; }
+        let size = item["size"].as_u64().unwrap_or(0);
+        Some(Attachment { id: id.into(), url: url.into(), name: label(item["name"].as_str().unwrap_or("Dosya"), 128), size, image: item["image"] == true && size > 0 && size <= 8*1024*1024 })
+    }).collect();
+    if content.is_empty() && attachments.is_empty() { return None; }
     Some(Message {
         id: id.into(),
         author,
         content: content.into(),
         time: clock(timestamp),
         own,
+        attachments,
     })
 }
 
@@ -271,7 +298,7 @@ pub fn view(snapshot: &Value) -> View {
             .rev()
             .take(MAX_MESSAGES)
         {
-            let Some(message) = message(value, &name) else {
+            let Some(message) = message(value, &name, channel) else {
                 continue;
             };
             if !seen.insert(message.id.clone()) {
@@ -281,6 +308,7 @@ pub fn view(snapshot: &Value) -> View {
             let row_bytes = message.id.len()
                 + message.author.len()
                 + message.content.len()
+                + message.attachments.iter().map(|item| item.id.len() + item.name.len() + item.url.len() + 128).sum::<usize>()
                 + message.time.len()
                 + 64;
             if bytes.saturating_add(row_bytes) > MAX_VIEW_BYTES {
@@ -310,6 +338,8 @@ pub fn view(snapshot: &Value) -> View {
         messages,
         loading,
         pending,
+        can_load_older: session.chat["canLoadOlder"] == true && snapshot["capabilities"]["chat_older"] == true,
+        history_loading: session.chat["historyLoading"] == true,
         can_send: !channel.is_empty()
             && !loading
             && !pending
@@ -329,7 +359,7 @@ pub fn request(
 ) -> Result<Value, String> {
     if !matches!(
         action,
-        "chat_open" | "chat_close" | "chat_refresh" | "chat_send"
+        "chat_open" | "chat_close" | "chat_refresh" | "chat_older" | "chat_send"
     ) || snapshot["capabilities"][action] != true
     {
         return Err("Sohbet işlemi bu Discord sürümünde kullanılamıyor.".into());
@@ -364,7 +394,7 @@ pub fn request(
     if !valid_id(channel) || observed.loading || observed.pending {
         return Err("Sohbetin yüklenmesi veya bekleyen mesajın sonucu bekleniyor.".into());
     }
-    if action == "chat_refresh" {
+    if action == "chat_refresh" || action == "chat_older" {
         return Ok(
             json!({"userId":user,"channelId":channel,"accountId":session.account,"revision":session.revision}),
         );
@@ -384,6 +414,13 @@ pub fn request(
     )
 }
 
+pub fn attachment_request(snapshot: &Value, message_id: &str, attachment_id: &str) -> Result<String, String> {
+    let chat = view(snapshot);
+    chat.messages.iter().find(|message| message.id == message_id)
+        .and_then(|message| message.attachments.iter().find(|item| item.id == attachment_id))
+        .map(|item| item.url.clone()).ok_or_else(|| "Ek artık seçili görüşmede bulunmuyor. Sohbeti yenile.".into())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -400,6 +437,23 @@ mod tests {
                 "messages":[{"id":"523456789012345678","author":"Arkadaş","content":"Merhaba\nNasılsın?","timestamp":1_800_000_000_000_u64,"own":false}]}})
     }
 
+    #[test]
+    fn attachment_only_messages_are_scoped_and_foreign_urls_never_open() {
+        let mut snapshot=fixture();let id="623456789012345678";
+        let url=format!("https://cdn.discordapp.com/attachments/{CHANNEL}/{id}/photo.png?ex=123&hm=abc");
+        snapshot["chat"]["messages"][0]["content"]=json!("");
+        snapshot["chat"]["messages"][0]["attachments"]=json!([{"id":id,"name":"photo.png","url":url,"size":512,"image":true},{"id":id,"name":"foreign","url":"https://example.com/no.png"}]);
+        let chat=view(&snapshot);assert_eq!(chat.messages[0].attachments.len(),1);
+        assert_eq!(attachment_request(&snapshot,"523456789012345678",id).unwrap(),url);
+        snapshot["accountId"]=json!(OTHER);assert!(attachment_request(&snapshot,"523456789012345678",id).is_err());
+        for bad in [format!("http://cdn.discordapp.com/attachments/{CHANNEL}/{id}/a.png"),format!("https://cdn.discordapp.com.evil.test/attachments/{CHANNEL}/{id}/a.png"),format!("https://cdn.discordapp.com/attachments/{OTHER}/{id}/a.png")] {assert!(!attachment_url(&bad,CHANNEL,id));}
+    }
+    #[test]
+    fn older_requests_require_current_session_and_capability() {
+        let mut snapshot=fixture();snapshot["capabilities"]["chat_older"]=json!(true);
+        assert_eq!(request(&snapshot,"chat_older",PEER,CHANNEL,"").unwrap()["revision"],3);
+        snapshot["chat"]["loading"]=json!(true);assert!(request(&snapshot,"chat_older",PEER,CHANNEL,"").is_err());
+    }
     #[test]
     fn offline_and_account_mismatched_snapshots_clear_every_message_and_nonce() {
         let mut snapshot = fixture();
@@ -596,7 +650,8 @@ mod tests {
                 .map(|message| message.content.len()
                     + message.author.len()
                     + message.id.len()
-                    + message.time.len()
+                    + message.attachments.iter().map(|item| item.id.len() + item.name.len() + item.url.len() + 128).sum::<usize>()
+                + message.time.len()
                     + 64)
                 .sum::<usize>()
                 <= MAX_VIEW_BYTES
@@ -610,7 +665,7 @@ mod tests {
             (623_456_789_012_345_678_u64 + 39).to_string()
         );
         assert!(!format!("{observed:?}").contains("do-not-map"));
-        snapshot["chat"]["messages"] = json!((0..40_u64).map(|index| json!({"id":(623_456_789_012_345_678_u64+index).to_string(),"author":"A","content":"<b>Plain</b>","timestamp":1_800_000_000_000_u64,"own":false})).collect::<Vec<_>>());
+        snapshot["chat"]["messages"] = json!((0..200_u64).map(|index| json!({"id":(623_456_789_012_345_678_u64+index).to_string(),"author":"A","content":"<b>Plain</b>","timestamp":1_800_000_000_000_u64,"own":false})).collect::<Vec<_>>());
         let observed = view(&snapshot);
         assert_eq!(observed.messages.len(), MAX_MESSAGES);
         assert_eq!(observed.messages[0].content, "<b>Plain</b>");

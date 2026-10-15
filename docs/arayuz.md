@@ -62,3 +62,13 @@ Gerçek profilde 12 yerel kaydın 12 kapağı dosya olarak doğrulandı (Steam 8
 Kaynak commit, binary SHA-256, gerçek ekran boyutları ve kabul sınırları [doğrulama kaydında](../benchmarks/windows-native-metadata-and-ui-20261012.json).
 
 13 Ekim sadeleştirmesinde release derlendi; kütüphane ve örnek Discord verisiyle 1280×720 mantıksal boyutta iki görüntü incelendi. Yeni tasarım için tam test paketi ve kaynak ölçümü tekrarlanmadı. Canlı Discord kabulü önceki doğrulamadan ayrıdır. [Çalışma kaydı](kontrol-20261013.md).
+
+## 15 Ekim — denetimlerin yerleşimi ve klavye
+
+Sohbet açılışında yayın paneli kapanır; Yayın düğmesiyle gerektiğinde yeniden açılabilir. Önceki mesajlar ve görünür kayıt sınırı mesaj listesinin üstündedir. Gelen ekler mesajın içinde, görsel önizleme ve 40 px açma düğmesiyle gösterilir. Kişi satırındaki okunmamış mesaj sayısı, presence noktası ve ses kanalı metninden ayrıdır; sabit sağ panelde de gösterilir.
+
+Kütüphane, Discord ve Ayarlar için Ctrl+1/2/3; arama için Ctrl+F kullanılabilir. Tab/Shift+Tab gezinir, Enter/Boşluk denetimleri çalıştırır; Esc açık görüşmeyi veya oyun ayrıntısını kapatır. Oyun kartında F favoriyi, P kurulu oyunu başlatır. Favori yıldızı ayrı, adlandırılmış ve 40 px bir denetimdir. Arkadaş satırında odak çerçevesi ve okunmamış sayıyı içeren erişilebilir etiket vardır.
+
+Eklenti kartlarında günlük işlemler ile sürüm yönetimi ayrı satırlardadır. Güncelle yerel paket klasörünü seçer; Geri dön düğmesinin erişilebilir adı hedef sürümü belirtir. Önceki sürüm bilgisi ve tercihlerin korunacağı metin olarak gösterilir. Var olan Theme, Action ve Panel bileşenleri kullanılır; ikinci bir stil sistemi eklenmez.
+
+Dar pencerede ayar sekmeleri klavyeyle de kullanılabilen bölüm seçicisine dönüşür; sağdaki takip paneli ekranın dışına itilmez. Kısa pencerede sohbet aralıkları ve taslak yüksekliği azalır; Gönder satırı durum bildirimi açıkken de görünür kalır.

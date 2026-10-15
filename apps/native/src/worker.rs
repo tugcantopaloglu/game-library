@@ -35,6 +35,7 @@ pub struct CoverRequest {
 }
 type CoverQueue = mpsc::SyncSender<CoverRequest>;
 pub struct State {
+    pub attachments: std::sync::Mutex<Option<crate::attachments::Cache>>,
     pub scanning: AtomicBool,
     pub cancel_scan: AtomicBool,
     pub revision: AtomicU64,
@@ -76,6 +77,7 @@ pub enum Command {
     BridgeRefresh,
     BridgeAction(String, serde_json::Value),
     Chat(String, String, String, String),
+    ChatAttachment(String, String),
     SocialFilter(String, bool),
     FriendFavorite(String, bool),
     RoomFilter(i32, String),
@@ -212,8 +214,9 @@ fn publish_extensions(
         .into_iter()
         .filter_map(|entry| match entry {
             Ok(extension) => Some(crate::ExtensionTile {
-                id: extension.manifest.id.into(),
+                id: extension.manifest.id.clone().into(),
                 name: extension.manifest.name.into(),
+                previous_version: crate::extensions::previous_version(data, &extension.manifest.id).unwrap_or_default().into(),
                 version: extension.manifest.version.into(),
                 enabled: extension.preferences.enabled,
                 details: format!(
@@ -604,6 +607,9 @@ fn bridge_status(
         );
     }
     let avatar_cache = avatar_cache.clone();
+    let attachment_cache = state.attachments.lock().ok().and_then(|cache| cache.clone());
+    let attachment_scope = format!("{}:{}:{}", snapshot["accountId"].as_str().unwrap_or(""),snapshot["chat"]["channelId"].as_str().unwrap_or(""),snapshot["chat"]["revision"]);
+    if let Some(cache) = &attachment_cache { cache.account(&attachment_scope); }
     let room_favorites = snapshot["accountId"]
         .as_str()
         .and_then(|account| store.room_favorites(account).ok())
@@ -657,7 +663,13 @@ fn bridge_status(
             ui.set_chat_sent_nonce(chat.sent_nonce.into());
             ui.set_chat_draft("".into());
         }
+        ui.set_chat_can_load_older(selected && chat.can_load_older);
+        ui.set_chat_history_loading(selected && chat.history_loading);
         let messages = if selected { chat.messages } else { Vec::new() };
+        // Decode only a small tail of the selected conversation, never every friend's media.
+        if let Some(cache) = &attachment_cache {
+            for item in messages.iter().rev().flat_map(|message| &message.attachments).take(6) { cache.request(&attachment_scope,item); }
+        }
         ui.set_chat_messages(reconcile_model(
             ui.get_chat_messages(),
             messages
@@ -668,6 +680,11 @@ fn bridge_status(
                     content: message.content.into(),
                     time: message.time.into(),
                     own: message.own,
+                    attachments: Rc::new(VecModel::from(message.attachments.into_iter().map(|item| crate::AttachmentTile {
+                        id: item.id.into(), name: item.name.into(), detail: format!("{} KiB · Aç", item.size.div_ceil(1024)).into(),
+                        has_preview: attachment_cache.as_ref().and_then(|cache|cache.image(&item.url)).is_some(),
+                        preview: attachment_cache.as_ref().and_then(|cache|cache.image(&item.url)).unwrap_or_default(),
+                    }).collect::<Vec<_>>())).into(),
                 })
                 .collect::<Vec<_>>(),
         ));
@@ -775,7 +792,7 @@ fn bridge_status(
             .into(),
         );
         ui.set_stream_pending(stream.pending);
-        ui.set_stream_result(if connected && snapshot["bridgeBuild"] != "20261014.2" {
+        ui.set_stream_result(if connected && !matches!(snapshot["bridgeBuild"].as_str(), Some("20261014.2" | "20261015.1")) {
             "Yayın kontrolleri için hazırlanan güncelleme bu Discord oturumunda henüz etkin değil.".into()
         } else { stream.result.into() });
         ui.set_can_stream_start(
@@ -918,6 +935,7 @@ fn bridge_status(
                 };
                 let activity = friend.activity.as_str();
                 SocialTile {
+                    unread: friend.unread as i32,
                     id: friend.id.as_str().into(),
                     name: name.into(),
                     subtitle: if activity.is_empty() {
@@ -983,6 +1001,7 @@ fn bridge_status(
                     _ => "Durum bilinmiyor",
                 };
                 SocialTile {
+                    unread: friend.unread as i32,
                     id: friend.id.as_str().into(),
                     name: friend.name.as_str().into(),
                     initial: friend.name.chars().next().unwrap_or('?').to_string().into(),
@@ -1081,6 +1100,7 @@ pub fn start(
         *queue = Some(cover_queue);
     }
     let avatars = crate::avatars::Cache::start(&data_dir, sender.clone());
+    *state.attachments.lock().unwrap() = Some(crate::attachments::Cache::start(sender.clone()));
     let cover_sender = sender.clone();
     let cover_data = data_dir.clone();
     std::thread::spawn(move || {
@@ -1345,6 +1365,8 @@ pub fn start(
                         5=>{if let Some(folder)=rfd::FileDialog::new().set_title("Eklentinin okuyacağı oyun klasörünü seç").pick_folder() {crate::extensions::add_root(&data_dir,&id,&folder)?;}},
                         6=>crate::extensions::remove(&data_dir,&id)?,
                         7=>{let folder=data_dir.join(format!("extension-example-{}",std::process::id()));crate::extensions::create_example(&folder)?;let result=crate::extensions::install(&data_dir,&folder);let _=std::fs::remove_dir_all(&folder);result?;},
+                        8=>{if let Some(folder)=rfd::FileDialog::new().set_title("Daha yeni eklenti paketini seç").pick_folder() {set_notice(&ui,crate::extensions::update(&data_dir,&id,&folder)?);}},
+                        9=>set_notice(&ui,crate::extensions::rollback(&data_dir,&id)?),
                         _=>return Err("Eklenti işlemi geçersiz".into()),
                     }
                     publish_extensions(&data_dir,&ui)
@@ -1956,6 +1978,11 @@ pub fn start(
                     bridge.command(&action, data)
                 })(
                 ),
+                Command::ChatAttachment(message, attachment) => (|| {
+                    let snapshot = bridge.as_ref().map(|bridge| bridge.snapshot()).unwrap_or_default();
+                    let url = crate::chat::attachment_request(&snapshot, &message, &attachment)?;
+                    open_target(&url).map_err(|error| error.to_string())
+                })(),
                 Command::Chat(action, user, channel, content) => {
                     let snapshot = bridge.as_ref().map(|bridge| bridge.snapshot()).unwrap_or_default();
                     if action == "chat_open" {

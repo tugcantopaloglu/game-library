@@ -1,7 +1,9 @@
 import { ScrollView, TextEdit } from "std-widgets.slint";
 import { Theme, Action, Field, Panel, Heading, Caption } from "design.slint";
 
+export struct AttachmentTile { id: string, name: string, detail: string, preview: image, has-preview: bool }
 export struct ChatMessageTile {
+    attachments: [AttachmentTile],
     id: string,
     author: string,
     content: string,
@@ -11,6 +13,7 @@ export struct ChatMessageTile {
 
 component MessageRow inherits Rectangle {
     in property <ChatMessageTile> message;
+    callback open-attachment(string,string);
     min-width: 0px;
     height: bubble.height + 10px;
     background: transparent;
@@ -20,10 +23,10 @@ component MessageRow inherits Rectangle {
     bubble := Panel {
         x: root.message.own ? max(32px, parent.width - self.width) : 0px;
         width: max(0px, min(800px, parent.width - 32px));
-        height: body.preferred-height + 51px;
+        height: bubble-content.preferred-height;
         background: root.message.own ? Theme.accent-surface : Theme.surface;
         clip: true;
-        VerticalLayout {
+        bubble-content := VerticalLayout {
             padding: 12px;
             spacing: 7px;
             HorizontalLayout {
@@ -50,7 +53,7 @@ component MessageRow inherits Rectangle {
                     accessible-label: "Mesaj zamanı " + root.message.time;
                 }
             }
-            body := Text {
+            if root.message.content != "": Text {
                 text: root.message.content;
                 min-width: 0px;
                 color: Theme.text;
@@ -59,6 +62,18 @@ component MessageRow inherits Rectangle {
                 overflow: elide;
                 max-lines: 40;
                 vertical-stretch: 0;
+            }
+            for attachment in root.message.attachments: VerticalLayout {
+                spacing: 6px;
+                if attachment.has-preview: Image {
+                    height: 180px; min-width: 0px; vertical-stretch: 0;
+                    source: attachment.preview; image-fit: contain;
+                    accessible-label: attachment.name + " görsel önizlemesi";
+                }
+                Action { text: attachment.name + " · " + attachment.detail; height: 40px; min-width: 0px; max-width: parent.width;
+                    accessible-label: attachment.name + " ekini tarayıcıda aç";
+                    clicked => { root.open-attachment(root.message.id,attachment.id); }
+                }
             }
         }
     }
@@ -71,6 +86,8 @@ export component Conversation inherits Rectangle {
     in property <[ChatMessageTile]> messages;
     in property <string> status;
     in property <bool> loading;
+    in property <bool> can-load-older;
+    in property <bool> history-loading;
     in property <bool> retry-available;
     in property <bool> pending;
     in property <bool> can-send;
@@ -78,10 +95,15 @@ export component Conversation inherits Rectangle {
     in-out property <string> draft;
     callback send(string);
     callback refresh();
+    callback older();
+    callback open-attachment(string,string);
     callback retry();
     callback close();
     callback open-discord();
 
+    in property <bool> compact;
+    private property <length> previous-height;
+    private property <bool> preserve-history;
     private property <string> accepted-draft;
     private property <bool> follow-latest: true;
     private property <bool> send-enabled: root.can-send && !root.pending && !root.loading
@@ -95,7 +117,7 @@ export component Conversation inherits Rectangle {
     changed messages => {
         if root.follow-latest { root.scroll-to-latest(); }
     }
-    changed conversation-id => { root.scroll-to-latest(); }
+    changed conversation-id => { root.preserve-history = false; root.scroll-to-latest(); }
     changed confirmed-nonce => { if root.confirmed-nonce != "" { root.scroll-to-latest(); } }
     changed draft => {
         if root.draft.character-count <= 2000 { root.accepted-draft = root.draft; }
@@ -113,11 +135,11 @@ export component Conversation inherits Rectangle {
     forward-focus: composer;
 
     VerticalLayout {
-        padding: 16px;
-        spacing: 12px;
+        padding: root.compact ? 12px : 16px;
+        spacing: root.compact ? 6px : 12px;
         VerticalLayout {
             vertical-stretch: 0;
-            spacing: 12px;
+            spacing: root.compact ? 6px : 12px;
             Heading {
                 text: root.friend-name;
                 min-width: 0px;
@@ -152,13 +174,20 @@ export component Conversation inherits Rectangle {
         Rectangle { height: 1px; vertical-stretch: 0; background: Theme.line; }
         if root.status != "": Caption {
             text: root.status;
-            max-lines: 3;
+            max-lines: root.compact && !root.retry-available ? 1 : 3;
             overflow: elide;
             accessible-label: "Sohbet durumu " + root.status;
             color: root.retry-available ? Theme.warning : Theme.muted;
         }
+        HorizontalLayout { vertical-stretch: 0; spacing: 10px;
+            Action { text: root.history-loading ? "Yükleniyor…" : "Önceki mesajlar";
+                height: 40px; accessible-label: "Önceki 30 mesajı yükle"; enabled: root.can-load-older && !root.loading && !root.pending;
+                clicked => { root.follow-latest = false; root.preserve-history = true; root.previous-height = history.content-height; root.older(); }
+            }
+            Caption { text: root.messages.length + " / 150 mesaj"; font-size: 11px; }
+        }
         Rectangle {
-            min-height: 100px;
+            min-height: root.compact ? 40px : 100px;
             min-width: 0px;
             vertical-stretch: 1;
             background: transparent;
@@ -172,7 +201,11 @@ export component Conversation inherits Rectangle {
                     root.follow-latest = self.content-y <= min(0px, self.visible-height - self.content-height) + 48px;
                 }
                 changed content-height => {
-                    if root.follow-latest { root.scroll-to-latest(); }
+                    if root.preserve-history {
+                        self.content-y = self.content-y - (self.content-height - root.previous-height);
+                        root.previous-height = self.content-height;
+                        if !root.history-loading { root.preserve-history = false; }
+                    } else if root.follow-latest { root.scroll-to-latest(); }
                 }
                 changed visible-height => { if root.follow-latest { root.scroll-to-latest(); } }
                 VerticalLayout {
@@ -181,6 +214,7 @@ export component Conversation inherits Rectangle {
                         width: history.visible-width;
                         vertical-stretch: 0;
                         message: message;
+                        open-attachment(message,attachment) => { root.open-attachment(message,attachment); }
                     }
                 }
             }
@@ -206,7 +240,7 @@ export component Conversation inherits Rectangle {
         Rectangle { height: 1px; vertical-stretch: 0; background: Theme.line; }
         composer := TextEdit {
             min-width: 0px;
-            height: root.retry-available ? 0px : 78px;
+            height: root.retry-available ? 0px : root.compact ? 54px : 78px;
             visible: !root.retry-available;
             vertical-stretch: 0;
             text <=> root.draft;

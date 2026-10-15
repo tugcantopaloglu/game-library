@@ -72,3 +72,19 @@ Kullanıcı kütüphanesi/Vencord sonrası release, 10.000 kapaklı fixture kayd
 | İkinci uygulama açılışı | Yeni süreç mevcut pencereyi öne getirip çıkar |
 
 Testler parser, kaynak eşleştirme, silinme koşulları, migration, launcher komutları ve kritik bağlantı durumlarını kapsayacak. Görsel stil ayrıntılarını tekrar eden testler yazılmayacak. Windows yaşam döngüsü ve gerçek launcher davranışı yalnızca tarayıcı testleriyle doğrulanmış sayılmayacak.
+
+## Kesintisiz native doğrulama (15 Ekim)
+
+Kullanıcının seçtiği uzun deneme süresi bir saattir. Son release ile ayrı örnek profilde `--stability-report <json> --stability-seconds 3600 --skip-initial-scan` çalıştırılır. Dakikalık süreç örnekleri ve UI iş parçacığına gönderilen üç saniye süreli yanıt denetimi birlikte raporlanır. `completed`, `interrupted` ve `uiResponsive` ayrı ölçütlerdir; yalnız süreç varlığından başarılı kabul üretilmez. Windows sistem uykusu yalnız bu deneme iş parçacığı yaşadığı sürece engellenir; ekranın açık kalması zorlanmaz. Normal uygulama açılışında bu davranış yoktur.
+
+`--interface-validation-report <json>` gerçek Slint `WindowEvent` yoluyla Ctrl+1/2/3/F, metin seçme/silme, Tab/Shift+Tab ve Esc denetimlerini çalıştırır; dış uygulamalara klavye olayı göndermez. Windows ekranlarını listeler, pencereyi her ekranın çalışma alanına taşır ve gerçek ölçek faktörünü kaydeder. Tek ekran veya aynı ölçekli ekranlar varsa `mixedDpiTransitionTested:false` korunur. `SLINT_SCALE_FACTOR` ile ayrı süreçlerde alınan %100/%125/%150/%200 görüntüler statik ölçek doğrulamasıdır; canlı DPI geçişi yerine sayılmaz.
+
+`--lifecycle-test` 50 tepsi/pencere döngüsünde gerçek `hide-window` akışını kullanır; bu nedenle görünürlük ve kapak piksel referanslarının bırakılması da çalışır. Sohbet görsel önizlemeleri ayrı kuyruk ve paylaşılan piksel tamponuyla, en fazla 16 adet 640×360 görsel tutar. Bu sınır kütüphane kapaklarının çözünürlüğünü değiştirmez.
+
+Bu denemenin çıktıları `artifacts/expansion-review-20261015/` altındadır. Tamamlanan kabulün özeti `acceptance-summary.json` dosyasındadır. Ayrı örnek profilde canlı Discord hesabı veya gerçek oyun başlatması kullanılmaz; bu deneme bunların uçtan uca kabulü değildir.
+
+### Bir saatlik son release sonucu
+
+Son release ile 3600,52 saniyelik kesintisiz boşta testi tamamlandı. 61 örnekte tek süreç kimliği korundu; kesinti ve UI yanıt hatası yok. Ortalama özel çalışma kümesi 26,34 MiB (aralık 26,13–26,53), ortalama private bytes 28,09 MiB, makine toplamına göre CPU %0,0013. En uzun UI yanıtı 0,33 ms; en büyük örnek aralığı 60,012 saniye.
+
+Tek süreç PID/oluşturulma kimliği, son executable SHA-256 eşleşmesi ve değişmeyen kaynak dosyaları ayrıca doğrulandı. Ana ve `game-library-native-next.exe` aynı dosyadır. Bu, örnek profilde pencere açık/boşta kabulüdür; canlı Discord yayını veya farklı DPI taşıması olarak sayılmaz.

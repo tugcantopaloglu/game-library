@@ -1,12 +1,12 @@
 import { TextEdit, CheckBox, ListView, ScrollView, ComboBox, AboutSlint, Palette } from "std-widgets.slint";
 import { Theme, Brand, Glyph, Action, Navigation, Field, Panel, Heading, Caption, Eyebrow, Metric, Tab, PersonRow, FriendRow } from "design.slint";
-import { Conversation, ChatMessageTile } from "chat.slint";
+import { Conversation, ChatMessageTile, AttachmentTile } from "chat.slint";
 export struct CollectionTile { id: int, name: string, count: int }
 export struct CoverTile { title: string, url: string }
 export struct MusicTile { user-id: string, name: string, title: string, artist: string, track-id: string, can-profile: bool, can-join: bool }
-export struct SocialTile { id: string, name: string, subtitle: string, initial: string, online: bool, favorite: bool, recent: string, avatar: image, has-avatar: bool, presence: string, voice: string, game: string }
+export struct SocialTile { id: string, name: string, subtitle: string, initial: string, online: bool, favorite: bool, recent: string, unread: int, avatar: image, has-avatar: bool, presence: string, voice: string, game: string }
 export struct RoomTile { id: string, name: string, subtitle: string, online: bool, favorite: bool, can-join: bool }
-export struct ExtensionTile { id: string, name: string, version: string, details: string, enabled: bool }
+export struct ExtensionTile { id: string, name: string, version: string, previous-version: string, details: string, enabled: bool }
 export struct GameTile { id: string, name: string, size: string, installed: bool, favorite: bool, artwork: image, has-artwork: bool, artwork-path: string, artwork-loaded: bool, source: string, status-label: string }
 component GameCard inherits Rectangle {
     in property <GameTile> game;
@@ -30,10 +30,11 @@ component GameCard inherits Rectangle {
             Rectangle { vertical-stretch: 1; background: transparent; }
         }
         poster-touch := TouchArea { enabled: game.id != ""; mouse-cursor: pointer; clicked => { card-focus.focus(); root.detail(game.id); } }
-        if game.favorite || poster-touch.has-hover || card-focus.has-focus: Rectangle {
-            x: parent.width - 42px; y: 10px; width: 32px; height: 32px; border-radius: 16px; background: #13141ae8;
-            Glyph { x: 8px; y: 8px; width: 16px; height: 16px; kind: 1; filled: game.favorite; ink: game.favorite ? Theme.accent : Theme.text; }
-            TouchArea { mouse-cursor: pointer; clicked => { root.favorite(game.id,!game.favorite); } }
+        if game.favorite || poster-touch.has-hover || card-focus.has-focus: Action {
+            x: parent.width - 46px; y: 6px; width: 40px; height: 40px; min-width: 40px; max-width: 40px;
+            text: ""; icon: 1; selected: game.favorite;
+            accessible-label: game.name + (game.favorite ? " favorilerden çıkar" : " favoriye ekle");
+            clicked => { root.favorite(game.id,!game.favorite); }
         }
         if !game.installed: Rectangle {
             x: 10px; y: parent.height - 32px; height: 22px; width: 90px; border-radius: 5px; background: #13141ae8;
@@ -55,7 +56,7 @@ component GameCard inherits Rectangle {
         MenuItem { title: "Ayrıntılar"; activated => { root.detail(game.id); } }
         MenuItem { title: game.favorite ? "Favorilerden çıkar" : "Favoriye ekle"; activated => { root.favorite(game.id,!game.favorite); } }
     } }
-    card-focus := FocusScope { enabled: game.id != ""; key-pressed(event) => { if event.text == "\n" || event.text == " " { root.detail(game.id); return accept; } if event.text == "p" && game.installed { root.launch(game.id); return accept; } if event.text == "f" { root.favorite(game.id,!game.favorite); return accept; } return reject; } }
+    card-focus := FocusScope { enabled: game.id != ""; key-pressed(event) => { if event.text == "\n" || event.text == " " { root.detail(game.id); return accept; } if event.text == "p" && !event.modifiers.control && game.installed { root.launch(game.id); return accept; } if event.text == "f" && !event.modifiers.control { root.favorite(game.id,!game.favorite); return accept; } return reject; } }
 }
 export component AboutWindow inherits Window {
     title: "Game Library hakkında";
@@ -91,7 +92,8 @@ export component LibraryWindow inherits Window {
     callback friends-panel-toggle(bool);
     private property <bool> compact-chat;
     changed width => { compact-chat = root.width < 1280px; }
-    changed height => { if chat-active && root.height < 850px { stream-panel = false; } }
+    private property <bool> compact-conversation: true;
+    changed height => { compact-conversation = root.height < 900px; if chat-active && root.height < 850px { stream-panel = false; } }
     in property <[ExtensionTile]> extensions;
     in property <string> extension-status: "Bir eklenti kur veya yerel oyun listesi örneğini ekle.";
     callback extension-action(int,string);
@@ -161,7 +163,7 @@ export component LibraryWindow inherits Window {
     in property <string> spotify-track-id;
     in property <[MusicTile]> music-friends;
     in-out property <bool> chat-active;
-    changed chat-active => { if chat-active && root.height < 850px { stream-panel = false; } }
+    changed chat-active => { if chat-active { stream-panel = false; } }
     in-out property <string> chat-user-id;
     in-out property <string> chat-channel-id;
     in-out property <string> chat-name;
@@ -171,6 +173,9 @@ export component LibraryWindow inherits Window {
     in-out property <bool> chat-loading;
     in property <bool> chat-retry;
     in property <bool> chat-pending;
+    in property <bool> chat-can-load-older;
+    in property <bool> chat-history-loading;
+    callback chat-attachment(string,string);
     in property <bool> chat-can-send;
     in property <bool> chat-can-open-discord;
     in-out property <string> chat-sent-nonce;
@@ -339,7 +344,7 @@ export component LibraryWindow inherits Window {
     callback update-preferences(bool);
     focus-idle => { idle-focus.focus(); }
     forward-focus: idle-focus;
-    idle-focus := FocusScope { width: 1px; height: 1px; key-pressed(event) => { if event.modifiers.control && event.text == "f" { if section >= 2 { section = 0; root.refresh(query,false,installed-only,0,source-index); } library-search.focus-input(); return accept; } if event.text == Key.Escape && section == 9 { root.return-to-library(); return accept; } return reject; } }
+    idle-focus := FocusScope { width: 1px; height: 1px; key-pressed(event) => { if event.modifiers.control { if event.text == "1" { section = 0; root.refresh(query,false,installed-only,0,source-index); return accept; } if event.text == "2" { section = 7; return accept; } if event.text == "3" { section = 8; return accept; } if event.text == "f" { if section >= 2 { section = 0; root.refresh(query,false,installed-only,0,source-index); } library-search.focus-input(); return accept; } } if event.text == Key.Escape { if section == 9 { root.return-to-library(); return accept; } if section == 7 && chat-active { if bridge-connected { root.chat-action("chat_close",chat-user-id,chat-channel-id,""); } chat-active = false; return accept; } } return reject; } }
 
 
     in property <string> detail-source;
@@ -368,9 +373,9 @@ export component LibraryWindow inherits Window {
         root.chat-action("chat_open",id,"","");
     }
     changed grid-columns => { if section < 2 { root.refresh(query,section == 1,installed-only,offset,source-index); } }
-    init => { Palette.color-scheme = ColorScheme.dark; }
+    init => { Palette.color-scheme = ColorScheme.dark; compact-conversation = root.height < 900px; }
     app-keys := FocusScope {
-        key-pressed(event) => { if event.modifiers.control && event.text == "f" { if section >= 2 { section = 0; root.refresh(query,false,installed-only,0,source-index); } library-search.focus-input(); return accept; } if event.text == Key.Escape && section == 9 { root.return-to-library(); return accept; } return reject; }
+        key-pressed(event) => { if event.modifiers.control { if event.text == "1" { section = 0; root.refresh(query,false,installed-only,0,source-index); return accept; } if event.text == "2" { section = 7; return accept; } if event.text == "3" { section = 8; return accept; } if event.text == "f" { if section >= 2 { section = 0; root.refresh(query,false,installed-only,0,source-index); } library-search.focus-input(); return accept; } } if event.text == Key.Escape { if section == 9 { root.return-to-library(); return accept; } if section == 7 && chat-active { if bridge-connected { root.chat-action("chat_close",chat-user-id,chat-channel-id,""); } chat-active = false; return accept; } } return reject; }
     HorizontalLayout { spacing: 0px;
         Rectangle { width: 184px; background: Theme.sidebar;
             Rectangle { x: parent.width - 1px; width: 1px; height: parent.height; background: Theme.line; }
@@ -436,7 +441,18 @@ export component LibraryWindow inherits Window {
                     Text { text: section == 0 ? (collection-id > 0 ? "Koleksiyon" : "Kütüphane") : section == 1 ? "Favoriler" : section == 6 ? "Koleksiyonlar" : section == 7 ? "Discord" : "Ayarlar"; color: Theme.text; font-size: 22px; font-weight: 600; vertical-stretch: 0; }
                     if section < 2: Caption { text: matched + " oyun"; font-size: 11px; }
                 }
-                if section == 8 || section == 2 || (section >= 3 && section <= 5) || section >= 10: HorizontalLayout { spacing: 8px;
+                if (section == 8 || section == 2 || (section >= 3 && section <= 5) || section >= 10) && compact-chat: ComboBox {
+                    height: 40px; max-width: 360px;
+                    accessible-label: "Ayarlar bölümü";
+                    model: ["Genel", "Kaynaklar", "Discord bağlantısı", "Entegrasyonlar", "Ağ erişimi", "Performans", "Eklentiler"];
+                    current-index: section == 8 ? 0 : section >= 3 && section <= 5 ? 1 : section == 10 ? 2 : section == 11 ? 3 : section == 12 ? 4 : section == 2 ? 5 : 6;
+                    selected(value) => {
+                        section = self.current-index == 0 ? 8 : self.current-index == 1 ? 3 : self.current-index == 2 ? 10 : self.current-index == 3 ? 11 : self.current-index == 4 ? 12 : self.current-index == 5 ? 2 : 13;
+                        if section == 2 { root.sample(); }
+                        if section == 13 { root.extension-action(0,""); }
+                    }
+                }
+                if (section == 8 || section == 2 || (section >= 3 && section <= 5) || section >= 10) && !compact-chat: HorizontalLayout { spacing: 8px;
                     Tab { text: "Genel"; active: section == 8; clicked => { section = 8; } }
                     Tab { text: "Kaynaklar"; active: section >= 3 && section <= 5; clicked => { section = 3; } }
                     Tab { text: "Discord bağlantısı"; active: section == 10; clicked => { section = 10; } }
@@ -555,7 +571,7 @@ export component LibraryWindow inherits Window {
                     Panel { vertical-stretch: 0; VerticalLayout { padding: 22px; spacing: 14px;
                         HorizontalLayout { spacing: 10px; Brand { kind: section - 2; } Heading { text: section == 3 ? "Steam" : section == 4 ? "Epic Games" : "Riot Games"; } Rectangle { horizontal-stretch: 1; background: transparent; } }
                         Caption { text: "Kurulu oyunlar launcher verilerinden otomatik bulunur. Başka bir diskteki klasörü de ekleyebilirsin."; }
-                        HorizontalLayout { spacing: 8px; Action { text: "Klasör ekle"; icon: 2; enabled: !scanning; clicked => { root.add-folder(section - 3); } } Action { text: "Oyunları göster"; ghost: true; clicked => { source-index = section - 2; section = 0; root.refresh(query,false,installed-only,0,source-index); } } Rectangle { horizontal-stretch: 1; background: transparent; } }
+                        HorizontalLayout { spacing: 8px; Action { height: 40px; text: "Klasör ekle"; icon: 2; enabled: !scanning; clicked => { root.add-folder(section - 3); } } Action { text: "Oyunları göster"; ghost: true; clicked => { source-index = section - 2; section = 0; root.refresh(query,false,installed-only,0,source-index); } } Rectangle { horizontal-stretch: 1; background: transparent; } }
                         Action { text: source-details ? "Tarama ayrıntılarını gizle" : "Tarama ayrıntıları"; ghost: true; clicked => { source-details = !source-details; } }
                         if source-details: Caption { text: source-summaries[section - 3]; font-size: 12px; }
                     } }
@@ -641,7 +657,7 @@ export component LibraryWindow inherits Window {
                                 Caption { text: recent-conversations ? "Son konuşma" : ""; font-size: 11px; horizontal-stretch: 0; }
                             }
                             if friends.length == 0: Caption { text: !bridge-connected ? "Discord bağlantısı kurulduğunda arkadaşların burada görünür." : friend-favorites-only ? "Bir arkadaşını yıldızla favorilere ekle." : "Aramana uygun arkadaş bulunamadı."; }
-                            ListView { for friend in friends: FriendRow { name: friend.name; subtitle: friend.subtitle; initial: friend.initial; online: friend.online; recent: friend.recent; favorite: friend.favorite; can-favorite: can-favorite-friends; enabled: bridge-connected; avatar: friend.avatar; has-avatar: friend.has-avatar; presence: friend.presence; voice: friend.voice;
+                            ListView { for friend in friends: FriendRow { name: friend.name; subtitle: friend.subtitle; initial: friend.initial; online: friend.online; recent: friend.recent; unread: friend.unread; favorite: friend.favorite; can-favorite: can-favorite-friends; enabled: bridge-connected; avatar: friend.avatar; has-avatar: friend.has-avatar; presence: friend.presence; voice: friend.voice;
                                 clicked => { root.open-conversation(friend.id,friend.name); }
                                 favorite-clicked => { root.friend-favorite(friend.id,!friend.favorite); }
                             } }
@@ -667,8 +683,12 @@ export component LibraryWindow inherits Window {
                             if room-mode == 2 && room-catalog-more: Caption { text: "İlk " + rooms.length + " oda gösteriliyor. Aramanı daralt."; font-size: 11px; }
                         }
                         if chat-active: Conversation {
+                            compact: compact-conversation;
                             horizontal-stretch: 3;
                             friend-name: chat-name; conversation-id: chat-user-id; confirmed-nonce: chat-sent-nonce; messages: chat-messages; status: chat-status; loading: chat-loading; retry-available: chat-retry; pending: chat-pending; can-send: bridge-connected && chat-can-send; can-open-discord: bridge-connected && chat-can-open-discord;
+                            can-load-older: chat-can-load-older; history-loading: chat-history-loading;
+                            older => { root.chat-action("chat_older",chat-user-id,chat-channel-id,""); }
+                            open-attachment(message,attachment) => { root.chat-attachment(message,attachment); }
                             draft <=> chat-draft;
                             send(content) => { root.chat-action("chat_send",chat-user-id,chat-channel-id,content); }
                             refresh => { root.chat-action("chat_refresh",chat-user-id,chat-channel-id,""); }
@@ -784,10 +804,14 @@ export component LibraryWindow inherits Window {
                         Caption { text: extension.details; font-size: 11px; }
                         HorizontalLayout { spacing: 8px;
                             Action { text: extension.enabled ? "Devre dışı bırak" : "Etkinleştir"; enabled: !integration-busy; clicked => { root.extension-action(extension.enabled ? 3 : 2,extension.id); } }
-                            Action { text: "Klasör ekle"; enabled: !integration-busy; clicked => { root.extension-action(5,extension.id); } }
-                            Action { text: "Çalıştır"; accent: true; enabled: extension.enabled && !integration-busy; clicked => { root.extension-action(4,extension.id); } }
-                            Rectangle { horizontal-stretch: 1; background: transparent; }
-                            Action { text: "Kaldır"; danger: true; ghost: true; enabled: !integration-busy; clicked => { root.extension-action(6,extension.id); } }
+                            Action { height: 40px; text: "Klasör ekle"; enabled: !integration-busy; clicked => { root.extension-action(5,extension.id); } }
+                            Action { height: 40px; text: "Çalıştır"; accent: true; enabled: extension.enabled && !integration-busy; clicked => { root.extension-action(4,extension.id); } }
+                        }
+                        Caption { text: extension.previous-version == "" ? "Güncellemek için indirdiğin paket klasörünü seç." : "Önceki sürüm: " + extension.previous-version + " · Ayarlar korunur."; font-size: 11px; }
+                        HorizontalLayout { spacing: 8px;
+                            Action { height: 40px; text: "Güncelle"; enabled: !integration-busy; clicked => { root.extension-action(8,extension.id); } }
+                            Action { height: 40px; text: "Geri dön"; enabled: !integration-busy && extension.previous-version != ""; accessible-label: extension.previous-version + " sürümüne dön"; clicked => { root.extension-action(9,extension.id); } }
+                            Action { height: 40px; text: "Kaldır"; danger: true; ghost: true; enabled: !integration-busy; clicked => { root.extension-action(6,extension.id); } }
                         }
                     } }
                     Rectangle { vertical-stretch: 1; background: transparent; }
@@ -796,6 +820,7 @@ export component LibraryWindow inherits Window {
                     Panel { VerticalLayout { padding: 22px; spacing: 14px;
                         HorizontalLayout { Heading { text: "Game Library"; } Rectangle { horizontal-stretch: 1; background: transparent; } Caption { text: "Sürüm 0.1.0 · Windows"; horizontal-stretch: 0; } }
                         Caption { text: update-status; }
+                        Caption { text: "Klavye: Ctrl+1 kütüphane · Ctrl+2 Discord · Ctrl+3 ayarlar · Ctrl+F ara. Tab / Shift+Tab gezin; Enter / Boşluk seç; Esc kapat. Oyun kartı: F favori, P başlat."; font-size: 11px; }
                         CheckBox { text: "Güncellemeleri otomatik kontrol et ve indir"; checked <=> auto-update-app; toggled => { root.update-preferences(auto-update-app); } }
                         HorizontalLayout { spacing: 8px; Action { text: "Güncellemeleri kontrol et"; icon: 8; enabled: !integration-busy; clicked => { root.update-check(); } } if update-available: Action { text: "İndir ve doğrula"; accent: true; enabled: !integration-busy; clicked => { root.update-stage(); } } if update-staged: Action { text: "Yeniden başlat ve uygula"; accent: true; enabled: !integration-busy; clicked => { root.update-apply(); } } Rectangle { horizontal-stretch: 1; background: transparent; } }
                     } }
@@ -833,6 +858,7 @@ export component LibraryWindow inherits Window {
                 if avatar-status != "": Caption { text: avatar-status; font-size: 11px; }
                 if followed-friends.length == 0: Caption { text: "Discord'da arkadaşlarını yıldızla. Oyun ve ses odası durumları burada görünür."; font-size: 12px; }
                 ListView { for friend in followed-friends: FriendRow {
+                    unread: friend.unread;
                     name: friend.name; subtitle: bridge-connected ? (friend.presence == "online" ? "Çevrimiçi" : friend.presence == "idle" ? "Boşta" : friend.presence == "dnd" ? "Rahatsız etmeyin" : friend.presence == "offline" ? "Çevrimdışı" : "Durum bilinmiyor") : "Son bilinen durum · bağlantı kapalı"; voice: bridge-connected ? friend.voice : ""; game: bridge-connected ? friend.game : "";
                     avatar: friend.avatar; has-avatar: friend.has-avatar; initial: friend.initial; online: bridge-connected && friend.online; presence: bridge-connected ? friend.presence : "unknown";
                     favorite: true; can-favorite: can-favorite-friends && bridge-connected; enabled: bridge-connected;

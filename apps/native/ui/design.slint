@@ -55,7 +55,7 @@ export component Action inherits Rectangle {
         x: 0px; y: 0px; width: root.width; height: root.height;
         alignment: center; spacing: 8px;
         if icon >= 0: Glyph { kind: root.icon; filled: root.selected; ink: root.accent && root.enabled ? #211b35 : root.danger ? #e1a1a7 : root.selected ? Theme.accent : Theme.muted; }
-        Text { text: root.text; color: root.accent && root.enabled ? #211b35 : root.danger ? #e1a1a7 : Theme.text; font-size: 13px; font-weight: root.accent ? 600 : 400; vertical-alignment: center; vertical-stretch: 0; }
+        Text { text: root.text; min-width: 0px; overflow: elide; color: root.accent && root.enabled ? #211b35 : root.danger ? #e1a1a7 : Theme.text; font-size: 13px; font-weight: root.accent ? 600 : 400; vertical-alignment: center; vertical-stretch: 0; }
     }
     keys := FocusScope {
         enabled: root.enabled;
@@ -191,7 +191,7 @@ export component PersonRow inherits Rectangle {
     }
     accessible-role: button; accessible-label: name; accessible-enabled: enabled; forward-focus: keys;
     accessible-action-default => { if root.enabled && root.can-join { root.clicked(); } }
-    keys := FocusScope { enabled: root.enabled; key-pressed(event) => { if (event.text == " " || event.text == "\n") && root.can-join { root.clicked(); return accept; } if event.text == "f" && root.can-favorite { root.favorite-clicked(); return accept; } return reject; } }
+    keys := FocusScope { enabled: root.enabled; key-pressed(event) => { if (event.text == " " || event.text == "\n") && root.can-join { root.clicked(); return accept; } if event.text == "f" && !event.modifiers.control && root.can-favorite { root.favorite-clicked(); return accept; } return reject; } }
     ContextMenuArea { enabled: !root.browse; Menu { MenuItem { title: "Odaya katıl"; enabled: root.enabled && root.can-join; activated => { root.clicked(); } } MenuItem { title: root.favorite ? "Takibi bırak" : "Takip et"; enabled: root.enabled && root.can-favorite; activated => { root.favorite-clicked(); } } } }
 }
 
@@ -205,6 +205,7 @@ export component FriendRow inherits Rectangle {
     in property <string> subtitle;
     in property <string> initial;
     in property <string> recent;
+    in property <int> unread;
     in property <bool> online;
     in property <bool> favorite;
     in property <bool> can-favorite;
@@ -213,8 +214,9 @@ export component FriendRow inherits Rectangle {
     callback favorite-clicked;
     height: game != "" ? (voice == "" ? 96px : 112px) : voice == "" ? 64px : 80px; min-width: 0px;
     border-radius: 6px; background: touch.has-hover ? Theme.hover : transparent;
+    border-width: keys.has-focus ? 1px : 0px; border-color: Theme.accent;
     forward-focus: keys;
-    accessible-role: button; accessible-label: name + " · " + subtitle + " · " + voice + (favorite ? " · favori" : ""); accessible-enabled: enabled;
+    accessible-role: button; accessible-label: name + " · " + subtitle + " · " + voice + (unread > 0 ? " · " + unread + " okunmamış mesaj" : "") + (favorite ? " · favori" : ""); accessible-enabled: enabled;
     accessible-action-default => { if root.enabled { root.clicked(); } }
     touch := TouchArea { enabled: root.enabled; mouse-cursor: pointer; clicked => { keys.focus(); root.clicked(); } }
     HorizontalLayout { padding: 10px; spacing: 12px;
@@ -231,9 +233,12 @@ export component FriendRow inherits Rectangle {
             if root.game != "": Text { text: "Oynuyor · " + root.game; color: Theme.muted; font-size: 11px; wrap: word-wrap; max-lines: 2; overflow: elide; vertical-stretch: 0; }
             if root.voice != "": Text { text: "Ses · " + root.voice; color: Theme.accent; font-size: 10px; overflow: elide; vertical-stretch: 0; }
         }
+        if root.unread > 0: Rectangle { width: 30px; height: 20px; horizontal-stretch: 0; vertical-stretch: 0; border-radius: 5px; background: Theme.accent-surface;
+            Text { text: root.unread > 99 ? "99+" : "" + root.unread; color: Theme.accent; font-size: 11px; horizontal-alignment: center; vertical-alignment: center; }
+        }
         Text { text: root.recent; color: Theme.subtle; font-size: 11px; horizontal-stretch: 0; vertical-alignment: center; }
         Action { text: ""; icon: 1; selected: root.favorite; height: 40px; min-width: 40px; max-width: 40px; ghost: true; opacity: root.favorite ? 1 : touch.has-hover || keys.has-focus ? 0.7 : 0.25; enabled: root.can-favorite; accessible-label: root.favorite ? root.name + " favorilerden çıkar" : root.name + " favoriye ekle"; clicked => { root.favorite-clicked(); } }
     }
-    keys := FocusScope { enabled: root.enabled; key-pressed(event) => { if event.text == "\n" { root.clicked(); return accept; } if event.text == "f" && root.can-favorite { root.favorite-clicked(); return accept; } return reject; } }
+    keys := FocusScope { enabled: root.enabled; key-pressed(event) => { if event.text == "\n" || event.text == " " { root.clicked(); return accept; } if event.text == "f" && !event.modifiers.control && root.can-favorite { root.favorite-clicked(); return accept; } return reject; } }
     ContextMenuArea { Menu { MenuItem { title: "Görüşmeyi aç"; enabled: root.enabled; activated => { root.clicked(); } } MenuItem { title: root.favorite ? "Favorilerden çıkar" : "Favoriye ekle"; enabled: root.can-favorite; activated => { root.favorite-clicked(); } } } }
 }

@@ -298,6 +298,29 @@ impl Store {
         self.connection.query_row("SELECT id,app_id,name,library_path,install_path,installed,favorite,size_bytes,artwork_path,source,source_id,launch_json FROM library_games WHERE id=?1", [id], row_game).map_err(Into::into)
     }
 
+    /// Stable keyset pagination is unaffected by title edits or UI sort order.
+    pub fn metadata_upper_bound(&self) -> Result<String> {
+        Ok(self.connection.query_row("SELECT coalesce(max(id),'') FROM games", [], |row| row.get(0))?)
+    }
+
+    pub fn metadata_page(&self, after: &str, through: &str) -> Result<Vec<Game>> {
+        let mut statement = self.connection.prepare_cached("SELECT id,app_id,name,library_path,install_path,installed,favorite,size_bytes,artwork_path,source,source_id,launch_json FROM library_games WHERE id>?1 AND id<=?2 ORDER BY id LIMIT 100")?;
+        let rows = statement.query_map(params![after, through], row_game)?.collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    pub fn set_artwork_urls(&mut self, updates: &[(Source, String, String)]) -> Result<()> {
+        if updates.len() > 100 || updates.iter().any(|(_, id, url)| id.is_empty() || id.len() > 4096 || id.contains('\0') || url.len() > 4096 || url.contains('\0')) {
+            return Err(LibraryError::Invalid("Kapak metadata sayfası geçersiz".into()));
+        }
+        let transaction = self.connection.transaction()?;
+        for (source, id, url) in updates {
+            transaction.execute("INSERT INTO settings(key,value) VALUES(?1,?2) ON CONFLICT(key) DO UPDATE SET value=excluded.value", params![format!("cover-url:{}:{id}",source.as_str()),url])?;
+        }
+        transaction.commit()?;
+        Ok(())
+    }
+
     pub fn apply_extension_games(&mut self, plugin: &str, games: &[Game]) -> Result<()> {
         if plugin.is_empty()
             || plugin.len() > 64

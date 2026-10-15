@@ -2,6 +2,7 @@
 
 mod accounts;
 mod avatars;
+mod attachments;
 mod bridge;
 mod broadcast;
 mod chat;
@@ -118,6 +119,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         let id = argument_value(&args, "--extension-id").unwrap_or_default();
         let message=match action.as_str() {
             "install"=>extensions::install(&data_dir,Path::new(&argument_value(&args,"--folder").ok_or("Eklenti klasörü eksik")?))?,
+            "update"=>extensions::update(&data_dir,&id,Path::new(&argument_value(&args,"--folder").ok_or("Eklenti klasörü eksik")?))?,
+            "rollback"=>extensions::rollback(&data_dir,&id)?,
             "enable"=>{extensions::enable(&data_dir,&id,true)?;"Etkinleştirildi".into()},
             "disable"=>{extensions::enable(&data_dir,&id,false)?;"Devre dışı".into()},
             "root"=>{extensions::add_root(&data_dir,&id,Path::new(&argument_value(&args,"--folder").ok_or("Oyun klasörü eksik")?))?;"Klasör eklendi".into()},
@@ -407,6 +410,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let tray = LibraryTray::new()?;
     let about = AboutWindow::new()?;
     let state = Arc::new(worker::State {
+        attachments: std::sync::Mutex::new(None),
         scanning: AtomicBool::new(false),
         cancel_scan: AtomicBool::new(false),
         revision: AtomicU64::new(0),
@@ -614,6 +618,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     register_command!(on_delete_collection, (id) => Command::CollectionDelete(id as i64));
     register_command!(on_collection_member, (id,collection,member) => Command::CollectionMember(id.into(),collection as i64,member));
     register_command!(on_bridge_action, (action,id) => Command::BridgeAction(action.into(),serde_json::json!({"id":id.as_str()})));
+    register_command!(on_chat_attachment, (message,attachment) => Command::ChatAttachment(message.into(),attachment.into()));
     register_command!(on_chat_action, (action,user,channel,content) => Command::Chat(action.into(),user.into(),channel.into(),content.into()));
     register_command!(on_extension_action, (action,id) => Command::Extension(action,id.into()));
     register_command!(on_friends_panel_toggle, (enabled) => Command::FriendsPanel(enabled));
@@ -736,6 +741,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                     content: "Merhaba! Bu akşam birlikte oynayalım mı?".into(),
                     time: "21:10".into(),
                     own: false,
+                    attachments: Default::default(),
                 },
                 ChatMessageTile {
                     id: "2".into(),
@@ -745,6 +751,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                             .into(),
                     time: "21:11".into(),
                     own: true,
+                    attachments: Default::default(),
                 },
                 ChatMessageTile {
                     id: "3".into(),
@@ -752,6 +759,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                     content: "Güzel, ses odasında görüşürüz.".into(),
                     time: "21:12".into(),
                     own: false,
+                    attachments: Default::default(),
                 },
             ]))
             .into(),
@@ -768,10 +776,18 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                     },
                     time: "21:12".into(),
                     own: index % 2 == 0,
+                    attachments: Default::default(),
                 }).collect::<Vec<_>>()
             )).into());
             ui.set_chat_sent_nonce("fixture-confirmed".into());
         }
+    }
+    if args.iter().any(|argument| argument == "--chat-media-fixture") {
+        let preview=slint::Image::load_from_path(Path::new("apps/native/ui/logos/discord.png"))?;
+        ui.set_chat_messages(Rc::new(slint::VecModel::from(vec![ChatMessageTile {
+            id:"fixture-media".into(), author:"Arkadaş".into(), content:"Görsel ve dosya ekleri".into(), time:"21:13".into(), own:false,
+            attachments:Rc::new(slint::VecModel::from(vec![AttachmentTile {id:"1".into(),name:"ekran-goruntusu.png".into(),detail:"128 KiB · Aç".into(),preview,has_preview:true},AttachmentTile {id:"2".into(),name:"oyun-notlari.pdf".into(),detail:"240 KiB · Aç".into(),..Default::default()}])).into()
+        }])).into());
     }
     if args.iter().any(|argument| argument == "--chat-error-fixture") {
         ui.set_chat_messages(Default::default());
@@ -784,6 +800,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         let avatar = slint::Image::load_from_path(Path::new("apps/native/ui/logos/discord.png"))?;
         let friends = vec![
             SocialTile {
+                unread: 3,
                 id: "223456789012345678".into(),
                 name: "Örnek oyuncu".into(),
                 subtitle: "Çevrimiçi · Oynuyor: VALORANT".into(),
@@ -798,6 +815,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 has_avatar: true,
             },
             SocialTile {
+                unread: 3,
                 id: "323456789012345678".into(),
                 name: "Örnek arkadaş".into(),
                 subtitle: "Boşta".into(),
@@ -879,6 +897,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             }
         });
     }
+    if let Some(output) = argument_value(&args, "--interface-validation-report") {
+        validation::interface(ui.as_weak(), PathBuf::from(output));
+    }
     if let Some(output) = argument_value(&args, "--cover-validation-report") {
         validation::cover_lifecycle(ui.as_weak(), PathBuf::from(output));
     }
@@ -921,7 +942,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             .map(|value| value.parse())
             .transpose()?
             .unwrap_or(28_800);
-        validation::stability(PathBuf::from(path), seconds)?;
+        validation::stability(ui.as_weak(), PathBuf::from(path), seconds)?;
     }
     slint::run_event_loop()?;
     state.cancel_scan.store(true, Ordering::Relaxed);
@@ -949,6 +970,8 @@ fn main() {
                 || argument == "--screenshot"
                 || argument == "--search-benchmark"
                 || argument == "--stability-report"
+                || argument == "--interface-validation-report"
+                || argument == "--cover-validation-report"
                 || argument == "--apply-update"
                 || argument == "--add-manual"
                 || argument == "--launch-test"

@@ -1,8 +1,9 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
-import { validId } from "./social";
+import { unreadCount, validId } from "./social";
 
 type Fields = Record<string, unknown>;
 export const CHAT_MESSAGE_LIMIT = 30;
+export const CHAT_HISTORY_LIMIT = 150;
 export const CHAT_BYTE_LIMIT = 96 * 1024;
 
 export interface ChatProvider {
@@ -12,7 +13,8 @@ export interface ChatProvider {
     channel(channelId: string): unknown;
     messages(channelId: string): unknown;
     openDm?(userId: string): unknown;
-    fetch?(channelId: string, limit: number): unknown;
+    fetch?(channelId: string, limit: number, before?: string): unknown;
+    unread?(channelId: string): number;
     send?(channelId: string, content: string, nonce: string): unknown;
     nonce?(): string;
     selectedChannel?(): unknown;
@@ -48,9 +50,9 @@ export function chatMessageAdapters(value: unknown): Pick<ChatProvider, "fetch" 
     const fetchSupported = typeof fetch === "function";
     const sendSupported = typeof send === "function";
     return {
-        fetch: fetchSupported ? (channelId, limit) => {
-            if (!validId(channelId) || limit !== CHAT_MESSAGE_LIMIT) throw new Error("Sohbet yenileme isteği geçersiz");
-            return (fetch as Function).call(actions, { channelId, limit, skipLocalFetch: true });
+        fetch: fetchSupported ? (channelId, limit, before) => {
+            if (!validId(channelId) || limit !== CHAT_MESSAGE_LIMIT || before !== undefined && !validId(before)) throw new Error("Sohbet yenileme isteği geçersiz");
+            return (fetch as Function).call(actions, { channelId, limit, skipLocalFetch: true, ...(before ? { before } : {}) });
         } : undefined,
         send: sendSupported ? (channelId, content, nonce) => {
             if (!validId(channelId) || !validId(nonce) || !validContent(content)) throw new Error("Sohbet gönderme isteği geçersiz");
@@ -81,15 +83,38 @@ function friend(provider: ChatProvider, userId: string) {
 function cache(provider: ChatProvider, channelId: string) { return object(read(() => provider.messages(channelId), undefined)); }
 function rawMessages(provider: ChatProvider, channelId: string): Fields[] {
     const entries = cache(provider, channelId)?._array;
-    return Array.isArray(entries) ? entries.slice(-100).map(object).filter((value): value is Fields => !!value) : [];
+    return Array.isArray(entries) ? entries.slice(-1000).map(object).filter((value): value is Fields => !!value) : [];
 }
 
-export function chatMessages(provider: ChatProvider, channelId: string, userId: string, account: string, now = Date.now()) {
+/** Signed Discord attachment links stay scoped to this message's channel and ID. */
+export function attachmentUrl(value: unknown, channelId: string, attachmentId: string): string | null {
+    if (typeof value !== "string" || value.length > 2048 || !validId(channelId) || !validId(attachmentId)) return null;
+    try {
+        const url = new URL(value);
+        return url.protocol === "https:" && ["cdn.discordapp.com", "media.discordapp.net"].includes(url.hostname)
+            && !url.username && !url.password && !url.port && !url.hash
+            && url.pathname.startsWith(`/attachments/${channelId}/${attachmentId}/`) ? url.href : null;
+    } catch { return null; }
+}
+function chatAttachments(value: unknown, channelId: string) {
+    if (!Array.isArray(value)) return [];
+    return value.slice(0, 4).flatMap(value => {
+        const item = object(value), id = item?.id;
+        if (!validId(id)) return [];
+        const url = attachmentUrl(item?.url, channelId, id);
+        if (!url) return [];
+        const size = typeof item?.size === "number" && Number.isSafeInteger(item.size) && item.size >= 0 ? item.size : 0;
+        const image = ["image/png", "image/jpeg"].includes(String(item?.content_type)) && size > 0 && size <= 8 * 1024 * 1024;
+        return [{ id, name: text(item?.filename, 128) || "Dosya", url, size, image }];
+    });
+}
+
+export function chatMessages(provider: ChatProvider, channelId: string, userId: string, account: string, now = Date.now(), limit = CHAT_MESSAGE_LIMIT) {
     if (provider.account !== account || !friend(provider, userId) || oneToOneChannel(read(() => provider.channel(channelId), undefined), userId, account) !== channelId) return [];
-    const rows = rawMessages(provider, channelId).filter(message => message.channel_id === channelId && validId(message.id) && message.state === "SENT" && [account, userId].includes(String(object(message.author)?.id))).slice(-CHAT_MESSAGE_LIMIT).map(message => {
+    const rows = rawMessages(provider, channelId).filter(message => message.channel_id === channelId && validId(message.id) && message.state === "SENT" && [account, userId].includes(String(object(message.author)?.id))).sort((a, b) => BigInt(a.id as string) < BigInt(b.id as string) ? -1 : 1).slice(-Math.min(CHAT_HISTORY_LIMIT, limit)).map(message => {
         const author = object(message.author)!;
         const timestamp = Number((BigInt(message.id as string) >> 22n) + 1420070400000n);
-        return { id: message.id as string, author: text(author.globalName ?? author.global_name ?? author.username ?? author.id, 64), content: text(message.content, 4000), timestamp: Math.min(timestamp, now), own: author.id === account };
+        return { id: message.id as string, author: text(author.globalName ?? author.global_name ?? author.username ?? author.id, 64), content: text(message.content, 4000), timestamp: Math.min(timestamp, now), own: author.id === account, attachments: chatAttachments(message.attachments, channelId) };
     }).sort((a, b) => a.id === b.id ? 0 : BigInt(a.id) < BigInt(b.id) ? -1 : 1);
     const bounded: typeof rows = [];
     let bytes = 2;
@@ -110,7 +135,10 @@ export class ChatControls {
     private revision = 1;
     private opening = false;
     private openingDeadline = 0;
-    private fetching: { selection: Selection; deadline: number } | undefined;
+    private fetching: { selection: Selection; deadline: number; before?: string } | undefined;
+    private history: ReturnType<typeof chatMessages> = [];
+    private historyLimit = CHAT_MESSAGE_LIMIT;
+    private hasOlder = true;
     private sending: Sending | undefined;
     private lastSend: { key: string; until: number } | undefined;
     private sentNonce: string | null = null;
@@ -119,7 +147,7 @@ export class ChatControls {
 
     clear() {
         this.revision++; this.selection = undefined; this.opening = false; this.fetching = undefined; this.sending = undefined; this.lastSend = undefined;
-        this.sentNonce = null;
+        this.sentNonce = null; this.history = []; this.historyLimit = CHAT_MESSAGE_LIMIT; this.hasOlder = true;
         this.status = "Sohbet için bir arkadaş seç."; this.changed = true;
     }
     private active(provider: ChatProvider, selection: Selection) {
@@ -137,10 +165,17 @@ export class ChatControls {
     state(provider: ChatProvider, now = Date.now()) {
         const selected = this.validSelection(provider);
         const ready = selected?.channelId ? cache(provider, selected.channelId)?.ready === true : false;
+        if (selected?.channelId) {
+            // Discord remains authoritative for edits and deletions; do not retain removed text.
+            this.history = chatMessages(provider, selected.channelId, selected.userId, selected.account, now, this.historyLimit);
+        }
         return {
             accountId: selected?.account ?? (validId(provider.account) ? provider.account : ""), revision: selected?.revision ?? this.revision,
             userId: selected?.userId ?? "", channelId: selected?.channelId ?? "",
-            messages: selected?.channelId ? chatMessages(provider, selected.channelId, selected.userId, selected.account, now) : [],
+            messages: selected?.channelId ? this.history : [],
+            canLoadOlder: !!selected?.channelId && !!this.history.length && this.hasOlder && this.historyLimit < CHAT_HISTORY_LIMIT && !this.fetching && typeof provider.fetch === "function",
+            historyLoading: !!this.fetching?.before,
+            unread: selected?.channelId ? unreadCount(read(() => provider.unread?.(selected.channelId), 0)) : 0,
             loading: this.opening || !!this.fetching,
             pending: !!this.sending,
             sentNonce: selected ? this.sentNonce : null,
@@ -154,14 +189,20 @@ export class ChatControls {
             if (data[key] !== undefined && data[key] !== expected) throw new Error("Sohbet değişti; güncel sohbeti seç");
         }
     }
-    private beginFetch(provider: ChatProvider, selected: Selection, now: number) {
+    private beginFetch(provider: ChatProvider, selected: Selection, now: number, before?: string) {
         if (!this.active(provider, selected) || !selected.channelId || typeof provider.fetch !== "function") return;
-        const fetching = { selection: selected, deadline: now + 20000 };
-        this.fetching = fetching; this.status = "Mesajlar yükleniyor…"; this.changed = true;
+        const fetching = { selection: selected, deadline: now + 20000, before };
+        this.fetching = fetching; this.status = before ? "Önceki mesajlar yükleniyor…" : "Mesajlar yükleniyor…"; this.changed = true;
         try {
-            Promise.resolve(provider.fetch(selected.channelId, CHAT_MESSAGE_LIMIT)).then(value => {
+            Promise.resolve(provider.fetch(selected.channelId, CHAT_MESSAGE_LIMIT, before)).then(value => {
                 if (this.active(provider, selected) && this.fetching === fetching) {
                     this.fetching = undefined;
+                    if (before && value !== false && cache(provider, selected.channelId)?.error !== true) {
+                        const rows = chatMessages(provider, selected.channelId, selected.userId, selected.account, now, CHAT_HISTORY_LIMIT);
+                        const older = rows.filter(message => BigInt(message.id) < BigInt(before));
+                        this.hasOlder = older.length >= CHAT_MESSAGE_LIMIT;
+                        this.historyLimit = Math.min(CHAT_HISTORY_LIMIT, this.historyLimit + CHAT_MESSAGE_LIMIT);
+                    }
                     this.status = value === false || cache(provider, selected.channelId)?.error === true ? "Mesajlar yüklenemedi. Yenile düğmesini kullan." : "Birebir sohbet açık.";
                     this.changed = true;
                 }
@@ -210,6 +251,11 @@ export class ChatControls {
         const selected = this.validSelection(provider);
         if (!selected?.channelId) throw new Error("Önce bir arkadaşın birebir sohbetini aç");
         this.assertScope(data, selected);
+        if (action === "chat_older") {
+            const state = this.state(provider, now);
+            if (!state.canLoadOlder || this.sending) throw new Error("Önceki mesajlar şu anda yüklenemiyor");
+            this.beginFetch(provider, selected, now, this.history[0].id); return;
+        }
         if (action === "chat_refresh") { if (!this.fetching) this.beginFetch(provider, selected, now); return; }
         if (action !== "chat_send") throw new Error("Desteklenmeyen sohbet işlemi");
         if (data.userId !== selected.userId || data.channelId !== selected.channelId || !validContent(data.content)) throw new Error("Mesaj veya hedef sohbet geçersiz (en fazla 2000 karakter)");

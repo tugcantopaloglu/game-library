@@ -69,7 +69,7 @@ pub fn lifecycle(state: Arc<Measurements>, ui: slint::Weak<LibraryWindow>, path:
                 std::thread::sleep(Duration::from_millis(500));
                 let open = sampler.sample()?;
                 ui.upgrade_in_event_loop(|ui| {
-                    let _ = ui.hide();
+                    ui.invoke_hide_window();
                 })
                 .map_err(|error| error.to_string())?;
                 std::thread::sleep(Duration::from_millis(500));
