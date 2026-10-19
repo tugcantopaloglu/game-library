@@ -334,7 +334,8 @@ fn publish(
     }
     let revision = query.revision;
     let matched = page.total;
-    let columns = query.columns.clamp(3, 12);
+    // Match the native shelf's two-column compact layout when the friends rail is open.
+    let columns = query.columns.clamp(2, 12);
     let state = state.clone();
     ui.upgrade_in_event_loop(move |ui| {
         if state.revision.load(Ordering::Relaxed) != revision {

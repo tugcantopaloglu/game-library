@@ -1,16 +1,22 @@
 export global Theme {
-    out property <color> canvas: #101214;
-    out property <color> sidebar: #14171a;
-    out property <color> surface: #1b1f23;
-    out property <color> hover: #252a30;
-    out property <color> line: #2b3036;
-    out property <color> text: #ecf0f3;
-    out property <color> muted: #adb5be;
-    out property <color> subtle: #7e8995;
-    out property <color> accent: #c6dae8;
-    out property <color> accent-surface: #27333d;
-    out property <color> positive: #8ec6a8;
-    out property <color> warning: #e3c18f;
+    out property <color> canvas: #101321;
+    out property <color> sidebar: #141829;
+    out property <color> surface: #1b2137;
+    out property <color> hover: #282f48;
+    out property <color> line: #303953;
+    out property <color> text: #f2f4fa;
+    out property <color> muted: #b6bfd4;
+    out property <color> subtle: #929eb9;
+    out property <color> accent: #d4f879;
+    out property <color> accent-surface: #293523;
+    out property <color> accent-surface-hover: #35452c;
+    out property <color> accent-ink: #18200f;
+    out property <color> accent-hover: #e2ff9a;
+    out property <color> accent-pressed: #b8dd5d;
+    out property <color> secondary: #beb2f4;
+    out property <color> positive: #97ddb3;
+    out property <color> warning: #f1c781;
+    out property <color> danger: #f2a1ad;
 }
 
 export component Brand inherits Rectangle {
@@ -39,14 +45,14 @@ export component Action inherits Rectangle {
     in property <bool> danger;
     in property <bool> enabled: true;
     callback clicked;
-    height: 32px;
-    min-width: content.preferred-width + 20px;
-    max-width: content.preferred-width + 20px;
+    height: 36px;
+    min-width: content.preferred-width + 24px;
+    max-width: content.preferred-width + 24px;
     horizontal-stretch: 0;
-    border-radius: 6px;
-    border-width: keys.has-focus ? 1px : 0px;
-    border-color: keys.has-focus ? Theme.accent : Theme.line;
-    background: !enabled ? transparent : accent ? (touch.pressed ? #adbfcd : touch.has-hover ? #e0eaf1 : Theme.accent) : touch.pressed ? Theme.accent-surface : touch.has-hover ? Theme.hover : transparent;
+    border-radius: 8px;
+    border-width: keys.has-focus ? 2px : 0px;
+    border-color: accent && enabled ? Theme.accent-ink : Theme.accent;
+    background: !enabled ? (ghost ? transparent : Theme.surface) : accent ? (touch.pressed ? Theme.accent-pressed : touch.has-hover ? Theme.accent-hover : Theme.accent) : selected ? (touch.pressed ? Theme.line : touch.has-hover ? Theme.accent-surface-hover : Theme.accent-surface) : touch.pressed ? Theme.line : touch.has-hover ? Theme.hover : ghost ? transparent : Theme.surface;
     opacity: enabled ? 1 : 0.6;
     forward-focus: keys;
     accessible-role: button; accessible-label: text; accessible-enabled: enabled;
@@ -54,8 +60,8 @@ export component Action inherits Rectangle {
     content := HorizontalLayout {
         x: 0px; y: 0px; width: root.width; height: root.height;
         alignment: center; spacing: 8px;
-        if icon >= 0: Glyph { kind: root.icon; filled: root.selected; ink: root.accent && root.enabled ? #211b35 : root.danger ? #e1a1a7 : root.selected ? Theme.accent : Theme.muted; }
-        Text { text: root.text; min-width: 0px; overflow: elide; color: root.accent && root.enabled ? #211b35 : root.danger ? #e1a1a7 : Theme.text; font-size: 13px; font-weight: root.accent ? 600 : 400; vertical-alignment: center; vertical-stretch: 0; }
+        if icon >= 0: Glyph { kind: root.icon; filled: root.selected; ink: root.accent && root.enabled ? Theme.accent-ink : root.danger ? Theme.danger : root.selected ? Theme.accent : Theme.muted; }
+        if root.text != "": Text { text: root.text; min-width: 0px; overflow: elide; color: root.accent && root.enabled ? Theme.accent-ink : root.danger ? Theme.danger : root.selected ? Theme.accent : Theme.text; font-size: 13px; font-weight: root.accent || root.selected ? 600 : 500; vertical-alignment: center; vertical-stretch: 0; }
     }
     keys := FocusScope {
         enabled: root.enabled;
@@ -67,22 +73,34 @@ export component Action inherits Rectangle {
 export component Navigation inherits Rectangle {
     in property <string> text;
     in property <int> icon: -1;
+    in property <int> brand: -1;
     in property <string> count;
     in property <string> monogram;
     in property <bool> active;
+    in property <bool> filter;
     callback clicked;
-    height: 36px; min-width: 0px;
-    border-radius: 6px;
-    background: active ? Theme.accent-surface : touch.has-hover ? Theme.hover : transparent;
-    border-width: keys.has-focus ? 1px : 0px; border-color: Theme.accent;
+    height: 42px; min-width: 0px;
+    border-radius: 10px;
+    background: active ? (filter ? (touch.has-hover ? Theme.accent-surface-hover : Theme.accent-surface) : touch.pressed ? Theme.accent-pressed : touch.has-hover ? Theme.accent-hover : Theme.accent) : touch.pressed ? Theme.line : touch.has-hover ? Theme.hover : transparent;
+    border-width: keys.has-focus ? 2px : 0px; border-color: active && !filter ? Theme.accent-ink : Theme.accent;
     accessible-role: button; accessible-label: text; forward-focus: keys;
     accessible-action-default => { root.clicked(); }
     HorizontalLayout {
         padding-left: 12px; padding-right: 12px; spacing: 12px;
-        if icon >= 0: Glyph { kind: root.icon; ink: root.active ? Theme.accent : Theme.muted; }
-        if icon < 0: Text { text: monogram; width: 18px; color: root.active ? Theme.accent : Theme.muted; font-size: 11px; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
-        Text { text: root.text; color: root.active ? Theme.accent : Theme.muted; font-size: 13px; font-weight: root.active ? 600 : 400; overflow: elide; vertical-alignment: center; }
-        if count != "": Text { text: root.count; color: root.active ? Theme.accent : Theme.subtle; font-size: 11px; horizontal-alignment: right; vertical-alignment: center; horizontal-stretch: 0; }
+        if root.brand >= 0: Rectangle { width: 18px; horizontal-stretch: 0; background: transparent;
+            Brand { kind: root.brand; x: 0px; y: (parent.height - self.height) / 2; width: 18px; height: 18px; }
+        }
+        if root.brand < 0 && icon >= 0: Glyph { kind: root.icon; ink: root.active ? (root.filter ? Theme.accent : Theme.accent-ink) : Theme.muted; }
+        if root.brand < 0 && icon < 0: Text { text: monogram; width: 18px; color: root.active ? (root.filter ? Theme.accent : Theme.accent-ink) : Theme.muted; font-size: 11px; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
+        Text { text: root.text; min-width: 0px; color: root.active ? (root.filter ? Theme.accent : Theme.accent-ink) : Theme.muted; font-size: 13px; font-weight: root.active ? 600 : 500; overflow: elide; vertical-alignment: center; }
+        if count != "": Rectangle {
+            min-width: count-label.preferred-width + 12px; max-width: count-label.preferred-width + 12px;
+            horizontal-stretch: 0; background: transparent;
+            Rectangle { x: 0px; y: (parent.height - self.height) / 2; width: parent.width; height: 22px; border-radius: 6px;
+                background: root.active && !root.filter ? Theme.accent-ink : Theme.surface;
+                count-label := Text { text: root.count; color: root.active ? Theme.accent : Theme.muted; font-size: 11px; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
+            }
+        }
     }
     keys := FocusScope { key-pressed(event) => { if event.text == " " || event.text == "\n" { root.clicked(); return accept; } return reject; } }
     touch := TouchArea { mouse-cursor: pointer; clicked => { keys.focus(); root.clicked(); } }
@@ -96,9 +114,9 @@ export component Field inherits Rectangle {
     callback edited;
     callback focus-input;
     focus-input => { input.focus(); }
-    height: 34px; min-width: 0px;
+    height: 38px; min-width: 0px;
     background: Theme.surface;
-    border-width: 1px; border-color: input.has-focus ? Theme.accent : Theme.line; border-radius: 6px;
+    border-width: 1px; border-color: input.has-focus ? Theme.accent : Theme.line; border-radius: 8px;
     forward-focus: input;
     HorizontalLayout {
         padding-left: 13px; padding-right: 13px; spacing: 10px;
@@ -111,7 +129,7 @@ export component Field inherits Rectangle {
                 text <=> root.text; single-line: true; input-type: root.secret ? InputType.password : InputType.text;
                 accessible-label: root.placeholder;
                 color: Theme.text; font-size: 13px; vertical-alignment: center;
-                selection-background-color: Theme.accent-surface; selection-foreground-color: Theme.text;
+                selection-background-color: Theme.accent; selection-foreground-color: Theme.accent-ink;
                 edited => { root.edited(); }
             }
         }
@@ -122,7 +140,7 @@ export component Panel inherits Rectangle {
     min-width: 0px; max-width: 4096px;
     vertical-stretch: 0;
     background: Theme.surface;
-    border-width: 0px; border-color: Theme.line; border-radius: 8px;
+    border-width: 0px; border-color: Theme.line; border-radius: 12px;
 }
 
 export component Heading inherits Text {
@@ -151,11 +169,11 @@ export component Tab inherits Rectangle {
     in property <string> text;
     in property <bool> active;
     callback clicked;
-    height: 30px; min-width: label.preferred-width + 20px; max-width: label.preferred-width + 20px; horizontal-stretch: 0;
-    border-radius: 5px;
-    background: active ? Theme.hover : touch.has-hover ? Theme.surface : transparent;
+    height: 34px; min-width: label.preferred-width + 24px; max-width: label.preferred-width + 24px; horizontal-stretch: 0;
+    border-radius: 8px;
+    background: active ? (touch.pressed ? Theme.line : touch.has-hover ? Theme.accent-surface-hover : Theme.accent-surface) : touch.pressed ? Theme.line : touch.has-hover ? Theme.surface : transparent;
     border-width: keys.has-focus ? 1px : 0px; border-color: Theme.accent;
-    label := Text { text: root.text; color: root.active ? Theme.text : Theme.muted; font-size: 13px; font-weight: root.active ? 600 : 400; vertical-alignment: center; horizontal-alignment: center; }
+    label := Text { text: root.text; color: root.active ? Theme.accent : Theme.muted; font-size: 13px; font-weight: root.active ? 600 : 500; vertical-alignment: center; horizontal-alignment: center; }
     accessible-role: button; accessible-label: text; forward-focus: keys;
     accessible-action-default => { root.clicked(); }
     keys := FocusScope { key-pressed(event) => { if event.text == " " || event.text == "\n" { root.clicked(); return accept; } return reject; } }
@@ -175,7 +193,7 @@ export component PersonRow inherits Rectangle {
     callback clicked;
     callback favorite-clicked;
     height: 56px; min-width: 0px;
-    border-radius: 8px; background: touch.has-hover ? Theme.hover : transparent;
+    border-radius: 8px; background: touch.pressed ? Theme.line : touch.has-hover ? Theme.hover : transparent;
     border-width: keys.has-focus ? 1px : 0px; border-color: Theme.accent;
     touch := TouchArea { enabled: root.enabled && root.can-join; mouse-cursor: pointer; clicked => { keys.focus(); root.clicked(); } }
     HorizontalLayout { padding: 10px; spacing: 12px;
@@ -187,7 +205,7 @@ export component PersonRow inherits Rectangle {
             Text { text: root.name; color: Theme.text; font-size: 13px; overflow: elide; vertical-stretch: 0; }
             Text { text: root.subtitle; color: Theme.muted; font-size: 11px; overflow: elide; vertical-stretch: 0; }
         }
-        Action { text: ""; icon: 1; selected: root.favorite; min-width: 30px; max-width: 30px; opacity: root.favorite ? 1 : touch.has-hover || keys.has-focus ? 0.7 : 0.25; enabled: root.enabled && root.can-favorite; accessible-label: root.favorite ? root.name + " takibi bırak" : root.name + " takip et"; clicked => { root.favorite-clicked(); } }
+        Action { text: ""; icon: 1; selected: root.favorite; ghost: true; min-width: 30px; max-width: 30px; opacity: root.favorite ? 1 : touch.has-hover || keys.has-focus ? 1 : 0.65; enabled: root.enabled && root.can-favorite; accessible-label: root.favorite ? root.name + " takibi bırak" : root.name + " takip et"; clicked => { root.favorite-clicked(); } }
     }
     accessible-role: button; accessible-label: name; accessible-enabled: enabled; forward-focus: keys;
     accessible-action-default => { if root.enabled && root.can-join { root.clicked(); } }
@@ -213,31 +231,34 @@ export component FriendRow inherits Rectangle {
     callback clicked;
     callback favorite-clicked;
     height: game != "" ? (voice == "" ? 96px : 112px) : voice == "" ? 64px : 80px; min-width: 0px;
-    border-radius: 6px; background: touch.has-hover ? Theme.hover : transparent;
+    border-radius: 10px; background: touch.pressed ? Theme.line : touch.has-hover ? Theme.hover : transparent;
     border-width: keys.has-focus ? 1px : 0px; border-color: Theme.accent;
     forward-focus: keys;
     accessible-role: button; accessible-label: name + " · " + subtitle + " · " + voice + (unread > 0 ? " · " + unread + " okunmamış mesaj" : "") + (favorite ? " · favori" : ""); accessible-enabled: enabled;
     accessible-action-default => { if root.enabled { root.clicked(); } }
     touch := TouchArea { enabled: root.enabled; mouse-cursor: pointer; clicked => { keys.focus(); root.clicked(); } }
-    HorizontalLayout { padding: 10px; spacing: 12px;
-        Rectangle { width: 32px; height: 32px; horizontal-stretch: 0; vertical-stretch: 0; border-radius: 16px; background: Theme.accent-surface;
-            Rectangle { width: 32px; height: 32px; border-radius: 16px; clip: true; background: transparent;
+    HorizontalLayout { padding: 10px; spacing: 8px;
+        Rectangle { width: 36px; height: 36px; horizontal-stretch: 0; vertical-stretch: 0; border-radius: 12px; background: Theme.accent-surface;
+            Rectangle { width: 36px; height: 36px; border-radius: 12px; clip: true; background: transparent;
                 if root.has-avatar: Image { width: parent.width; height: parent.height; source: root.avatar; image-fit: ImageFit.cover; }
-                if !root.has-avatar: Text { text: root.initial; color: Theme.accent; font-size: 13px; horizontal-alignment: center; vertical-alignment: center; }
+                if !root.has-avatar: Text { text: root.initial; color: Theme.accent; font-size: 13px; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
             }
-            Rectangle { x: parent.width - self.width; y: parent.height - self.height; width: 12px; height: 12px; border-radius: 6px; background: root.presence == "idle" ? #f0b232 : root.presence == "dnd" ? #ed4245 : root.online ? Theme.positive : Theme.subtle; border-width: 2px; border-color: Theme.surface; }
+            Rectangle { x: parent.width - self.width; y: parent.height - self.height; width: 12px; height: 12px; border-radius: 6px; background: root.presence == "idle" ? Theme.warning : root.presence == "dnd" ? Theme.danger : root.online ? Theme.positive : Theme.subtle; border-width: 2px; border-color: Theme.sidebar; }
         }
-        VerticalLayout { spacing: 3px;
-            Text { text: root.name; color: Theme.text; font-size: 13px; overflow: elide; vertical-stretch: 0; }
-            Text { text: root.subtitle; color: Theme.muted; font-size: 11px; overflow: elide; vertical-stretch: 0; }
-            if root.game != "": Text { text: "Oynuyor · " + root.game; color: Theme.muted; font-size: 11px; wrap: word-wrap; max-lines: 2; overflow: elide; vertical-stretch: 0; }
-            if root.voice != "": Text { text: "Ses · " + root.voice; color: Theme.accent; font-size: 10px; overflow: elide; vertical-stretch: 0; }
+        VerticalLayout { min-width: 0px; spacing: 3px;
+            Text { text: root.name; min-width: 0px; color: Theme.text; font-size: 13px; font-weight: 500; overflow: elide; vertical-stretch: 0; }
+            Text { text: root.subtitle; min-width: 0px; color: Theme.muted; font-size: 11px; overflow: elide; vertical-stretch: 0; }
+            if root.game != "": Text { text: "Oynuyor · " + root.game; min-width: 0px; color: Theme.positive; font-size: 11px; wrap: word-wrap; max-lines: 2; overflow: elide; vertical-stretch: 0; }
+            if root.voice != "": Text { text: "Ses · " + root.voice; min-width: 0px; color: Theme.secondary; font-size: 10px; overflow: elide; vertical-stretch: 0; }
         }
-        if root.unread > 0: Rectangle { width: 30px; height: 20px; horizontal-stretch: 0; vertical-stretch: 0; border-radius: 5px; background: Theme.accent-surface;
-            Text { text: root.unread > 99 ? "99+" : "" + root.unread; color: Theme.accent; font-size: 11px; horizontal-alignment: center; vertical-alignment: center; }
+        if root.unread > 0 || root.recent != "": VerticalLayout {
+            horizontal-stretch: 0; spacing: 4px; alignment: center;
+            if root.unread > 0: Rectangle { width: 28px; height: 20px; horizontal-stretch: 0; vertical-stretch: 0; border-radius: 6px; background: Theme.accent;
+                Text { text: root.unread > 99 ? "99+" : "" + root.unread; color: Theme.accent-ink; font-size: 11px; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
+            }
+            if root.recent != "": Text { text: root.recent; color: Theme.subtle; font-size: 10px; horizontal-stretch: 0; vertical-stretch: 0; horizontal-alignment: right; }
         }
-        Text { text: root.recent; color: Theme.subtle; font-size: 11px; horizontal-stretch: 0; vertical-alignment: center; }
-        Action { text: ""; icon: 1; selected: root.favorite; height: 40px; min-width: 40px; max-width: 40px; ghost: true; opacity: root.favorite ? 1 : touch.has-hover || keys.has-focus ? 0.7 : 0.25; enabled: root.can-favorite; accessible-label: root.favorite ? root.name + " favorilerden çıkar" : root.name + " favoriye ekle"; clicked => { root.favorite-clicked(); } }
+        Action { text: ""; icon: 1; selected: root.favorite; height: 32px; min-width: 32px; max-width: 32px; ghost: true; opacity: root.favorite ? 1 : touch.has-hover || keys.has-focus ? 1 : 0.65; enabled: root.can-favorite; accessible-label: root.favorite ? root.name + " favorilerden çıkar" : root.name + " favoriye ekle"; clicked => { root.favorite-clicked(); } }
     }
     keys := FocusScope { enabled: root.enabled; key-pressed(event) => { if event.text == "\n" || event.text == " " { root.clicked(); return accept; } if event.text == "f" && !event.modifiers.control && root.can-favorite { root.favorite-clicked(); return accept; } return reject; } }
     ContextMenuArea { Menu { MenuItem { title: "Görüşmeyi aç"; enabled: root.enabled; activated => { root.clicked(); } } MenuItem { title: root.favorite ? "Favorilerden çıkar" : "Favoriye ekle"; enabled: root.can-favorite; activated => { root.favorite-clicked(); } } } }

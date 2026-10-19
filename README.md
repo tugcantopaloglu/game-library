@@ -6,6 +6,8 @@ Bilgisayardaki oyunları tek yerde toplayan, yerel verilerle çalışan masaüst
 
 ## Proje durumu
 
+19 Ekim 2026: Google Stitch ile hazırlanan Midnight Arcade Shelf tasarımı native arayüze uygulandı. Gece mavisi yüzeyler, lime eylemler, sol menüde platform filtreleri ve pencereye göre 2–12 sütunlu oyun rafı kullanılır. [Tasarım ve doğrulama](docs/arayuz.md), [native tasarım sistemi](apps/native/DESIGN.md).
+
 Uygulama yeni kararlı sürümleri **GitHub Releases üzerinden otomatik indirip sonraki açılışta kurar**. Ayarlar → Genel bölümünden hemen güncellenebilir. Ed25519 imzası ve SHA-256 doğrulanır; açılamayan sürümde executable ve kütüphane geri alınır. [İlk geçiş, release akışı ve doğrulama](docs/otomatik-uygulama-guncellemesi.md).
 
 Discord köprüsü uygulamanın içinde hazır gelir. **Ayarlar → Discord bağlantısı → Köprüyü kur / güncelle** dosyaları yedekleyip kurar; kullanıcı bilgisayarında geliştirme aracı veya elle dosya kopyalama gerekmez. İlk kurulumdan sonra yeni uygulamayla gelen köprü otomatik güncellenebilir. [Kurulum, güncelleme ve doğrulama](docs/otomatik-kopru-kurulumu.md).
@@ -90,7 +92,7 @@ pwsh -File scripts/measure.ps1 -Mode Tray -Seconds 60
 - [Yeni kütüphane, Vencord ve güncelleme akışları](docs/kutuphane-ve-guncellemeler.md)
 - [Onaylanan devam kapsamı ve kabul işleri](docs/devam-plani.md)
 
-Fixture testleri makinedeki kurulumlardan yalıtılır; gerçek launcher kabulü ayrıca yapılır. Yerel Steam kapaklarına ek olarak kullanıcı kapağı ve isteğe bağlı SteamGridDB araması desteklenir. API anahtarı Windows Credential Manager'da saklanır. Native arayüz kapak odaklı kartlar, pencereye göre 4–6 sütun, 100 kayıtlık sayfalar ve sanallaştırılmış satırlar kullanır. Oyun ayrıntısı Genel bakış/Düzenle olarak ayrılır; Discord arkadaş ve ses odalarını liste halinde gösterir. JPEG/PNG kapaklar işçi thread'inde en fazla 180×270 piksele indirilir; dosya, boyut ve decode bellek sınırları uygulanır.
+Fixture testleri makinedeki kurulumlardan yalıtılır; gerçek launcher kabulü ayrıca yapılır. Yerel Steam kapaklarına ek olarak kullanıcı kapağı ve isteğe bağlı SteamGridDB araması desteklenir. API anahtarı Windows Credential Manager'da saklanır. Native arayüz kapak odaklı kartlar, pencereye göre 2–12 sütun, 100 kayıtlık sayfalar ve sanallaştırılmış satırlar kullanır. Oyun ayrıntısı Genel bakış/Düzenle olarak ayrılır; Discord arkadaş ve ses odalarını liste halinde gösterir. JPEG/PNG kapaklar işçi thread'inde en fazla 480×720 piksele indirilir; dosya, boyut ve decode bellek sınırları uygulanır.
 
 Uygulama güncelleyicisi Ed25519 imzalı release bildirimi ve SHA-256 doğrulaması kullanır. Bu geliştirme derlemesinde güven anahtarı ve yayımlanmış imzalı release yoktur; internetten otomatik uygulama güncellemesi henüz etkin değildir. Özel GameLibraryBridge paketini korumak için standart Vencord otomatik güncellemesi kapalıdır; **Köprüyü kur / güncelle** uygulamaya gömülü hazır paketi yedekleyerek uygular. Etkinleştirilmiş otomatik köprü güncellemesi, daha yeni uygulamayla gelen paketi sonraki uygulama açılışında kurar.
 

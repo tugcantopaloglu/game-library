@@ -1,0 +1,441 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-19T08:35:56.982Z",
+  "title": "Design System: Game Library",
+  "extensions": {
+    "colorMeta": {
+      "canvas": {
+        "role": "neutral",
+        "displayName": "Gece mavisi zemin",
+        "tonalRamp": [
+          "oklch(15.00% 0.0288 274.12)",
+          "oklch(26.43% 0.0288 274.12)",
+          "oklch(37.86% 0.0288 274.12)",
+          "oklch(49.29% 0.0288 274.12)",
+          "oklch(60.71% 0.0288 274.12)",
+          "oklch(72.14% 0.0288 274.12)",
+          "oklch(83.57% 0.0288 274.12)",
+          "oklch(95.00% 0.0288 274.12)"
+        ]
+      },
+      "sidebar": {
+        "role": "neutral",
+        "displayName": "Gece mavisi kenar alan",
+        "tonalRamp": [
+          "oklch(15.00% 0.0342 273.11)",
+          "oklch(26.43% 0.0342 273.11)",
+          "oklch(37.86% 0.0342 273.11)",
+          "oklch(49.29% 0.0342 273.11)",
+          "oklch(60.71% 0.0342 273.11)",
+          "oklch(72.14% 0.0342 273.11)",
+          "oklch(83.57% 0.0342 273.11)",
+          "oklch(95.00% 0.0342 273.11)"
+        ]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "Panel yüzeyi",
+        "tonalRamp": [
+          "oklch(15.00% 0.0426 271.48)",
+          "oklch(26.43% 0.0426 271.48)",
+          "oklch(37.86% 0.0426 271.48)",
+          "oklch(49.29% 0.0426 271.48)",
+          "oklch(60.71% 0.0426 271.48)",
+          "oklch(72.14% 0.0426 271.48)",
+          "oklch(83.57% 0.0426 271.48)",
+          "oklch(95.00% 0.0426 271.48)"
+        ]
+      },
+      "hover": {
+        "role": "neutral",
+        "displayName": "Üzerine gelinen yüzey",
+        "tonalRamp": [
+          "oklch(15.00% 0.0461 271.55)",
+          "oklch(26.43% 0.0461 271.55)",
+          "oklch(37.86% 0.0461 271.55)",
+          "oklch(49.29% 0.0461 271.55)",
+          "oklch(60.71% 0.0461 271.55)",
+          "oklch(72.14% 0.0461 271.55)",
+          "oklch(83.57% 0.0461 271.55)",
+          "oklch(95.00% 0.0461 271.55)"
+        ]
+      },
+      "line": {
+        "role": "neutral",
+        "displayName": "Ayırıcı",
+        "tonalRamp": [
+          "oklch(15.00% 0.0472 269.21)",
+          "oklch(26.43% 0.0472 269.21)",
+          "oklch(37.86% 0.0472 269.21)",
+          "oklch(49.29% 0.0472 269.21)",
+          "oklch(60.71% 0.0472 269.21)",
+          "oklch(72.14% 0.0472 269.21)",
+          "oklch(83.57% 0.0472 269.21)",
+          "oklch(95.00% 0.0472 269.21)"
+        ]
+      },
+      "text": {
+        "role": "neutral",
+        "displayName": "Ana metin",
+        "tonalRamp": [
+          "oklch(15.00% 0.0083 271.33)",
+          "oklch(26.43% 0.0083 271.33)",
+          "oklch(37.86% 0.0083 271.33)",
+          "oklch(49.29% 0.0083 271.33)",
+          "oklch(60.71% 0.0083 271.33)",
+          "oklch(72.14% 0.0083 271.33)",
+          "oklch(83.57% 0.0083 271.33)",
+          "oklch(95.00% 0.0083 271.33)"
+        ]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "İkincil metin",
+        "tonalRamp": [
+          "oklch(15.00% 0.0313 267.15)",
+          "oklch(26.43% 0.0313 267.15)",
+          "oklch(37.86% 0.0313 267.15)",
+          "oklch(49.29% 0.0313 267.15)",
+          "oklch(60.71% 0.0313 267.15)",
+          "oklch(72.14% 0.0313 267.15)",
+          "oklch(83.57% 0.0313 267.15)",
+          "oklch(95.00% 0.0313 267.15)"
+        ]
+      },
+      "subtle": {
+        "role": "neutral",
+        "displayName": "Yardımcı metin",
+        "tonalRamp": [
+          "oklch(15.00% 0.0420 266.35)",
+          "oklch(26.43% 0.0420 266.35)",
+          "oklch(37.86% 0.0420 266.35)",
+          "oklch(49.29% 0.0420 266.35)",
+          "oklch(60.71% 0.0420 266.35)",
+          "oklch(72.14% 0.0420 266.35)",
+          "oklch(83.57% 0.0420 266.35)",
+          "oklch(95.00% 0.0420 266.35)"
+        ]
+      },
+      "accent": {
+        "role": "primary",
+        "displayName": "Lime vurgu",
+        "tonalRamp": [
+          "oklch(15.00% 0.1588 122.63)",
+          "oklch(26.43% 0.1588 122.63)",
+          "oklch(37.86% 0.1588 122.63)",
+          "oklch(49.29% 0.1588 122.63)",
+          "oklch(60.71% 0.1588 122.63)",
+          "oklch(72.14% 0.1588 122.63)",
+          "oklch(83.57% 0.1588 122.63)",
+          "oklch(95.00% 0.1588 122.63)"
+        ]
+      },
+      "accent-surface": {
+        "role": "primary",
+        "displayName": "Lime seçim yüzeyi",
+        "tonalRamp": [
+          "oklch(15.00% 0.0351 135.45)",
+          "oklch(26.43% 0.0351 135.45)",
+          "oklch(37.86% 0.0351 135.45)",
+          "oklch(49.29% 0.0351 135.45)",
+          "oklch(60.71% 0.0351 135.45)",
+          "oklch(72.14% 0.0351 135.45)",
+          "oklch(83.57% 0.0351 135.45)",
+          "oklch(95.00% 0.0351 135.45)"
+        ]
+      },
+      "accent-surface-hover": {
+        "role": "primary",
+        "displayName": "Lime seçim hover",
+        "tonalRamp": [
+          "oklch(15.00% 0.0461 134.70)",
+          "oklch(26.43% 0.0461 134.70)",
+          "oklch(37.86% 0.0461 134.70)",
+          "oklch(49.29% 0.0461 134.70)",
+          "oklch(60.71% 0.0461 134.70)",
+          "oklch(72.14% 0.0461 134.70)",
+          "oklch(83.57% 0.0461 134.70)",
+          "oklch(95.00% 0.0461 134.70)"
+        ]
+      },
+      "accent-ink": {
+        "role": "primary",
+        "displayName": "Lime üzeri mürekkep",
+        "tonalRamp": [
+          "oklch(15.00% 0.0330 129.23)",
+          "oklch(26.43% 0.0330 129.23)",
+          "oklch(37.86% 0.0330 129.23)",
+          "oklch(49.29% 0.0330 129.23)",
+          "oklch(60.71% 0.0330 129.23)",
+          "oklch(72.14% 0.0330 129.23)",
+          "oklch(83.57% 0.0330 129.23)",
+          "oklch(95.00% 0.0330 129.23)"
+        ]
+      },
+      "accent-hover": {
+        "role": "primary",
+        "displayName": "Lime hover",
+        "tonalRamp": [
+          "oklch(15.00% 0.1300 121.96)",
+          "oklch(26.43% 0.1300 121.96)",
+          "oklch(37.86% 0.1300 121.96)",
+          "oklch(49.29% 0.1300 121.96)",
+          "oklch(60.71% 0.1300 121.96)",
+          "oklch(72.14% 0.1300 121.96)",
+          "oklch(83.57% 0.1300 121.96)",
+          "oklch(95.00% 0.1300 121.96)"
+        ]
+      },
+      "accent-pressed": {
+        "role": "primary",
+        "displayName": "Lime basılı",
+        "tonalRamp": [
+          "oklch(15.00% 0.1601 123.37)",
+          "oklch(26.43% 0.1601 123.37)",
+          "oklch(37.86% 0.1601 123.37)",
+          "oklch(49.29% 0.1601 123.37)",
+          "oklch(60.71% 0.1601 123.37)",
+          "oklch(72.14% 0.1601 123.37)",
+          "oklch(83.57% 0.1601 123.37)",
+          "oklch(95.00% 0.1601 123.37)"
+        ]
+      },
+      "secondary": {
+        "role": "secondary",
+        "displayName": "Lavanta yardımcı vurgu",
+        "tonalRamp": [
+          "oklch(15.00% 0.0932 292.49)",
+          "oklch(26.43% 0.0932 292.49)",
+          "oklch(37.86% 0.0932 292.49)",
+          "oklch(49.29% 0.0932 292.49)",
+          "oklch(60.71% 0.0932 292.49)",
+          "oklch(72.14% 0.0932 292.49)",
+          "oklch(83.57% 0.0932 292.49)",
+          "oklch(95.00% 0.0932 292.49)"
+        ]
+      },
+      "positive": {
+        "role": "semantic",
+        "displayName": "Yeşil olumlu durum",
+        "tonalRamp": [
+          "oklch(15.00% 0.0919 157.39)",
+          "oklch(26.43% 0.0919 157.39)",
+          "oklch(37.86% 0.0919 157.39)",
+          "oklch(49.29% 0.0919 157.39)",
+          "oklch(60.71% 0.0919 157.39)",
+          "oklch(72.14% 0.0919 157.39)",
+          "oklch(83.57% 0.0919 157.39)",
+          "oklch(95.00% 0.0919 157.39)"
+        ]
+      },
+      "warning": {
+        "role": "semantic",
+        "displayName": "Amber bekleme",
+        "tonalRamp": [
+          "oklch(15.00% 0.1001 79.57)",
+          "oklch(26.43% 0.1001 79.57)",
+          "oklch(37.86% 0.1001 79.57)",
+          "oklch(49.29% 0.1001 79.57)",
+          "oklch(60.71% 0.1001 79.57)",
+          "oklch(72.14% 0.1001 79.57)",
+          "oklch(83.57% 0.1001 79.57)",
+          "oklch(95.00% 0.1001 79.57)"
+        ]
+      },
+      "danger": {
+        "role": "semantic",
+        "displayName": "Pembe uyarı",
+        "tonalRamp": [
+          "oklch(15.00% 0.0972 9.82)",
+          "oklch(26.43% 0.0972 9.82)",
+          "oklch(37.86% 0.0972 9.82)",
+          "oklch(49.29% 0.0972 9.82)",
+          "oklch(60.71% 0.0972 9.82)",
+          "oklch(72.14% 0.0972 9.82)",
+          "oklch(83.57% 0.0972 9.82)",
+          "oklch(95.00% 0.0972 9.82)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "headline": {
+        "displayName": "Sayfa başlığı",
+        "purpose": "Kütüphane, Favoriler, Discord ve Ayarlar başlıkları."
+      },
+      "headline-short": {
+        "displayName": "Kısa pencere sayfa başlığı",
+        "purpose": "720 mantıksal px altındaki pencere yüksekliğinde sayfa başlığı; dar açık görüşmede genel Discord başlığı gizlenir."
+      },
+      "detail-title": {
+        "displayName": "Oyun ayrıntısı",
+        "purpose": "Oyun başlığı."
+      },
+      "heading": {
+        "displayName": "Panel başlığı",
+        "purpose": "Ortak Heading bileşeni."
+      },
+      "card-title": {
+        "displayName": "Kart başlığı",
+        "purpose": "Kapak altındaki oyun adı."
+      },
+      "body": {
+        "displayName": "Gövde",
+        "purpose": "Caption, alan ve genel arayüz metni."
+      },
+      "action": {
+        "displayName": "Eylem",
+        "purpose": "Ana/seçili Action ve Navigation."
+      },
+      "label": {
+        "displayName": "Yardımcı bilgi",
+        "purpose": "Kaynak, boyut ve durum."
+      },
+      "eyebrow": {
+        "displayName": "Küçük bölüm işareti",
+        "purpose": "Eyebrow bileşeni."
+      }
+    },
+    "shadows": [],
+    "motion": [],
+    "breakpoints": [
+      {
+        "name": "short-window (window height below; toolbar 62px, heading 24px, top inset 14px, body gap 12px, no library subtitle)",
+        "value": "720px"
+      },
+      {
+        "name": "compact-shelf (window width below)",
+        "value": "1100px"
+      },
+      {
+        "name": "compact-chat and settings selector (window width below)",
+        "value": "1280px"
+      },
+      {
+        "name": "compact-conversation (window height below)",
+        "value": "900px"
+      },
+      {
+        "name": "close-stream-panel-on-chat (window height below)",
+        "value": "850px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Ana eylem",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Native Slint Action(accent) için yalnız belge önizlemesi; ürün WebView kullanmaz.",
+      "html": "<button class=\"ds-primary\">Oyna</button>",
+      "css": ".ds-primary{font: 600 13px \"Segoe UI\",sans-serif;height:36px;padding:0 12px;border:0;border-radius:8px;background:#d4f879;color:#18200f;cursor:pointer}.ds-primary:hover{background:#e2ff9a}.ds-primary:active{background:#b8dd5d}.ds-primary:focus-visible{outline:2px solid #18200f;outline-offset:-2px}.ds-primary:disabled{opacity:.6;cursor:default;background:#1b2137;color:#f2f4fa}"
+    },
+    {
+      "name": "İkincil eylem",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Native Action; rutin işlemler için yüzey rengi.",
+      "html": "<button class=\"ds-secondary\">Düzenle</button>",
+      "css": ".ds-secondary{font: 500 13px \"Segoe UI\",sans-serif;height:36px;padding:0 12px;border:0;border-radius:8px;background:#1b2137;color:#f2f4fa;cursor:pointer}.ds-secondary:hover{background:#282f48}.ds-secondary:active{background:#303953}.ds-secondary:focus-visible{outline:2px solid #d4f879;outline-offset:-2px}.ds-secondary:disabled{opacity:.6;cursor:default;background:#1b2137;color:#f2f4fa}"
+    },
+    {
+      "name": "Şeffaf eylem",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Native Action(ghost); ikincil gezinme eylemi.",
+      "html": "<button class=\"ds-ghost\">Önceki</button>",
+      "css": ".ds-ghost{font: 500 13px \"Segoe UI\",sans-serif;height:36px;padding:0 12px;border:0;border-radius:8px;background:transparent;color:#f2f4fa;cursor:pointer}.ds-ghost:hover{background:#282f48}.ds-ghost:active{background:#303953}.ds-ghost:focus-visible{outline:2px solid #d4f879;outline-offset:-2px}.ds-ghost:disabled{opacity:.6;cursor:default;background:#1b2137;color:#f2f4fa}"
+    },
+    {
+      "name": "Gezinme",
+      "kind": "nav",
+      "refersTo": "navigation-active",
+      "description": "Native Navigation: etkin ana sayfa lime, etkin platform daha koyu seçim yüzeyidir.",
+      "html": "<nav class=\"ds-nav\"><button class=\"ds-nav-main\">Kütüphane</button><button class=\"ds-nav-filter\">Tüm platformlar</button></nav>",
+      "css": ".ds-nav{display:grid;gap:6px;width:180px;font-family:\"Segoe UI\",sans-serif}.ds-nav button{height:42px;padding:0 12px;text-align:left;border:0;border-radius:10px;font:600 13px \"Segoe UI\",sans-serif;cursor:pointer}.ds-nav-main{background:#d4f879;color:#18200f}.ds-nav-main:hover{background:#e2ff9a}.ds-nav-main:active{background:#b8dd5d}.ds-nav-filter{background:#293523;color:#d4f879}.ds-nav-filter:hover{background:#35452c}.ds-nav-filter:active{background:#303953}.ds-nav button:focus-visible{outline:2px solid #d4f879;outline-offset:-2px}.ds-nav .ds-nav-main:focus-visible{outline-color:#18200f}"
+    },
+    {
+      "name": "Arama alanı",
+      "kind": "input",
+      "refersTo": "field",
+      "description": "Native Field; 38 px alan, odakta lime çizgi ve yerel yazı seçimi.",
+      "html": "<input class=\"ds-field\" aria-label=\"Oyun ara\" placeholder=\"Oyun ara…\">",
+      "css": ".ds-field{height:38px;padding:0 13px;background:#1b2137;color:#f2f4fa;border:1px solid #303953;border-radius:8px;font:13px \"Segoe UI\",sans-serif}.ds-field::placeholder{color:#929eb9}.ds-field:focus-visible{outline:0;border-color:#d4f879}.ds-field::selection{background:#d4f879;color:#18200f}"
+    },
+    {
+      "name": "Kurulum sekmesi",
+      "kind": "chip",
+      "refersTo": "tab-active",
+      "description": "Native Tab; Tümü/Kurulu durumu için belge önizlemesi.",
+      "html": "<button class=\"ds-tab\">Kurulu</button>",
+      "css": ".ds-tab{height:34px;padding:0 12px;border:0;border-radius:8px;background:#293523;color:#d4f879;font:600 13px \"Segoe UI\",sans-serif;cursor:pointer}.ds-tab:hover{background:#35452c}.ds-tab:active{background:#303953}.ds-tab:focus-visible{outline:1px solid #d4f879;outline-offset:-1px}"
+    },
+    {
+      "name": "Oyun kartı",
+      "kind": "card",
+      "refersTo": "game-cover",
+      "description": "Native GameCard'ın veri içermeyen belge temsili. Gerçek kapak eklenmez; hover/odak Oyna alanını açar.",
+      "html": "<div class=\"ds-card\" tabindex=\"0\" role=\"button\" aria-label=\"Oyun ayrıntısı\"><div class=\"ds-card-cover\"><span>Kapak alanı</span><button class=\"ds-card-play\">Oyna</button></div><strong>Oyun adı</strong><small>Kaynak · Boyut</small></div>",
+      "css": ".ds-card{width:190px;font:13px \"Segoe UI\",sans-serif;color:#f2f4fa;outline:0}.ds-card-cover{height:285px;border:1px solid #ffffff19;border-radius:12px;background:#1b2137;position:relative;display:grid;place-items:center;color:#929eb9}.ds-card strong{display:block;padding:10px 2px 5px;font-size:14px;font-weight:600}.ds-card small{display:block;padding:0 2px;font-size:11px;color:#929eb9}.ds-card-play{position:absolute;left:10px;right:10px;bottom:10px;height:38px;border:0;border-radius:8px;background:#d4f879;color:#18200f;font:700 13px \"Segoe UI\",sans-serif;opacity:0;cursor:pointer}.ds-card:hover .ds-card-cover,.ds-card:focus-visible .ds-card-cover,.ds-card:focus-within .ds-card-cover{outline:2px solid #d4f879;outline-offset:-2px}.ds-card:hover .ds-card-play,.ds-card:focus-visible .ds-card-play,.ds-card:focus-within .ds-card-play{opacity:1}.ds-card-play:hover{background:#e2ff9a}.ds-card-play:active{background:#b8dd5d}.ds-card-play:focus-visible{outline:2px solid #18200f;outline-offset:-2px}"
+    },
+    {
+      "name": "Arkadaş satırı",
+      "kind": "custom",
+      "refersTo": "friend-row",
+      "description": "Native FriendRow'un açıkça örnek olarak etiketlenen belge temsili; çevrimiçi rengi gerçek uygulamada presence verisine bağlıdır.",
+      "html": "<button class=\"ds-friend\"><span class=\"ds-avatar\">Ö<span class=\"ds-presence\"></span></span><span><b>Örnek kişi</b><small>Çevrimiçi · örnek veri</small></span></button>",
+      "css": ".ds-friend{display:flex;align-items:center;gap:8px;width:240px;min-height:64px;padding:10px;border:0;border-radius:10px;background:transparent;color:#f2f4fa;text-align:left;font:13px \"Segoe UI\",sans-serif;cursor:pointer}.ds-friend:hover{background:#282f48}.ds-friend:active{background:#303953}.ds-friend:focus-visible{outline:1px solid #d4f879;outline-offset:-1px}.ds-avatar{position:relative;display:grid;place-items:center;width:36px;height:36px;border-radius:12px;background:#293523;color:#d4f879;font-weight:600}.ds-presence{position:absolute;right:0;bottom:0;width:8px;height:8px;border:2px solid #141829;border-radius:6px;background:#97ddb3}.ds-friend b{font-weight:500}.ds-friend small{display:block;margin-top:3px;color:#b6bfd4;font-size:11px}"
+    },
+    {
+      "name": "Oyun sayısı",
+      "kind": "chip",
+      "refersTo": "count-badge",
+      "description": "Native eşleşme sayacı. Önizleme 0 gösterir; çalışan uygulama filtre sonucunu okur.",
+      "html": "<span class=\"ds-count\">0 oyun</span>",
+      "css": ".ds-count{display:inline-flex;align-items:center;height:26px;padding:0 9px;border-radius:7px;background:#1b2137;color:#beb2f4;font:600 11px \"Segoe UI\",sans-serif}"
+    },
+    {
+      "name": "Panel",
+      "kind": "custom",
+      "refersTo": "panel",
+      "description": "Native Panel; gölgesiz ton ayrımı, iç boşluk kullanıldığı ekrana aittir.",
+      "html": "<div class=\"ds-panel\">Panel yüzeyi</div>",
+      "css": ".ds-panel{min-height:70px;padding:20px;border-radius:12px;background:#1b2137;color:#f2f4fa;font:13px \"Segoe UI\",sans-serif}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Midnight Arcade Shelf",
+    "overview": "Koyu gece mavisi raf, oyun kapaklarını öne çıkarır. Lime eylemler, lavanta yardımcı işaretler ve kısa Türkçe metinler kütüphaneye sıcak, oyun odaklı bir karakter verir. Sık kullanılan denetimler belirgin; kaynak yönetimi ve yardımcı işlemler kendi alanlarında kalır.\n\nBu belge Windows için Rust/Slint arayüzünü tanımlar. Çalışan sistemin kaynağı [design.slint](ui/design.slint) ve [library.slint](ui/library.slint) dosyalarıdır. Google Stitch [tasarım projesi](https://stitch.withgoogle.com/projects/15089961104543268171), `9dda607a15734f3d81a880f50bc2793f` ekranıyla görsel yönü sağladı. Konseptteki örnek oyunlar, kişiler, sıralama seçenekleri ve başka desteklenmeyen denetimler ürün özelliği sayılmaz. Segoe UI, native pencere, software renderer ve mevcut veri akışı korunur.\n\n[Sidecar](.impeccable/design.json) içindeki HTML/CSS, native bileşenlerin bağımsız dokümantasyon önizlemesidir. Sentezlenen tonal renk şeritleri de bu önizlemeye aittir; çalışma zamanına eklenen renk ölçeği değildir. Üstteki tokenlar ve Slint kaynakları uygulamanın gerçek değerlerini taşır.",
+    "keyCharacteristics": [
+      "Kapak odaklı, uyarlanan oyun rafı.",
+      "Gece mavisi yüzeyler, lime ana eylem ve lavanta yardımcı vurgu.",
+      "Ayrı gezinme, platform filtresi ve arkadaş alanı.",
+      "Gerçek kayda bağlı sayaçlar, durumlar ve eylemler.",
+      "Fare ve klavyede aynı işlere erişim."
+    ],
+    "rules": [
+      {
+        "name": "The State Has Meaning Rule",
+        "body": "Durum rengi yalnız verideki durumu anlatır; bağlı olmayan Discord oturumu güncel çevrimiçi durum gibi gösterilmez.",
+        "section": "colors"
+      },
+      {
+        "name": "The Quiet Surface Rule",
+        "body": "Durağan yüzeyler sakin kalır; vurgu etkileşimi, seçimi ve veriye bağlı durumu anlatır.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do yeni ekranlarda mevcut `Theme`, `Action`, `Field`, `Navigation`, `Tab` ve `Panel` bileşenlerini kullan.",
+      "Do seçim, odak ve kurulum/bağlantı durumunu metin ve erişilebilir eylemlerle birlikte göster.",
+      "Do uzun adları, dar pencereyi, boş sonuçları ve arkadaş paneli açık/kapalı düzenini doğrula.",
+      "Do kapak çözme, 100 kayıtlık sayfa ve sanallaştırılmış satır sınırlarını koru.",
+      "Do doğrulama fixture'larını görünür şekilde etiketle ve gerçek kullanıcı verisinden ayır."
+    ],
+    "donts": [
+      "Don't Stitch konseptindeki uydurma oyun, kişi, sayı veya desteklenmeyen eylemleri gerçek ürün verisi olarak ekle.",
+      "Don't bu native arayüze WebView, ağ fontu, yeni runtime veya sürekli dekoratif zamanlayıcı ekle.",
+      "Don't fareyle görünür olan kart eylemlerini klavye erişiminden çıkar.",
+      "Don't önceki derlemelerin RAM/CPU sonuçlarını bu tasarımın ölçümü olarak sun."
+    ]
+  }
+}
